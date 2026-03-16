@@ -16,13 +16,13 @@ import {
   ClipboardList,
   Download,
   CheckCircle2,
-  Clock3,
   Smartphone,
   LogIn,
   Settings,
   Trash2,
   AlertTriangle,
   BarChart3,
+  Clock3,
 } from "lucide-react"
 
 const brand = {
@@ -53,11 +53,11 @@ type AttendanceEntry = {
   sessionTitle: string
   sessionGroup: string
   name: string
+  birthDate: string
   memberType: "Mitglied" | "Probetraining"
   weight?: string
   phone?: string
   email?: string
-  birthDate?: string
 }
 
 const sessions: Session[] = [
@@ -242,10 +242,10 @@ export default function Home() {
   const [selectedSessionId, setSelectedSessionId] = useState<string>(sessions[0].id)
   const [memberType, setMemberType] = useState<"Mitglied" | "Probetraining">("Mitglied")
   const [fullName, setFullName] = useState(() => storageGet("tsv_last_name", ""))
+  const [birthDate, setBirthDate] = useState(() => storageGet("tsv_last_birth_date", ""))
   const [weight, setWeight] = useState("")
   const [trialPhone, setTrialPhone] = useState("")
   const [trialEmail, setTrialEmail] = useState("")
-  const [trialBirthDate, setTrialBirthDate] = useState("")
   const [trainerPin, setTrainerPin] = useState(() => storageGet("tsv_trainer_pin", "2026"))
   const [pinInput, setPinInput] = useState("")
   const [trainerMode, setTrainerMode] = useState(false)
@@ -263,6 +263,10 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("tsv_last_name", JSON.stringify(fullName))
   }, [fullName])
+
+  useEffect(() => {
+    localStorage.setItem("tsv_last_birth_date", JSON.stringify(birthDate))
+  }, [birthDate])
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -443,7 +447,7 @@ export default function Home() {
       attendanceLog
         .filter((entry) => entry.monthKey === monthKey && entry.memberType === "Mitglied")
         .forEach((entry) => {
-          const key = normalizeText(entry.name)
+          const key = `${normalizeText(entry.name)}|${entry.birthDate}`
           const existing = counts.get(key)
 
           if (existing) {
@@ -481,7 +485,7 @@ export default function Home() {
     >()
 
     yearlyTrialEntries.forEach((entry) => {
-      const key = `${normalizeText(entry.name)}|${entry.birthDate ?? ""}`
+      const key = `${normalizeText(entry.name)}|${entry.birthDate}`
       const existing = map.get(key)
 
       if (existing) {
@@ -489,7 +493,7 @@ export default function Home() {
       } else {
         map.set(key, {
           name: entry.name,
-          birthDate: entry.birthDate ?? "",
+          birthDate: entry.birthDate,
           phone: entry.phone,
           email: entry.email,
           count: 1,
@@ -506,22 +510,48 @@ export default function Home() {
 
   const personalMonthVisits = useMemo(() => {
     const name = normalizeText(fullName)
-    if (!name) return 0
+    if (!name || !birthDate) return 0
 
     return monthEntries.filter(
       (entry) =>
         normalizeText(entry.name) === name &&
+        entry.birthDate === birthDate &&
         entry.memberType === "Mitglied"
     ).length
-  }, [monthEntries, fullName])
+  }, [monthEntries, fullName, birthDate])
 
-  function getTrialCountForPerson(name: string, birthDate: string) {
+  const personalYearVisits = useMemo(() => {
+    const name = normalizeText(fullName)
+    if (!name || !birthDate) return 0
+
+    return attendanceLog.filter(
+      (entry) =>
+        entry.year === currentYear &&
+        normalizeText(entry.name) === name &&
+        entry.birthDate === birthDate &&
+        entry.memberType === "Mitglied"
+    ).length
+  }, [attendanceLog, fullName, birthDate, currentYear])
+
+  const personalLastCheckin = useMemo(() => {
+    const name = normalizeText(fullName)
+    if (!name || !birthDate) return null
+
+    return attendanceLog.find(
+      (entry) =>
+        normalizeText(entry.name) === name &&
+        entry.birthDate === birthDate &&
+        entry.memberType === "Mitglied"
+    ) ?? null
+  }, [attendanceLog, fullName, birthDate])
+
+  function getTrialCountForPerson(name: string, personBirthDate: string) {
     return attendanceLog.filter(
       (entry) =>
         entry.year === currentYear &&
         entry.memberType === "Probetraining" &&
         normalizeText(entry.name) === normalizeText(name) &&
-        (entry.birthDate ?? "") === birthDate
+        entry.birthDate === personBirthDate
     ).length
   }
 
@@ -530,6 +560,11 @@ export default function Home() {
 
     if (!name) {
       alert("Bitte Namen eingeben.")
+      return
+    }
+
+    if (!birthDate) {
+      alert("Bitte Geburtsdatum angeben.")
       return
     }
 
@@ -554,12 +589,7 @@ export default function Home() {
         return
       }
 
-      if (!trialBirthDate) {
-        alert("Bitte Geburtsdatum angeben.")
-        return
-      }
-
-      const usedCount = getTrialCountForPerson(name, trialBirthDate)
+      const usedCount = getTrialCountForPerson(name, birthDate)
 
       if (usedCount >= 3) {
         alert("Probetraining erschöpft. Diese Person hat im laufenden Jahr bereits 3 Probetrainings absolviert.")
@@ -572,7 +602,7 @@ export default function Home() {
         entry.date === selectedDate &&
         entry.sessionId === memberFlow.session!.id &&
         normalizeText(entry.name) === normalizeText(name) &&
-        (memberType !== "Probetraining" || (entry.birthDate ?? "") === trialBirthDate)
+        entry.birthDate === birthDate
     )
 
     if (duplicate) {
@@ -592,11 +622,11 @@ export default function Home() {
         sessionTitle: memberFlow.session!.title,
         sessionGroup: memberFlow.session!.group,
         name,
+        birthDate,
         memberType,
         weight: isLGroupActive ? weight.trim() : undefined,
         phone: memberType === "Probetraining" ? trialPhone.trim() : undefined,
         email: memberType === "Probetraining" ? trialEmail.trim() : undefined,
-        birthDate: memberType === "Probetraining" ? trialBirthDate : undefined,
       },
       ...prev,
     ])
@@ -606,7 +636,6 @@ export default function Home() {
     if (memberType === "Probetraining") {
       setTrialPhone("")
       setTrialEmail("")
-      setTrialBirthDate("")
     }
   }
 
@@ -643,18 +672,18 @@ export default function Home() {
 
   function exportCsv() {
     const rows = [
-      ["Datum", "Uhrzeit", "Training", "Gruppe", "Name", "Typ", "Gewicht", "Telefon", "E-Mail", "Geburtsdatum"],
+      ["Datum", "Uhrzeit", "Training", "Gruppe", "Name", "Geburtsdatum", "Typ", "Gewicht", "Telefon", "E-Mail"],
       ...todaysAttendance.map((a) => [
         a.date,
         a.time,
         a.sessionTitle,
         a.sessionGroup,
         a.name,
+        a.birthDate,
         a.memberType,
         a.weight ?? "",
         a.phone ?? "",
         a.email ?? "",
-        a.birthDate ?? "",
       ]),
     ]
 
@@ -813,159 +842,191 @@ export default function Home() {
         </div>
 
         {viewMode === "member" ? (
-          <div className="grid gap-6 lg:grid-cols-[1.05fr_1fr]">
-            <Card className="rounded-[24px] border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>1. Gruppe wählen</CardTitle>
-              </CardHeader>
+          <div className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-[1.05fr_1fr]">
+              <Card className="rounded-[24px] border-0 shadow-sm">
+                <CardHeader>
+                  <CardTitle>1. Gruppe wählen</CardTitle>
+                </CardHeader>
 
-              <CardContent className="space-y-4">
-                <div className="text-sm text-zinc-500">
-                  Es werden nur die Trainingsgruppen des ausgewählten Tages angezeigt. Anmeldung ist bis 30 Minuten nach Start der jeweiligen Gruppe möglich.
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Training</Label>
-                  <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-                    <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {todaysSessions.length === 0 ? (
-                        <SelectItem value="none" disabled>
-                          Keine Gruppen für diesen Tag
-                        </SelectItem>
-                      ) : (
-                        todaysSessions.map((session) => (
-                          <SelectItem key={session.id} value={session.id}>
-                            {session.title}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="rounded-2xl bg-zinc-100 p-4 text-sm">
-                  <div className="font-semibold">Aktive Einheit</div>
-                  <div className="mt-2">
-                    Training: <span className="font-medium">{memberFlow.session ? memberFlow.session.title : "Keine aktive Gruppe"}</span>
+                <CardContent className="space-y-4">
+                  <div className="text-sm text-zinc-500">
+                    Es werden nur die Trainingsgruppen des ausgewählten Tages angezeigt. Anmeldung ist bis 30 Minuten nach Start der jeweiligen Gruppe möglich.
                   </div>
-                  <div>
-                    Gruppe: <span className="font-medium">{memberFlow.session ? memberFlow.session.group : "—"}</span>
-                  </div>
-                  <div>
-                    Start: <span className="font-medium">{memberFlow.session ? memberFlow.session.start : "—"}</span>
-                  </div>
-                  <div>
-                    Ende: <span className="font-medium">{memberFlow.session ? memberFlow.session.end : "—"}</span>
-                  </div>
-                  <div>
-                    Check-in: <span className="font-medium">{memberFlow.canCheckin ? "Geöffnet" : "Geschlossen"}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
 
-            <Card className="rounded-[24px] border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>2. Teilnahme bestätigen</CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select value={memberType} onValueChange={(value: "Mitglied" | "Probetraining") => setMemberType(value)}>
-                    <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Mitglied">Mitglied</SelectItem>
-                      <SelectItem value="Probetraining">Probetraining</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Vorname Nachname"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500"
-                  />
-                </div>
-
-                {isLGroupActive && (
                   <div className="space-y-2">
-                    <Label>Gewicht in kg</Label>
+                    <Label>Training</Label>
+                    <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+                      <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {todaysSessions.length === 0 ? (
+                          <SelectItem value="none" disabled>
+                            Keine Gruppen für diesen Tag
+                          </SelectItem>
+                        ) : (
+                          todaysSessions.map((session) => (
+                            <SelectItem key={session.id} value={session.id}>
+                              {session.title}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="rounded-2xl bg-zinc-100 p-4 text-sm">
+                    <div className="font-semibold">Aktive Einheit</div>
+                    <div className="mt-2">
+                      Training: <span className="font-medium">{memberFlow.session ? memberFlow.session.title : "Keine aktive Gruppe"}</span>
+                    </div>
+                    <div>
+                      Gruppe: <span className="font-medium">{memberFlow.session ? memberFlow.session.group : "—"}</span>
+                    </div>
+                    <div>
+                      Start: <span className="font-medium">{memberFlow.session ? memberFlow.session.start : "—"}</span>
+                    </div>
+                    <div>
+                      Ende: <span className="font-medium">{memberFlow.session ? memberFlow.session.end : "—"}</span>
+                    </div>
+                    <div>
+                      Check-in: <span className="font-medium">{memberFlow.canCheckin ? "Geöffnet" : "Geschlossen"}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[24px] border-0 shadow-sm">
+                <CardHeader>
+                  <CardTitle>2. Teilnahme bestätigen</CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select value={memberType} onValueChange={(value: "Mitglied" | "Probetraining") => setMemberType(value)}>
+                      <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Mitglied">Mitglied</SelectItem>
+                        <SelectItem value="Probetraining">Probetraining</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Name</Label>
                     <Input
-                      value={weight}
-                      onChange={(e) => setWeight(e.target.value)}
-                      placeholder="z. B. 71,5"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Vorname Nachname"
                       className="rounded-2xl border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500"
                     />
                   </div>
-                )}
 
-                {memberType === "Mitglied" && normalizeText(fullName) && (
-                  <div className="rounded-2xl bg-zinc-100 p-4 text-sm">
-                    <div className="text-zinc-500">Deine Besuche in diesem Monat</div>
-                    <div className="mt-1 text-2xl font-bold text-[#154c83]">{personalMonthVisits}</div>
+                  <div className="space-y-2">
+                    <Label>Geburtsdatum</Label>
+                    <Input
+                      type="date"
+                      value={birthDate}
+                      onChange={(e) => setBirthDate(e.target.value)}
+                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                    />
                   </div>
-                )}
 
-                {memberType === "Probetraining" && (
+                  {isLGroupActive && (
+                    <div className="space-y-2">
+                      <Label>Gewicht in kg</Label>
+                      <Input
+                        value={weight}
+                        onChange={(e) => setWeight(e.target.value)}
+                        placeholder="z. B. 71,5"
+                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500"
+                      />
+                    </div>
+                  )}
+
+                  {memberType === "Probetraining" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>Telefonnummer</Label>
+                        <Input
+                          value={trialPhone}
+                          onChange={(e) => setTrialPhone(e.target.value)}
+                          placeholder="Telefonnummer"
+                          className="rounded-2xl border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>E-Mail</Label>
+                        <Input
+                          type="email"
+                          value={trialEmail}
+                          onChange={(e) => setTrialEmail(e.target.value)}
+                          placeholder="E-Mail"
+                          className="rounded-2xl border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <Button
+                    className={`${brand.primary} rounded-2xl hover:bg-[#123d69] w-full text-white`}
+                    onClick={registerParticipation}
+                    disabled={!memberFlow.session || !memberFlow.canCheckin}
+                  >
+                    Teilnahme jetzt bestätigen
+                  </Button>
+
+                  <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
+                    Name und Geburtsdatum bleiben auf diesem Gerät gespeichert, damit der nächste Login schneller geht.
+                  </div>
+
+                  {memberType === "Probetraining" && (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                      Probetraining ist pro Person auf 3 Termine pro Jahr begrenzt. Der Abgleich erfolgt über Name und Geburtsdatum.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="rounded-[24px] border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle>Deine Statistik</CardTitle>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                {!normalizeText(fullName) || !birthDate ? (
+                  <div className="text-sm text-zinc-500">
+                    Gib Name und Geburtsdatum ein, dann wird deine persönliche Statistik angezeigt.
+                  </div>
+                ) : (
                   <>
-                    <div className="space-y-2">
-                      <Label>Telefonnummer</Label>
-                      <Input
-                        value={trialPhone}
-                        onChange={(e) => setTrialPhone(e.target.value)}
-                        placeholder="Telefonnummer"
-                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500"
-                      />
-                    </div>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="rounded-2xl bg-zinc-100 p-4">
+                        <div className="text-sm text-zinc-500">Diesen Monat</div>
+                        <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalMonthVisits}</div>
+                      </div>
 
-                    <div className="space-y-2">
-                      <Label>E-Mail</Label>
-                      <Input
-                        type="email"
-                        value={trialEmail}
-                        onChange={(e) => setTrialEmail(e.target.value)}
-                        placeholder="E-Mail"
-                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500"
-                      />
-                    </div>
+                      <div className="rounded-2xl bg-zinc-100 p-4">
+                        <div className="text-sm text-zinc-500">Dieses Jahr</div>
+                        <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalYearVisits}</div>
+                      </div>
 
-                    <div className="space-y-2">
-                      <Label>Geburtsdatum</Label>
-                      <Input
-                        type="date"
-                        value={trialBirthDate}
-                        onChange={(e) => setTrialBirthDate(e.target.value)}
-                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                      />
+                      <div className="rounded-2xl bg-zinc-100 p-4">
+                        <div className="text-sm text-zinc-500">Letzter Check-in</div>
+                        <div className="mt-1 text-sm font-medium text-zinc-800">
+                          {personalLastCheckin
+                            ? `${personalLastCheckin.date} · ${personalLastCheckin.time} · ${personalLastCheckin.sessionGroup}`
+                            : "Noch kein Check-in gespeichert"}
+                        </div>
+                      </div>
                     </div>
                   </>
-                )}
-
-                <Button
-                  className={`${brand.primary} rounded-2xl hover:bg-[#123d69] w-full text-white`}
-                  onClick={registerParticipation}
-                  disabled={!memberFlow.session || !memberFlow.canCheckin}
-                >
-                  Teilnahme jetzt bestätigen
-                </Button>
-
-                <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-600">
-                  Der zuletzt eingegebene Name bleibt auf diesem Gerät gespeichert. Andere Teilnehmende sind nicht sichtbar.
-                </div>
-
-                {memberType === "Probetraining" && (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                    Probetraining ist pro Person auf 3 Termine pro Jahr begrenzt. Der Abgleich erfolgt über Name und Geburtsdatum.
-                  </div>
                 )}
               </CardContent>
             </Card>
@@ -1041,7 +1102,7 @@ export default function Home() {
                       Namen und Check-ins im Detail bleiben ausschließlich im Trainerbereich.
                     </div>
                     <div className="rounded-2xl bg-zinc-100 p-4">
-                      Für Probetraining werden Telefon, E-Mail und Geburtsdatum erfasst.
+                      Geburtsdatum ist für alle Pflicht. Für Probetraining zusätzlich Telefon und E-Mail.
                     </div>
                   </CardContent>
                 </Card>
@@ -1061,6 +1122,7 @@ export default function Home() {
                         <TableRow>
                           <TableHead>Uhrzeit</TableHead>
                           <TableHead>Name</TableHead>
+                          <TableHead>Geburtsdatum</TableHead>
                           <TableHead>Typ</TableHead>
                           <TableHead>Gruppe</TableHead>
                           <TableHead>Gewicht</TableHead>
@@ -1071,7 +1133,7 @@ export default function Home() {
                       <TableBody>
                         {todaysAttendance.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={6} className="text-center text-zinc-500">
+                            <TableCell colSpan={7} className="text-center text-zinc-500">
                               Keine Teilnahmen in dieser Einheit.
                             </TableCell>
                           </TableRow>
@@ -1080,6 +1142,7 @@ export default function Home() {
                             <TableRow key={entry.id}>
                               <TableCell>{entry.time}</TableCell>
                               <TableCell className="font-medium">{entry.name}</TableCell>
+                              <TableCell>{entry.birthDate}</TableCell>
                               <TableCell>{entry.memberType}</TableCell>
                               <TableCell>{entry.sessionGroup}</TableCell>
                               <TableCell>{entry.weight ?? "—"}</TableCell>
