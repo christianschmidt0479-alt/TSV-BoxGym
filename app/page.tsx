@@ -252,6 +252,9 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"member" | "trainer">("member")
   const [attendanceLog, setAttendanceLog] = useState<AttendanceEntry[]>(() => storageGet("tsv_attendance_log", []))
 
+  const liveDate = now.toISOString().slice(0, 10)
+  const effectiveDate = viewMode === "member" ? liveDate : selectedDate
+
   useEffect(() => {
     localStorage.setItem("tsv_attendance_log", JSON.stringify(attendanceLog))
   }, [attendanceLog])
@@ -269,14 +272,12 @@ export default function Home() {
   }, [birthDate])
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      const current = new Date()
-      setNow(current)
+    const updateNow = () => {
+      setNow(new Date())
+    }
 
-      if (current.getHours() === 0 && current.getMinutes() === 1) {
-        setSelectedDate(todayString())
-      }
-    }, 60000)
+    updateNow()
+    const interval = window.setInterval(updateNow, 10000)
 
     return () => window.clearInterval(interval)
   }, [])
@@ -286,20 +287,16 @@ export default function Home() {
   }, [selectedSessionId])
 
   const todaysSessions = useMemo(() => {
-    const dayKey = getDayKey(selectedDate)
+    const dayKey = getDayKey(effectiveDate)
     return sessions.filter((session) => session.dayKey === dayKey)
-  }, [selectedDate])
+  }, [effectiveDate])
 
-  const currentYear = useMemo(() => new Date(`${selectedDate}T12:00:00`).getFullYear(), [selectedDate])
-  const currentMonthKey = useMemo(() => getMonthKey(selectedDate), [selectedDate])
-  const weekRange = useMemo(() => getWeekRange(selectedDate), [selectedDate])
+  const currentYear = useMemo(() => new Date(`${effectiveDate}T12:00:00`).getFullYear(), [effectiveDate])
+  const currentMonthKey = useMemo(() => getMonthKey(effectiveDate), [effectiveDate])
+  const weekRange = useMemo(() => getWeekRange(effectiveDate), [effectiveDate])
 
   const memberFlow = useMemo(() => {
-    const selected = new Date(`${selectedDate}T12:00:00`)
-    const isToday =
-      now.getFullYear() === selected.getFullYear() &&
-      now.getMonth() === selected.getMonth() &&
-      now.getDate() === selected.getDate()
+    const isToday = effectiveDate === liveDate
 
     if (!isToday) {
       return {
@@ -312,7 +309,7 @@ export default function Home() {
 
     const nowMinutes = now.getHours() * 60 + now.getMinutes()
     return getMemberFlowForToday(todaysSessions, nowMinutes)
-  }, [selectedDate, todaysSessions, now])
+  }, [effectiveDate, liveDate, todaysSessions, now])
 
   useEffect(() => {
     if (viewMode !== "member") return
@@ -340,17 +337,17 @@ export default function Home() {
 
   const todaysAttendance = useMemo(() => {
     return attendanceLog.filter(
-      (entry) => entry.date === selectedDate && entry.sessionId === activeSession.id
+      (entry) => entry.date === effectiveDate && entry.sessionId === activeSession.id
     )
-  }, [attendanceLog, selectedDate, activeSession])
+  }, [attendanceLog, effectiveDate, activeSession])
 
   const totalPresent = memberFlow.session ? todaysAttendance.length : 0
   const trialPresent = memberFlow.session ? todaysAttendance.filter((e) => e.memberType === "Probetraining").length : 0
   const membersPresent = memberFlow.session ? todaysAttendance.filter((e) => e.memberType === "Mitglied").length : 0
 
   const dayCount = useMemo(() => {
-    return attendanceLog.filter((entry) => entry.date === selectedDate).length
-  }, [attendanceLog, selectedDate])
+    return attendanceLog.filter((entry) => entry.date === effectiveDate).length
+  }, [attendanceLog, effectiveDate])
 
   const weekEntries = useMemo(() => {
     return attendanceLog.filter(
@@ -386,12 +383,12 @@ export default function Home() {
   const sessionStats = useMemo(() => {
     const counts: Record<string, number> = {}
     attendanceLog
-      .filter((entry) => entry.date === selectedDate)
+      .filter((entry) => entry.date === effectiveDate)
       .forEach((entry) => {
         counts[entry.sessionGroup] = (counts[entry.sessionGroup] || 0) + 1
       })
     return counts
-  }, [attendanceLog, selectedDate])
+  }, [attendanceLog, effectiveDate])
 
   const weekdayStats = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -599,7 +596,7 @@ export default function Home() {
 
     const duplicate = attendanceLog.some(
       (entry) =>
-        entry.date === selectedDate &&
+        entry.date === effectiveDate &&
         entry.sessionId === memberFlow.session!.id &&
         normalizeText(entry.name) === normalizeText(name) &&
         entry.birthDate === birthDate
@@ -613,10 +610,10 @@ export default function Home() {
     setAttendanceLog((prev) => [
       {
         id: `${Date.now()}`,
-        date: selectedDate,
+        date: effectiveDate,
         year: currentYear,
         monthKey: currentMonthKey,
-        weekdayKey: getDayKey(selectedDate),
+        weekdayKey: getDayKey(effectiveDate),
         time: timeString(),
         sessionId: memberFlow.session!.id,
         sessionTitle: memberFlow.session!.title,
@@ -665,7 +662,7 @@ export default function Home() {
 
     setAttendanceLog((prev) =>
       prev.filter(
-        (entry) => !(entry.date === selectedDate && entry.sessionId === activeSession.id)
+        (entry) => !(entry.date === effectiveDate && entry.sessionId === activeSession.id)
       )
     )
   }
@@ -694,7 +691,7 @@ export default function Home() {
       .join("\n")
 
     downloadFile(
-      `tsv-anwesenheit-${selectedDate}-${activeSession.group}.csv`,
+      `tsv-anwesenheit-${effectiveDate}-${activeSession.group}.csv`,
       csv,
       "text/csv;charset=utf-8"
     )
@@ -764,7 +761,7 @@ export default function Home() {
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-2xl bg-white/10 p-3">
                       <div className="text-zinc-300">Datum</div>
-                      <div className="mt-1 font-semibold">{selectedDate}</div>
+                      <div className="mt-1 font-semibold">{effectiveDate}</div>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-3">
                       <div className="text-zinc-300">Aktuelle Gruppe</div>
@@ -851,7 +848,7 @@ export default function Home() {
 
                 <CardContent className="space-y-4">
                   <div className="text-sm text-zinc-500">
-                    Es werden nur die Trainingsgruppen des ausgewählten Tages angezeigt. Anmeldung ist bis 30 Minuten nach Start der jeweiligen Gruppe möglich.
+                    Es werden nur die Trainingsgruppen des aktuellen Tages angezeigt. Anmeldung ist bis 30 Minuten nach Start der jeweiligen Gruppe möglich.
                   </div>
 
                   <div className="space-y-2">
@@ -1005,28 +1002,26 @@ export default function Home() {
                     Gib Name und Geburtsdatum ein, dann wird deine persönliche Statistik angezeigt.
                   </div>
                 ) : (
-                  <>
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="rounded-2xl bg-zinc-100 p-4">
-                        <div className="text-sm text-zinc-500">Diesen Monat</div>
-                        <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalMonthVisits}</div>
-                      </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="rounded-2xl bg-zinc-100 p-4">
+                      <div className="text-sm text-zinc-500">Diesen Monat</div>
+                      <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalMonthVisits}</div>
+                    </div>
 
-                      <div className="rounded-2xl bg-zinc-100 p-4">
-                        <div className="text-sm text-zinc-500">Dieses Jahr</div>
-                        <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalYearVisits}</div>
-                      </div>
+                    <div className="rounded-2xl bg-zinc-100 p-4">
+                      <div className="text-sm text-zinc-500">Dieses Jahr</div>
+                      <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalYearVisits}</div>
+                    </div>
 
-                      <div className="rounded-2xl bg-zinc-100 p-4">
-                        <div className="text-sm text-zinc-500">Letzter Check-in</div>
-                        <div className="mt-1 text-sm font-medium text-zinc-800">
-                          {personalLastCheckin
-                            ? `${personalLastCheckin.date} · ${personalLastCheckin.time} · ${personalLastCheckin.sessionGroup}`
-                            : "Noch kein Check-in gespeichert"}
-                        </div>
+                    <div className="rounded-2xl bg-zinc-100 p-4">
+                      <div className="text-sm text-zinc-500">Letzter Check-in</div>
+                      <div className="mt-1 text-sm font-medium text-zinc-800">
+                        {personalLastCheckin
+                          ? `${personalLastCheckin.date} · ${personalLastCheckin.time} · ${personalLastCheckin.sessionGroup}`
+                          : "Noch kein Check-in gespeichert"}
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -1191,7 +1186,7 @@ export default function Home() {
                           <CalendarDays className="h-4 w-4" />
                           Status
                         </div>
-                        <div className="text-sm text-zinc-600">Datum: {selectedDate}</div>
+                        <div className="text-sm text-zinc-600">Datum: {effectiveDate}</div>
                         <div className="text-sm text-zinc-600">Einheit: {activeSession.title}</div>
                       </div>
 
