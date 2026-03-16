@@ -77,7 +77,7 @@ const sessions: Session[] = [
   { id: "S-010", dayKey: "Freitag", title: "Freitag · L-Gruppe · 17:30-19:00", group: "L-Gruppe", start: "17:30", end: "19:00" },
 ]
 
-const weekdayOrder = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
+const weekdayOrder = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"] as const
 const monthOrder = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
 
 function todayString() {
@@ -91,13 +91,19 @@ function timeString() {
   })
 }
 
-function weekdayName(dateString: string) {
-  const date = new Date(dateString)
-  return date.toLocaleDateString("de-DE", { weekday: "long" })
+function liveTimeString(date: Date) {
+  return date.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function liveDateString(date: Date) {
+  return date.toLocaleDateString("de-DE")
 }
 
 function getDayKey(dateString: string) {
-  const date = new Date(dateString)
+  const date = new Date(`${dateString}T12:00:00`)
   const day = date.getDay()
 
   switch (day) {
@@ -231,6 +237,7 @@ function getMemberFlowForToday(daySessions: Session[], nowMinutes: number) {
 }
 
 export default function Home() {
+  const [now, setNow] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(todayString())
   const [selectedSessionId, setSelectedSessionId] = useState<string>(sessions[0].id)
   const [memberType, setMemberType] = useState<"Mitglied" | "Probetraining">("Mitglied")
@@ -239,22 +246,15 @@ export default function Home() {
   const [trialPhone, setTrialPhone] = useState("")
   const [trialEmail, setTrialEmail] = useState("")
   const [trialBirthDate, setTrialBirthDate] = useState("")
-  const [trainerName, setTrainerName] = useState(() => storageGet("tsv_trainer_name", "Christian Schmidt"))
   const [trainerPin, setTrainerPin] = useState(() => storageGet("tsv_trainer_pin", "2026"))
   const [pinInput, setPinInput] = useState("")
   const [trainerMode, setTrainerMode] = useState(false)
   const [viewMode, setViewMode] = useState<"member" | "trainer">("member")
   const [attendanceLog, setAttendanceLog] = useState<AttendanceEntry[]>(() => storageGet("tsv_attendance_log", []))
-  const [, setClockTick] = useState(0)
-  const [currentTimeDisplay, setCurrentTimeDisplay] = useState(timeString())
 
   useEffect(() => {
     localStorage.setItem("tsv_attendance_log", JSON.stringify(attendanceLog))
   }, [attendanceLog])
-
-  useEffect(() => {
-    localStorage.setItem("tsv_trainer_name", JSON.stringify(trainerName))
-  }, [trainerName])
 
   useEffect(() => {
     localStorage.setItem("tsv_trainer_pin", JSON.stringify(trainerPin))
@@ -265,12 +265,16 @@ export default function Home() {
   }, [fullName])
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setClockTick((prev) => prev + 1)
-      setCurrentTimeDisplay(timeString())
-    }, 30000)
+    const interval = window.setInterval(() => {
+      const current = new Date()
+      setNow(current)
 
-    return () => window.clearInterval(timer)
+      if (current.getHours() === 0 && current.getMinutes() === 1) {
+        setSelectedDate(todayString())
+      }
+    }, 60000)
+
+    return () => window.clearInterval(interval)
   }, [])
 
   const activeSession = useMemo(() => {
@@ -282,14 +286,12 @@ export default function Home() {
     return sessions.filter((session) => session.dayKey === dayKey)
   }, [selectedDate])
 
-  const currentYear = useMemo(() => new Date(selectedDate).getFullYear(), [selectedDate])
+  const currentYear = useMemo(() => new Date(`${selectedDate}T12:00:00`).getFullYear(), [selectedDate])
   const currentMonthKey = useMemo(() => getMonthKey(selectedDate), [selectedDate])
   const weekRange = useMemo(() => getWeekRange(selectedDate), [selectedDate])
 
   const memberFlow = useMemo(() => {
-    const now = new Date()
     const selected = new Date(`${selectedDate}T12:00:00`)
-
     const isToday =
       now.getFullYear() === selected.getFullYear() &&
       now.getMonth() === selected.getMonth() &&
@@ -306,7 +308,7 @@ export default function Home() {
 
     const nowMinutes = now.getHours() * 60 + now.getMinutes()
     return getMemberFlowForToday(todaysSessions, nowMinutes)
-  }, [selectedDate, todaysSessions])
+  }, [selectedDate, todaysSessions, now])
 
   useEffect(() => {
     if (viewMode !== "member") return
@@ -330,7 +332,7 @@ export default function Home() {
     }
   }, [memberFlow])
 
-  const isLGroupActive = memberFlow.session?.group === "L-Gruppe"
+  const isLGroupActive = memberFlow.session?.group === "L-Gruppe" && memberFlow.canCheckin
 
   const todaysAttendance = useMemo(() => {
     return attendanceLog.filter(
@@ -342,65 +344,9 @@ export default function Home() {
   const trialPresent = memberFlow.session ? todaysAttendance.filter((e) => e.memberType === "Probetraining").length : 0
   const membersPresent = memberFlow.session ? todaysAttendance.filter((e) => e.memberType === "Mitglied").length : 0
 
-  const sessionStats = useMemo(() => {
-    const counts: Record<string, number> = {}
-    attendanceLog
-      .filter((entry) => entry.date === selectedDate)
-      .forEach((entry) => {
-        counts[entry.sessionGroup] = (counts[entry.sessionGroup] || 0) + 1
-      })
-    return counts
+  const dayCount = useMemo(() => {
+    return attendanceLog.filter((entry) => entry.date === selectedDate).length
   }, [attendanceLog, selectedDate])
-
-  const yearlyTrialEntries = useMemo(() => {
-    return attendanceLog.filter(
-      (entry) => entry.year === currentYear && entry.memberType === "Probetraining"
-    )
-  }, [attendanceLog, currentYear])
-
-  const yearlyTrialStats = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        name: string
-        birthDate: string
-        phone?: string
-        email?: string
-        count: number
-      }
-    >()
-
-    yearlyTrialEntries.forEach((entry) => {
-      const key = `${normalizeText(entry.name)}|${entry.birthDate ?? ""}`
-      const existing = map.get(key)
-
-      if (existing) {
-        existing.count += 1
-      } else {
-        map.set(key, {
-          name: entry.name,
-          birthDate: entry.birthDate ?? "",
-          phone: entry.phone,
-          email: entry.email,
-          count: 1,
-        })
-      }
-    })
-
-    return Array.from(map.values()).sort((a, b) => b.count - a.count)
-  }, [yearlyTrialEntries])
-
-  const exhaustedTrials = useMemo(() => {
-    return yearlyTrialStats.filter((entry) => entry.count >= 3)
-  }, [yearlyTrialStats])
-
-  const yearlyMemberCount = useMemo(() => {
-    return attendanceLog.filter(
-      (entry) => entry.year === currentYear && entry.memberType === "Mitglied"
-    ).length
-  }, [attendanceLog, currentYear])
-
-  const yearlyTrialCount = useMemo(() => yearlyTrialEntries.length, [yearlyTrialEntries])
 
   const weekEntries = useMemo(() => {
     return attendanceLog.filter(
@@ -412,15 +358,36 @@ export default function Home() {
     return attendanceLog.filter((entry) => entry.monthKey === currentMonthKey)
   }, [attendanceLog, currentMonthKey])
 
-  const dayCount = useMemo(() => {
-    return attendanceLog.filter((entry) => entry.date === selectedDate).length
-  }, [attendanceLog, selectedDate])
-
   const weekCount = weekEntries.length
   const monthCount = monthEntries.length
+
   const yearCount = useMemo(() => {
     return attendanceLog.filter((entry) => entry.year === currentYear).length
   }, [attendanceLog, currentYear])
+
+  const yearlyTrialEntries = useMemo(() => {
+    return attendanceLog.filter(
+      (entry) => entry.year === currentYear && entry.memberType === "Probetraining"
+    )
+  }, [attendanceLog, currentYear])
+
+  const yearlyMemberCount = useMemo(() => {
+    return attendanceLog.filter(
+      (entry) => entry.year === currentYear && entry.memberType === "Mitglied"
+    ).length
+  }, [attendanceLog, currentYear])
+
+  const yearlyTrialCount = yearlyTrialEntries.length
+
+  const sessionStats = useMemo(() => {
+    const counts: Record<string, number> = {}
+    attendanceLog
+      .filter((entry) => entry.date === selectedDate)
+      .forEach((entry) => {
+        counts[entry.sessionGroup] = (counts[entry.sessionGroup] || 0) + 1
+      })
+    return counts
+  }, [attendanceLog, selectedDate])
 
   const weekdayStats = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -501,6 +468,42 @@ export default function Home() {
     })
   }, [attendanceLog, currentYear])
 
+  const yearlyTrialStats = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        name: string
+        birthDate: string
+        phone?: string
+        email?: string
+        count: number
+      }
+    >()
+
+    yearlyTrialEntries.forEach((entry) => {
+      const key = `${normalizeText(entry.name)}|${entry.birthDate ?? ""}`
+      const existing = map.get(key)
+
+      if (existing) {
+        existing.count += 1
+      } else {
+        map.set(key, {
+          name: entry.name,
+          birthDate: entry.birthDate ?? "",
+          phone: entry.phone,
+          email: entry.email,
+          count: 1,
+        })
+      }
+    })
+
+    return Array.from(map.values()).sort((a, b) => b.count - a.count)
+  }, [yearlyTrialEntries])
+
+  const exhaustedTrials = useMemo(() => {
+    return yearlyTrialStats.filter((entry) => entry.count >= 3)
+  }, [yearlyTrialStats])
+
   const personalMonthVisits = useMemo(() => {
     const name = normalizeText(fullName)
     if (!name) return 0
@@ -513,12 +516,11 @@ export default function Home() {
   }, [monthEntries, fullName])
 
   function getTrialCountForPerson(name: string, birthDate: string) {
-    const keyName = normalizeText(name)
     return attendanceLog.filter(
       (entry) =>
         entry.year === currentYear &&
         entry.memberType === "Probetraining" &&
-        normalizeText(entry.name) === keyName &&
+        normalizeText(entry.name) === normalizeText(name) &&
         (entry.birthDate ?? "") === birthDate
     ).length
   }
@@ -629,7 +631,6 @@ export default function Home() {
   }
 
   function resetCurrentSession() {
-    if (!activeSession?.id) return
     const ok = window.confirm("Alle Check-ins dieser Einheit löschen?")
     if (!ok) return
 
@@ -699,11 +700,11 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2 text-sm text-zinc-600">
-            <span className="capitalize">{weekdayName(selectedDate)}</span>
+            <span className="capitalize">{now.toLocaleDateString("de-DE", { weekday: "long" })}</span>
             <span>·</span>
-            <span>{selectedDate}</span>
+            <span>{liveDateString(now)}</span>
             <span>·</span>
-            <span>{currentTimeDisplay}</span>
+            <span>{liveTimeString(now)}</span>
           </div>
         </div>
 
@@ -964,12 +965,6 @@ export default function Home() {
                 {memberType === "Probetraining" && (
                   <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                     Probetraining ist pro Person auf 3 Termine pro Jahr begrenzt. Der Abgleich erfolgt über Name und Geburtsdatum.
-                  </div>
-                )}
-
-                {isLGroupActive && (
-                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
-                    Für die L-Gruppe ist die Gewichtseingabe bei jedem Login verpflichtend.
                   </div>
                 )}
               </CardContent>
@@ -1271,9 +1266,7 @@ export default function Home() {
                                   key={`${monthItem.monthKey}-${person.name}-${index}`}
                                   className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-sm"
                                 >
-                                  <span>
-                                    {index + 1}. {person.name}
-                                  </span>
+                                  <span>{index + 1}. {person.name}</span>
                                   <span className="font-semibold">{person.count}</span>
                                 </div>
                               ))}
