@@ -1,4 +1,4 @@
-"use client"
+""use client"
 
 import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -207,14 +207,24 @@ function getMemberFlowForToday(daySessions: Session[], nowMinutes: number) {
     const next = daySessions[i + 1] ?? null
     const start = timeToMinutes(current.start)
     const end = timeToMinutes(current.end)
+    const checkinOpen = start - 30
     const checkinClose = start + 30
 
-    if (nowMinutes < start) {
+    if (nowMinutes < checkinOpen) {
       return {
         session: current,
         nextSession: next,
         canCheckin: false,
-        statusText: "Check-in noch nicht geöffnet",
+        statusText: "Nächste Einheit heute",
+      }
+    }
+
+    if (nowMinutes >= checkinOpen && nowMinutes < start) {
+      return {
+        session: current,
+        nextSession: next,
+        canCheckin: true,
+        statusText: "Check-in geöffnet",
       }
     }
 
@@ -223,7 +233,10 @@ function getMemberFlowForToday(daySessions: Session[], nowMinutes: number) {
         session: current,
         nextSession: next,
         canCheckin: nowMinutes <= checkinClose,
-        statusText: nowMinutes <= checkinClose ? "Check-in geöffnet" : "Check-in-Fenster geschlossen",
+        statusText:
+          nowMinutes <= checkinClose
+            ? "Aktive Einheit · Check-in geöffnet"
+            : "Aktive Einheit · Check-in geschlossen",
       }
     }
   }
@@ -232,7 +245,7 @@ function getMemberFlowForToday(daySessions: Session[], nowMinutes: number) {
     session: null as Session | null,
     nextSession: null as Session | null,
     canCheckin: false,
-    statusText: "Für heute sind alle Gruppen beendet",
+    statusText: "Für heute keine aktive Einheit mehr",
   }
 }
 
@@ -277,7 +290,7 @@ export default function Home() {
     }
 
     updateNow()
-    const interval = window.setInterval(updateNow, 10000)
+    const interval = window.setInterval(updateNow, 60000)
 
     return () => window.clearInterval(interval)
   }, [])
@@ -764,15 +777,15 @@ export default function Home() {
                       <div className="mt-1 font-semibold">{effectiveDate}</div>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-3">
-                      <div className="text-zinc-300">Aktuelle Gruppe</div>
+                      <div className="text-zinc-300">Aktive / nächste Gruppe</div>
                       <div className="mt-1 font-semibold">{liveStatus.currentLabel}</div>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-3">
-                      <div className="text-zinc-300">Läuft</div>
+                      <div className="text-zinc-300">Zeitraum</div>
                       <div className="mt-1 font-semibold">{liveStatus.currentTime}</div>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-3">
-                      <div className="text-zinc-300">Nächste Gruppe</div>
+                      <div className="text-zinc-300">Nächste Gruppe danach</div>
                       <div className="mt-1 font-semibold">{liveStatus.nextLabel}</div>
                     </div>
                   </div>
@@ -848,7 +861,7 @@ export default function Home() {
 
                 <CardContent className="space-y-4">
                   <div className="text-sm text-zinc-500">
-                    Es werden nur die Trainingsgruppen des aktuellen Tages angezeigt. Anmeldung ist bis 30 Minuten nach Start der jeweiligen Gruppe möglich.
+                    Es werden nur die Trainingsgruppen des aktuellen Tages angezeigt. Check-in ist 30 Minuten vor Start bis 30 Minuten nach Start möglich.
                   </div>
 
                   <div className="space-y-2">
@@ -874,7 +887,7 @@ export default function Home() {
                   </div>
 
                   <div className="rounded-2xl bg-zinc-100 p-4 text-sm">
-                    <div className="font-semibold">Aktive Einheit</div>
+                    <div className="font-semibold">Angezeigte Einheit</div>
                     <div className="mt-2">
                       Training: <span className="font-medium">{memberFlow.session ? memberFlow.session.title : "Keine aktive Gruppe"}</span>
                     </div>
