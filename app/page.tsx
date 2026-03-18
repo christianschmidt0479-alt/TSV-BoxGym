@@ -20,7 +20,7 @@ import {
   RefreshCcw,
 } from "lucide-react"
 
-import { supabase } from "@/lib/supabaseclient"
+import { supabase } from "@/lib/supabasecClient"
 import {
   findMemberByFirstLastAndBirthdate,
   findMemberByFirstLastAndPin,
