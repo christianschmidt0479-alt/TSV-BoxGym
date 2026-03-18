@@ -1068,10 +1068,6 @@ export default function Home() {
                     <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
                       TSV BoxGym Check-in
                     </h1>
-                    <div className="mt-2 flex items-center gap-2 text-sm text-zinc-300">
-                      <span>🚧</span>
-                      <span>Testphase</span>
-                    </div>
                     <div className="mt-3 inline-flex items-center gap-3 rounded-xl bg-yellow-400 px-4 py-2 text-base font-bold text-black shadow-lg">
                       <span>🚧</span>
                       <span>TESTPHASE – SYSTEM WIRD GETESTET</span>
