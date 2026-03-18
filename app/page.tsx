@@ -1220,8 +1220,8 @@ export default function Home() {
                 )}
               </CardContent>
             </Card>
-          </Card>
-        )}
+
+          )}
 
         {openPanel === "trial" && (
             <Card className="rounded-[24px] border-0 shadow-sm">
@@ -1568,6 +1568,7 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
+
         )}
 
         {trainerMode && (
@@ -1953,3 +1954,55 @@ export default function Home() {
                 )}
               </CardContent>
             </Card>
+
+            <Card className="rounded-[24px] border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle>Alle Check-ins heute</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Uhrzeit</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Geburtsdatum</TableHead>
+                      <TableHead>Typ</TableHead>
+                      <TableHead>Stammgruppe</TableHead>
+                      <TableHead>Gruppe heute</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTrainerRows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-zinc-500">
+                          Keine Check-ins für die aktuelle Filterung vorhanden.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredTrainerRows.map((entry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell>{entry.time}</TableCell>
+                          <TableCell className="font-medium">{getMemberDisplayName(entry.members)}</TableCell>
+                          <TableCell>{entry.members?.birthdate ?? "—"}</TableCell>
+                          <TableCell>
+                            {entry.members?.is_trial
+                              ? "Probetraining"
+                              : entry.members?.is_approved === false
+                                ? "Probemitglied"
+                                : "Mitglied"}
+                          </TableCell>
+                          <TableCell>{entry.members?.base_group ?? "—"}</TableCell>
+                          <TableCell>{entry.group_name}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
