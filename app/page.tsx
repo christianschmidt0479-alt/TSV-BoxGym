@@ -20,6 +20,8 @@ import {
   RefreshCcw,
 } from "lucide-react"
 
+
+import { supabase } from "@/lib/supabaseClient"
 import {
   findMemberByFirstLastAndBirthdate,
   findMemberByFirstLastAndPin,
@@ -546,6 +548,10 @@ export default function Home() {
     return liveDate
   }, [liveDate, memberFlow, now, todaysSessions, nextTrainingDayData])
 
+  const selectedSession = useMemo(() => {
+    return displaySessions.find((session) => session.id === selectedSessionId) ?? memberFlow.session ?? null
+  }, [displaySessions, selectedSessionId, memberFlow.session])
+
   useEffect(() => {
     if (displaySessions.length === 0) return
     const exists = displaySessions.some((s) => s.id === selectedSessionId)
@@ -570,10 +576,10 @@ export default function Home() {
   const membersPresent = totalPresent - trialPresent
 
   const currentGroupCount = useMemo(() => {
-    const group = memberFlow.session?.group
+    const group = selectedSession?.group
     if (!group) return 0
     return dbCheckins.filter((entry) => entry.group_name === group).length
-  }, [dbCheckins, memberFlow.session])
+  }, [dbCheckins, selectedSession])
 
   const groupStats = useMemo(() => {
     const counts = new Map<string, { count: number; trial: number; members: number }>()
@@ -613,7 +619,7 @@ export default function Home() {
   async function refreshAdminLists() {
     const [pending, members] = await Promise.all([getPendingMembers(), getAllMembers()])
     setPendingMembers(pending as MemberRecord[])
-    setAllMembers((members as MemberRecord[]).filter((m) => !m.is_trial))
+    setAllMembers(members as MemberRecord[])
   }
 
   async function handleMemberCheckin() {
@@ -632,7 +638,7 @@ export default function Home() {
     }
 
 
-    if (!memberFlow.session || !memberFlow.canCheckin) {
+    if (!selectedSession || !memberFlow.canCheckin) {
       alert("Check-in ist für diese Gruppe aktuell nicht möglich.")
       return
     }
@@ -648,13 +654,14 @@ export default function Home() {
       }
 
       if (!member.is_approved) {
-        alert("Mitglied ist noch nicht durch den Admin bestätigt und gilt aktuell als Probemitglied.")
+        alert("Mitglied ist noch nicht durch den Admin bestätigt. Bitte Trainer oder Admin ansprechen.")
+        return
       }
 
 
       await createCheckin({
         member_id: member.id,
-        group_name: memberFlow.session.group,
+        group_name: selectedSession.group,
         date: liveDate,
         time: timeString(),
         year: currentYear,
@@ -664,7 +671,7 @@ export default function Home() {
       const rows = ((await getTodayCheckins(liveDate)) as CheckinRow[]) || []
       setDbCheckins(rows)
 
-      const sameGroupRows = rows.filter((entry) => entry.group_name === memberFlow.session!.group)
+      const sameGroupRows = rows.filter((entry) => entry.group_name === selectedSession.group)
       setLastCheckinPosition(sameGroupRows.length)
 
       alert("Check-in erfolgreich gespeichert.")
@@ -700,7 +707,7 @@ export default function Home() {
       return
     }
 
-    if (!memberFlow.session || !memberFlow.canCheckin) {
+    if (!selectedSession || !memberFlow.canCheckin) {
       alert("Check-in ist für diese Gruppe aktuell nicht möglich.")
       return
     }
@@ -719,7 +726,7 @@ export default function Home() {
           phone: trialPhone.trim(),
           is_trial: true,
           is_approved: true,
-          base_group: memberFlow.session.group,
+          base_group: selectedSession.group,
         })
       } else {
         const nextTrialCount = (member.trial_count || 0) + 1
@@ -735,7 +742,7 @@ export default function Home() {
 
       await createCheckin({
         member_id: member.id,
-        group_name: memberFlow.session.group,
+        group_name: selectedSession.group,
         date: liveDate,
         time: timeString(),
         year: currentYear,
@@ -799,17 +806,37 @@ export default function Home() {
         return
       }
 
-      await createMember({
-        first_name: firstName,
-        last_name: lastName,
-        birthdate: registerBirthDate,
-        email: registerEmail.trim(),
-        phone: registerPhone.trim(),
-        is_trial: false,
-        member_pin: pin,
-        is_approved: false,
-        base_group: registerBaseGroup,
-      })
+      if (existing && existing.is_trial) {
+        const { error } = await supabase
+          .from("members")
+          .update({
+            first_name: firstName,
+            last_name: lastName,
+            name: `${firstName} ${lastName}`.trim(),
+            birthdate: registerBirthDate,
+            email: registerEmail.trim(),
+            phone: registerPhone.trim(),
+            is_trial: false,
+            member_pin: pin,
+            is_approved: false,
+            base_group: registerBaseGroup,
+          })
+          .eq("id", existing.id)
+
+        if (error) throw error
+      } else {
+        await createMember({
+          first_name: firstName,
+          last_name: lastName,
+          birthdate: registerBirthDate,
+          email: registerEmail.trim(),
+          phone: registerPhone.trim(),
+          is_trial: false,
+          member_pin: pin,
+          is_approved: false,
+          base_group: registerBaseGroup,
+        })
+      }
 
       setMemberFirstName(firstName)
       setMemberLastName(lastName)
@@ -852,11 +879,20 @@ export default function Home() {
 
       const previousMonthKey = getPreviousMonthKey(currentMonthKey)
 
-      const monthRows: CheckinRow[] = []
-      const previousMonthRows: CheckinRow[] = []
-      const yearRows: CheckinRow[] = []
-      const allRows: Array<{ date: string }> = []
-      const lastRow: CheckinRow | null = null
+      const [{ data: monthRows }, { data: previousMonthRows }, { data: yearRows }, { data: allRows }, { data: lastRow }] =
+        await Promise.all([
+          supabase.from("checkins").select("*").eq("member_id", member.id).eq("month_key", currentMonthKey),
+          supabase.from("checkins").select("*").eq("member_id", member.id).eq("month_key", previousMonthKey),
+          supabase.from("checkins").select("*").eq("member_id", member.id).eq("year", currentYear),
+          supabase.from("checkins").select("date").eq("member_id", member.id).order("date", { ascending: false }),
+          supabase
+            .from("checkins")
+            .select("*")
+            .eq("member_id", member.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ])
 
       setPersonalMonthVisits(monthRows?.length ?? 0)
       setPreviousMonthVisits(previousMonthRows?.length ?? 0)
@@ -867,9 +903,30 @@ export default function Home() {
       setProfileEmail(member.email || "")
       setProfilePhone(member.phone || "")
 
-      setBaseGroupMonthVisits(0)
-      setBaseGroupPosition(null)
-      setBaseGroupBestMonthVisits(0)
+      if (member.base_group) {
+        const { data: baseGroupRows } = await supabase
+          .from("checkins")
+          .select("member_id")
+          .eq("group_name", member.base_group)
+          .eq("month_key", currentMonthKey)
+
+        const myBaseGroupVisits = (baseGroupRows || []).filter((row) => row.member_id === member.id).length
+        setBaseGroupMonthVisits(myBaseGroupVisits)
+
+        const countsMap = new Map<string, number>()
+        for (const row of baseGroupRows || []) {
+          countsMap.set(row.member_id, (countsMap.get(row.member_id) || 0) + 1)
+        }
+
+        const sorted = Array.from(countsMap.entries()).sort((a, b) => b[1] - a[1])
+        const myIndex = sorted.findIndex(([id]) => id === member.id)
+        setBaseGroupPosition(myIndex >= 0 ? myIndex + 1 : null)
+        setBaseGroupBestMonthVisits(sorted.length > 0 ? sorted[0][1] : 0)
+      } else {
+        setBaseGroupMonthVisits(0)
+        setBaseGroupPosition(null)
+        setBaseGroupBestMonthVisits(0)
+      }
 
       setMemberAreaUnlocked(true)
     } catch (error) {
@@ -891,6 +948,7 @@ export default function Home() {
       setAdminMode(trainerPinInput === ADMIN_PASSWORD)
       setShowTrainerLogin(false)
       setTrainerPinInput("")
+      
 
       if (trainerPinInput === ADMIN_PASSWORD) {
         try {
@@ -1003,8 +1061,9 @@ export default function Home() {
                     className="h-32 w-auto rounded-md bg-white/90 p-1"
                   />
                   <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-                    TSV BoxGym Check-in (NEU)
+                    TSV BoxGym Check-in
                   </h1>
+                  <div className="mt-2 text-sm text-zinc-300">Testphase</div>
                 </div>
               </div>
 
@@ -1153,12 +1212,12 @@ export default function Home() {
                 <Button
                   className={`${brand.primary} w-full rounded-2xl text-white hover:bg-[#123d69]`}
                   onClick={handleMemberCheckin}
-                  disabled={dbLoading || !memberFlow.session || !memberFlow.canCheckin}
+                  disabled={dbLoading || !selectedSession || !memberFlow.canCheckin}
                 >
                   {dbLoading ? "Speichert..." : "Mitglied einchecken"}
                 </Button>
 
-                {lastCheckinPosition && memberFlow.session && (
+                {lastCheckinPosition && selectedSession && (
                   <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
                     Deine Position heute in der Gruppe: <span className="font-semibold">{lastCheckinPosition}</span> von{" "}
                     <span className="font-semibold">{currentGroupCount}</span>.
@@ -1230,7 +1289,7 @@ export default function Home() {
                 <Button
                   className="w-full rounded-2xl"
                   onClick={handleTrialCheckin}
-                  disabled={dbLoading || !memberFlow.session || !memberFlow.canCheckin}
+                  disabled={dbLoading || !selectedSession || !memberFlow.canCheckin}
                 >
                   {dbLoading ? "Speichert..." : "Probetraining anmelden"}
                 </Button>
@@ -1767,18 +1826,26 @@ export default function Home() {
                                   </Button>
 
                                   <Button
+                                    type="button"
                                     variant="destructive"
                                     className="rounded-2xl"
                                     onClick={async () => {
                                       const confirmed = window.confirm(`Mitglied ${getMemberDisplayName(member)} wirklich löschen?`)
                                       if (!confirmed) return
                                       try {
+                                        setDbLoading(true)
                                         await deleteMember(member.id)
                                         await refreshAdminLists()
+                                        const rows = ((await getTodayCheckins(liveDate)) as CheckinRow[]) || []
+                                        setDbCheckins(rows)
                                         alert("Mitglied gelöscht.")
+                                        window.location.reload()
                                       } catch (error) {
                                         console.error(error)
-                                        alert("Fehler beim Löschen des Mitglieds.")
+                                        const message = error instanceof Error ? error.message : "Unbekannter Fehler"
+                                        alert(`Fehler beim Löschen des Mitglieds: ${message}`)
+                                      } finally {
+                                        setDbLoading(false)
                                       }
                                     }}
                                   >
