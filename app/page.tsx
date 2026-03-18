@@ -54,6 +54,10 @@ const brand = {
 const TRAINER_SESSION_MINUTES = 15
 const PIN_REGEX = /^[A-Za-z0-9]{6}$/
 const ADMIN_PASSWORD = "32108"
+const QR_ACCESS_PARAM = "gym"
+const QR_ACCESS_TOKEN = "boxgym-checkin-2026"
+const QR_ACCESS_STORAGE_KEY = "tsv_qr_access_until"
+const QR_ACCESS_MINUTES = 180
 
 type Session = {
   id: string
@@ -312,6 +316,7 @@ function calculateTrainingStreak(checkins: Array<{ date: string }>) {
 
 export default function Home() {
   const [isClient, setIsClient] = useState(false)
+  const [qrAccessGranted, setQrAccessGranted] = useState(false)
   const [now, setNow] = useState<Date | null>(null)
 
   const [memberFirstName, setMemberFirstName] = useState("")
@@ -406,6 +411,23 @@ export default function Home() {
     if (savedTrainerUntil && savedTrainerUntil > Date.now()) {
       setTrainerSessionUntil(savedTrainerUntil)
       setTrainerMode(true)
+    }
+
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const qrToken = params.get(QR_ACCESS_PARAM)
+      const savedQrUntilRaw = window.localStorage.getItem(QR_ACCESS_STORAGE_KEY)
+      const savedQrUntil = savedQrUntilRaw ? Number(savedQrUntilRaw) : 0
+
+      if (qrToken === QR_ACCESS_TOKEN) {
+        const accessUntil = Date.now() + QR_ACCESS_MINUTES * 60 * 1000
+        window.localStorage.setItem(QR_ACCESS_STORAGE_KEY, String(accessUntil))
+        setQrAccessGranted(true)
+      } else if (savedQrUntil > Date.now()) {
+        setQrAccessGranted(true)
+      }
+    } catch (error) {
+      console.error("QR access init failed", error)
     }
   }, [])
 
@@ -624,6 +646,15 @@ export default function Home() {
     const [pending, members] = await Promise.all([getPendingMembers(), getAllMembers()])
     setPendingMembers(pending as MemberRecord[])
     setAllMembers(members as MemberRecord[])
+  }
+
+  function togglePanelWithQrAccess(panel: "member" | "trial" | "register" | "area") {
+    if (!qrAccessGranted) {
+      alert("Zugang nur über den QR-Code im BoxGym möglich.")
+      return
+    }
+
+    setOpenPanel(openPanel === panel ? null : panel)
   }
 
   async function handleMemberCheckin() {
@@ -1117,7 +1148,7 @@ export default function Home() {
             <Button
               variant="outline"
               className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
-              onClick={() => setOpenPanel(openPanel === "member" ? null : "member")}
+              onClick={() => togglePanelWithQrAccess("member")}
             >
               <div className="flex items-center gap-4">
                 <Users className="h-6 w-6 text-[#154c83]" />
