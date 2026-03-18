@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabasecClient"
+import { supabase } from "./supabaseClient"
 
 type MemberInput = {
   first_name: string
