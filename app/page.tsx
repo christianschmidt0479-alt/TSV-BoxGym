@@ -1,4 +1,8 @@
+
 "use client"
+
+export const dynamic = "force-dynamic"
+
 
 import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -1060,10 +1064,19 @@ export default function Home() {
                     alt="TSV Falkensee BoxGym"
                     className="h-32 w-auto rounded-md bg-white/90 p-1"
                   />
-                  <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-                    TSV BoxGym Check-in
-                  </h1>
-                  <div className="mt-2 text-sm text-zinc-300">Testphase</div>
+                  <div>
+                    <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+                      TSV BoxGym Check-in
+                    </h1>
+                    <div className="mt-2 flex items-center gap-2 text-sm text-zinc-300">
+                      <span>🚧</span>
+                      <span>Testphase</span>
+                    </div>
+                    <div className="mt-3 inline-flex items-center gap-3 rounded-xl bg-yellow-400 px-4 py-2 text-base font-bold text-black shadow-lg">
+                      <span>🚧</span>
+                      <span>TESTPHASE – SYSTEM WIRD GETESTET</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
