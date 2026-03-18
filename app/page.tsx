@@ -20,7 +20,6 @@ import {
   RefreshCcw,
 } from "lucide-react"
 
-import { supabase } from "@/lib/supabasecClient"
 import {
   findMemberByFirstLastAndBirthdate,
   findMemberByFirstLastAndPin,
@@ -369,7 +368,6 @@ export default function Home() {
   const [selectedSessionId, setSelectedSessionId] = useState<string>(sessions[0].id)
   const [openPanel, setOpenPanel] = useState<"member" | "trial" | "register" | "area" | null>(null)
 
-  const [monthlyGoal] = useState(8)
 
   const liveDate = now ? now.toISOString().slice(0, 10) : todayString()
   const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
@@ -653,17 +651,6 @@ export default function Home() {
         alert("Mitglied ist noch nicht durch den Admin bestätigt und gilt aktuell als Probemitglied.")
       }
 
-      const { data: duplicateRows } = await supabase
-        .from("checkins")
-        .select("id")
-        .eq("member_id", member.id)
-        .eq("date", liveDate)
-        .eq("group_name", memberFlow.session.group)
-
-      if ((duplicateRows?.length ?? 0) > 0) {
-        alert("Teilnahme bereits erfasst.")
-        return
-      }
 
       await createCheckin({
         member_id: member.id,
@@ -745,17 +732,6 @@ export default function Home() {
         member = await updateTrialMember(member.id, nextTrialCount, trialEmail.trim(), trialPhone.trim())
       }
 
-      const { data: duplicateRows } = await supabase
-        .from("checkins")
-        .select("id")
-        .eq("member_id", member.id)
-        .eq("date", liveDate)
-        .eq("group_name", memberFlow.session.group)
-
-      if ((duplicateRows?.length ?? 0) > 0) {
-        alert("Teilnahme bereits erfasst.")
-        return
-      }
 
       await createCheckin({
         member_id: member.id,
@@ -876,20 +852,11 @@ export default function Home() {
 
       const previousMonthKey = getPreviousMonthKey(currentMonthKey)
 
-      const [{ data: monthRows }, { data: previousMonthRows }, { data: yearRows }, { data: allRows }, { data: lastRow }] =
-        await Promise.all([
-          supabase.from("checkins").select("*").eq("member_id", member.id).eq("month_key", currentMonthKey),
-          supabase.from("checkins").select("*").eq("member_id", member.id).eq("month_key", previousMonthKey),
-          supabase.from("checkins").select("*").eq("member_id", member.id).eq("year", currentYear),
-          supabase.from("checkins").select("date").eq("member_id", member.id).order("date", { ascending: false }),
-          supabase
-            .from("checkins")
-            .select("*")
-            .eq("member_id", member.id)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-        ])
+      const monthRows: CheckinRow[] = []
+      const previousMonthRows: CheckinRow[] = []
+      const yearRows: CheckinRow[] = []
+      const allRows: Array<{ date: string }> = []
+      const lastRow: CheckinRow | null = null
 
       setPersonalMonthVisits(monthRows?.length ?? 0)
       setPreviousMonthVisits(previousMonthRows?.length ?? 0)
@@ -900,30 +867,9 @@ export default function Home() {
       setProfileEmail(member.email || "")
       setProfilePhone(member.phone || "")
 
-      if (member.base_group) {
-        const { data: baseGroupRows } = await supabase
-          .from("checkins")
-          .select("member_id")
-          .eq("group_name", member.base_group)
-          .eq("month_key", currentMonthKey)
-
-        const myBaseGroupVisits = (baseGroupRows || []).filter((row) => row.member_id === member.id).length
-        setBaseGroupMonthVisits(myBaseGroupVisits)
-
-        const countsMap = new Map<string, number>()
-        for (const row of baseGroupRows || []) {
-          countsMap.set(row.member_id, (countsMap.get(row.member_id) || 0) + 1)
-        }
-
-        const sorted = Array.from(countsMap.entries()).sort((a, b) => b[1] - a[1])
-        const myIndex = sorted.findIndex(([id]) => id === member.id)
-        setBaseGroupPosition(myIndex >= 0 ? myIndex + 1 : null)
-        setBaseGroupBestMonthVisits(sorted.length > 0 ? sorted[0][1] : 0)
-      } else {
-        setBaseGroupMonthVisits(0)
-        setBaseGroupPosition(null)
-        setBaseGroupBestMonthVisits(0)
-      }
+      setBaseGroupMonthVisits(0)
+      setBaseGroupPosition(null)
+      setBaseGroupBestMonthVisits(0)
 
       setMemberAreaUnlocked(true)
     } catch (error) {
@@ -1057,7 +1003,7 @@ export default function Home() {
                     className="h-32 w-auto rounded-md bg-white/90 p-1"
                   />
                   <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-                    TSV BoxGym Check-in
+                    TSV BoxGym Check-in (NEU)
                   </h1>
                 </div>
               </div>
