@@ -55,7 +55,7 @@ const TRAINER_SESSION_MINUTES = 15
 const PIN_REGEX = /^[A-Za-z0-9]{6}$/
 const ADMIN_PASSWORD = "32108"
 const QR_ACCESS_PARAM = "gym"
-const QR_ACCESS_TOKEN = "boxgym-checkin-2026"
+const QR_ACCESS_TOKEN = "boxgym-checkin-2026-X9kLm4Pq72Za8R"
 const QR_ACCESS_STORAGE_KEY = "tsv_qr_access_until"
 const QR_ACCESS_MINUTES = 180
 
@@ -423,6 +423,11 @@ export default function Home() {
         const accessUntil = Date.now() + QR_ACCESS_MINUTES * 60 * 1000
         window.localStorage.setItem(QR_ACCESS_STORAGE_KEY, String(accessUntil))
         setQrAccessGranted(true)
+
+        params.delete(QR_ACCESS_PARAM)
+        const nextQuery = params.toString()
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
+        window.history.replaceState({}, "", nextUrl)
       } else if (savedQrUntil > Date.now()) {
         setQrAccessGranted(true)
       }
@@ -527,6 +532,24 @@ export default function Home() {
     }
   }, [now, trainerMode, trainerSessionUntil, isClient])
 
+  useEffect(() => {
+    if (!isClient) return
+
+    try {
+      const savedQrUntilRaw = window.localStorage.getItem(QR_ACCESS_STORAGE_KEY)
+      const savedQrUntil = savedQrUntilRaw ? Number(savedQrUntilRaw) : 0
+
+      if (savedQrUntil && savedQrUntil <= Date.now()) {
+        window.localStorage.removeItem(QR_ACCESS_STORAGE_KEY)
+        setQrAccessGranted(false)
+        setOpenPanel(null)
+        setShowTrainerLogin(false)
+      }
+    } catch (error) {
+      console.error("QR access expiry check failed", error)
+    }
+  }, [isClient, now])
+
   const todaysSessions = useMemo(() => {
     const dayKey = getDayKey(liveDate)
     return sessions.filter((session) => session.dayKey === dayKey)
@@ -577,6 +600,15 @@ export default function Home() {
   const selectedSession = useMemo(() => {
     return displaySessions.find((session) => session.id === selectedSessionId) ?? memberFlow.session ?? null
   }, [displaySessions, selectedSessionId, memberFlow.session])
+
+  const qrAccessUrl = useMemo(() => {
+    if (!isClient) return `https://tsvboxgym.de/?${QR_ACCESS_PARAM}=${encodeURIComponent(QR_ACCESS_TOKEN)}`
+    return `${window.location.origin}/?${QR_ACCESS_PARAM}=${encodeURIComponent(QR_ACCESS_TOKEN)}`
+  }, [isClient])
+
+  const qrImageUrl = useMemo(() => {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qrAccessUrl)}`
+  }, [qrAccessUrl])
 
   useEffect(() => {
     if (displaySessions.length === 0) return
@@ -971,6 +1003,11 @@ export default function Home() {
   }
 
   function openTrainerLogin() {
+    if (!qrAccessGranted) {
+      alert("Trainerzugang ist nur über den QR-Code im BoxGym möglich.")
+      return
+    }
+
     setShowTrainerLogin(true)
     setTrainerPinInput("")
   }
@@ -1159,7 +1196,7 @@ export default function Home() {
             <Button
               variant="outline"
               className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
-              onClick={() => setOpenPanel(openPanel === "trial" ? null : "trial")}
+              onClick={() => togglePanelWithQrAccess("trial")}
             >
               <div className="flex items-center gap-4">
                 <UserPlus className="h-6 w-6 text-[#e6332a]" />
@@ -1170,7 +1207,7 @@ export default function Home() {
             <Button
               variant="outline"
               className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
-              onClick={() => setOpenPanel(openPanel === "register" ? null : "register")}
+              onClick={() => togglePanelWithQrAccess("register")}
             >
               <div className="flex items-center gap-4">
                 <UserRoundPlus className="h-6 w-6 text-[#154c83]" />
@@ -1181,7 +1218,7 @@ export default function Home() {
             <Button
               variant="outline"
               className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
-              onClick={() => setOpenPanel(openPanel === "area" ? null : "area")}
+              onClick={() => togglePanelWithQrAccess("area")}
             >
               <div className="flex items-center gap-4">
                 <UserCircle2 className="h-6 w-6 text-[#154c83]" />
@@ -1190,7 +1227,7 @@ export default function Home() {
             </Button>
           </div>
 
-          {openPanel === "member" && (
+          {qrAccessGranted && openPanel === "member" && (
             <Card className="rounded-[24px] border-0 shadow-sm">
               <CardHeader>
                 <CardTitle>Mitglieder-Check-in</CardTitle>
@@ -1268,7 +1305,7 @@ export default function Home() {
 
           )}
 
-        {openPanel === "trial" && (
+        {qrAccessGranted && openPanel === "trial" && (
             <Card className="rounded-[24px] border-0 shadow-sm">
               <CardHeader>
                 <CardTitle>Probetraining</CardTitle>
@@ -1337,7 +1374,7 @@ export default function Home() {
             </Card>
           )}
 
-          {openPanel === "register" && (
+          {qrAccessGranted && openPanel === "register" && (
             <Card className="rounded-[24px] border-0 shadow-sm">
               <CardHeader>
                 <CardTitle>Mitglied registrieren</CardTitle>
@@ -1436,7 +1473,7 @@ export default function Home() {
             </Card>
           )}
 
-          {openPanel === "area" && (
+          {qrAccessGranted && openPanel === "area" && (
             <Card className="rounded-[24px] border-0 shadow-sm">
               <CardHeader>
                 <CardTitle>Mein Bereich</CardTitle>
@@ -1620,6 +1657,78 @@ export default function Home() {
           <div className="mt-6 space-y-6">
             {adminMode && (
               <>
+                <Card className="rounded-[24px] border-0 shadow-sm">
+                  <CardHeader>
+                    <CardTitle>QR-Code für BoxGym-Zugang</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-2xl border border-yellow-300 bg-yellow-50 p-4 text-sm text-zinc-800">
+                      Dieser QR-Code öffnet den geschützten Zugang für Check-in, Registrierung, Probetraining und Mitgliederbereich im BoxGym.
+                    </div>
+
+                    <div id="qr-print-area" className="flex flex-col gap-6 lg:flex-row lg:items-start rounded-[24px] bg-white p-4 print:block print:rounded-none print:p-0">
+                      <div className="rounded-[24px] border bg-white p-4 shadow-sm print:border-0 print:p-0 print:shadow-none">
+                        <div className="mb-4 hidden items-center gap-4 print:flex">
+                          <img
+                            src="/BoxGym Kompakt.png"
+                            alt="TSV Falkensee BoxGym"
+                            className="h-20 w-auto"
+                          />
+                          <div>
+                            <div className="text-2xl font-bold text-zinc-900">TSV BoxGym</div>
+                            <div className="text-base font-semibold text-zinc-700">Check-in</div>
+                          </div>
+                        </div>
+                        <img
+                          src={qrImageUrl}
+                          alt="QR-Code BoxGym Zugang"
+                          className="h-64 w-64 rounded-xl"
+                        />
+                      </div>
+
+                      <div className="flex-1 space-y-3 print:mt-6">
+                        <div className="hidden rounded-2xl border border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-800 print:block">
+                          QR-Code scannen und direkt zum geschützten TSV BoxGym Check-in gelangen.
+                        </div>
+                        <div className="rounded-2xl bg-zinc-100 p-4 text-sm break-all text-zinc-800">
+                          {qrAccessUrl}
+                        </div>
+
+                        <div className="flex flex-wrap gap-3 print:hidden">
+                          <Button
+                            className={`${brand.primary} rounded-2xl text-white hover:bg-[#123d69]`}
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(qrAccessUrl)
+                                alert("QR-Link kopiert.")
+                              } catch (error) {
+                                console.error(error)
+                                alert("QR-Link konnte nicht kopiert werden.")
+                              }
+                            }}
+                          >
+                            QR-Link kopieren
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            className="rounded-2xl"
+                            onClick={() => window.open(qrAccessUrl, "_blank")}
+                          >
+                            Link testen
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="rounded-2xl"
+                            onClick={() => window.print()}
+                          >
+                            Drucken
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
                 <Card className="rounded-[24px] border-0 shadow-sm">
                   <CardHeader>
                     <CardTitle>Offene Freigaben</CardTitle>
