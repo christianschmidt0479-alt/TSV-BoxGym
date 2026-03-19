@@ -99,6 +99,9 @@ type MemberRecord = {
   last_name?: string
   birthdate?: string
   email?: string | null
+  email_verified?: boolean
+  email_verified_at?: string | null
+  email_verification_token?: string | null
   phone?: string | null
   is_trial?: boolean
   is_approved?: boolean
@@ -206,6 +209,10 @@ function getStoredNumber(key: string) {
 
 function normalizeText(value: string) {
   return value.trim().toLowerCase()
+}
+
+function generateEmailVerificationToken() {
+  return `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`
 }
 
 function getMemberDisplayName(member?: Partial<MemberRecord> | null) {
@@ -433,6 +440,50 @@ export default function Home() {
       }
     } catch (error) {
       console.error("QR access init failed", error)
+    }
+
+    // E-Mail Verifizierung über Link ?verify=...
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const verifyToken = params.get("verify")
+
+      if (verifyToken) {
+        ;(async () => {
+          try {
+            const { data, error } = await supabase
+              .from("members")
+              .update({
+                email_verified: true,
+                email_verified_at: new Date().toISOString(),
+                email_verification_token: null,
+              })
+              .eq("email_verification_token", verifyToken)
+              .select("id")
+              .maybeSingle()
+
+            if (error) throw error
+            if (!data) {
+              alert("Bestätigungslink ungültig oder bereits verwendet.")
+              return
+            }
+
+            if (trainerMode && adminMode) {
+              await refreshAdminLists()
+            }
+            alert("E-Mail erfolgreich bestätigt. Du kannst jetzt vom Admin freigeschaltet werden.")
+
+            params.delete("verify")
+            const nextQuery = params.toString()
+            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
+            window.history.replaceState({}, "", nextUrl)
+          } catch (err) {
+            console.error(err)
+            alert("Fehler bei der E-Mail-Bestätigung.")
+          }
+        })()
+      }
+    } catch (error) {
+      console.error("Verify handling failed", error)
     }
   }, [])
 
@@ -680,7 +731,7 @@ export default function Home() {
     setAllMembers(members as MemberRecord[])
   }
 
-function togglePanelWithQrAccess(panel: "member" | "trial") {
+  function togglePanelWithQrAccess(panel: "member" | "trial") {
     if (!qrAccessGranted) {
       alert("Zugang nur über den QR-Code im BoxGym möglich.")
       return
@@ -870,6 +921,7 @@ function togglePanelWithQrAccess(panel: "member" | "trial") {
 
     try {
       setDbLoading(true)
+      const emailToken = generateEmailVerificationToken()
 
       const existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, registerBirthDate)
       if (existing && !existing.is_trial) {
@@ -890,23 +942,34 @@ function togglePanelWithQrAccess(panel: "member" | "trial") {
             is_trial: false,
             member_pin: pin,
             is_approved: false,
+            email_verified: false,
             base_group: registerBaseGroup,
+            email_verification_token: emailToken,
           })
           .eq("id", existing.id)
 
         if (error) throw error
       } else {
-        await createMember({
-          first_name: firstName,
-          last_name: lastName,
-          birthdate: registerBirthDate,
-          email: registerEmail.trim(),
-          phone: registerPhone.trim(),
-          is_trial: false,
-          member_pin: pin,
-          is_approved: false,
-          base_group: registerBaseGroup,
-        })
+        const { error } = await supabase
+          .from("members")
+          .insert([
+            {
+              name: `${firstName} ${lastName}`.trim(),
+              first_name: firstName,
+              last_name: lastName,
+              birthdate: registerBirthDate,
+              email: registerEmail.trim(),
+              phone: registerPhone.trim(),
+              is_trial: false,
+              member_pin: pin,
+              is_approved: false,
+              email_verified: false,
+              email_verification_token: emailToken,
+              base_group: registerBaseGroup,
+            },
+          ])
+
+        if (error) throw error
       }
 
       setMemberFirstName(firstName)
@@ -916,7 +979,8 @@ function togglePanelWithQrAccess(panel: "member" | "trial") {
       setMemberAreaLastName(lastName)
       setMemberAreaPin(pin)
 
-      alert("Mitglied registriert. Freischaltung durch Admin ausstehend. Bis dahin gilt die Person als Probemitglied.")
+      const verificationLink = `${window.location.origin}/?verify=${emailToken}`
+      alert(`Registrierung gespeichert.\n\nBitte E-Mail bestätigen.\n\nTest-Link (kopieren und im Browser öffnen):\n${verificationLink}`)
     } catch (error) {
       console.error(error)
       alert("Fehler beim Anlegen des Mitglieds.")
@@ -1481,6 +1545,12 @@ function togglePanelWithQrAccess(panel: "member" | "trial") {
                 >
                   {dbLoading ? "Speichert..." : "Mitglied registrieren"}
                 </Button>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                  Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Erst danach ist die Freigabe durch den Admin möglich.
+                </div>
+                <div className="text-xs text-zinc-500">
+                  In der Testphase wird der Bestätigungs-Link nach der Registrierung direkt angezeigt und kann sofort geöffnet werden.
+                </div>
               </CardContent>
             </Card>
           )}
@@ -1758,6 +1828,18 @@ function togglePanelWithQrAccess(panel: "member" | "trial") {
                               <div className="font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
                               <div className="text-zinc-600">Geburtsdatum: {member.birthdate || "—"}</div>
                               <div className="text-zinc-600">E-Mail: {member.email || "—"}</div>
+                              <div className="text-zinc-600">E-Mail bestätigt: {member.email_verified ? "Ja" : "Nein"}</div>
+                              {!member.email_verified && (
+                                <div className="text-amber-600">Wartet auf E-Mail-Bestätigung</div>
+                              )}
+                              {member.email_verified && (
+                                <div className="text-green-600">Bereit für Admin-Freigabe</div>
+                              )}
+                              {member.email_verified_at && (
+                                <div className="text-zinc-500 text-xs">
+                                  Bestätigt am: {new Date(member.email_verified_at).toLocaleString("de-DE")}
+                                </div>
+                              )}
                               <div className="text-zinc-600">Telefon: {member.phone || "—"}</div>
                             </div>
 
@@ -1796,8 +1878,13 @@ function togglePanelWithQrAccess(panel: "member" | "trial") {
 
                             <Button
                               className={`${brand.primary} rounded-2xl text-white hover:bg-[#123d69]`}
+                              disabled={!member.email_verified}
                               onClick={async () => {
                                 try {
+                                  if (!member.email_verified) {
+                                    alert("❌ E-Mail nicht bestätigt.\n\nMitglied muss zuerst den Bestätigungslink öffnen.")
+                                    return
+                                  }
                                   const newGroup = adminGroupDrafts[member.id] ?? member.base_group ?? groupOptions[0] ?? ""
                                   if (newGroup) await changeMemberBaseGroup(member.id, newGroup)
 
@@ -1822,6 +1909,59 @@ function togglePanelWithQrAccess(panel: "member" | "trial") {
                               <CheckCircle2 className="mr-2 h-4 w-4" />
                               Freigeben
                             </Button>
+                            {/* Test: Kopieren des E-Mail-Bestätigungs-Links */}
+                            {!member.email_verified && member.email && (
+                              <div className="text-xs text-zinc-500">
+                                Bestätigung wird an: {member.email}
+                              </div>
+                            )}
+                            {!member.email_verified && !member.email && (
+                              <div className="text-xs text-red-600">
+                                Keine E-Mail-Adresse hinterlegt
+                              </div>
+                            )}
+                            {!member.email_verified && member.email_verification_token && (
+                              <Button
+                                variant="outline"
+                                className="rounded-2xl"
+                                disabled={!member.email || !member.email_verification_token}
+                                onClick={async () => {
+                                  try {
+                                    const verificationLink = `${window.location.origin}/?verify=${member.email_verification_token}`
+                                    await navigator.clipboard.writeText(verificationLink)
+                                    alert("Bestätigungs-Link kopiert.")
+                                  } catch (error) {
+                                    console.error(error)
+                                    alert("Bestätigungs-Link konnte nicht kopiert werden.")
+                                  }
+                                }}
+                              >
+                                Bestätigungs-Link kopieren
+                              </Button>
+                            )}
+                            {/* Test: Bestätigungs-Link öffnen */}
+                            {!member.email_verified && member.email_verification_token && (
+                              <Button
+                                variant="outline"
+                                className="rounded-2xl"
+                                onClick={() => {
+                                  const verificationLink = `${window.location.origin}/?verify=${member.email_verification_token}`
+                                  window.open(verificationLink, "_blank")
+                                }}
+                              >
+                                Bestätigungs-Link öffnen
+                              </Button>
+                            )}
+                            {!member.email_verified && !member.email_verification_token && (
+                              <div className="text-xs text-red-600">
+                                Kein Bestätigungs-Token vorhanden
+                              </div>
+                            )}
+                            {member.email_verified && (
+                              <div className="text-xs text-green-700">
+                                Bestätigungs-Link nicht mehr erforderlich
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))
