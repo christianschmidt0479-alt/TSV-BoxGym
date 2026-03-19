@@ -207,10 +207,6 @@ function getStoredNumber(key: string) {
   }
 }
 
-function normalizeText(value: string) {
-  return value.trim().toLowerCase()
-}
-
 function generateEmailVerificationToken() {
   return `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`
 }
@@ -382,6 +378,12 @@ export default function Home() {
   const [trainerGroupFilter, setTrainerGroupFilter] = useState("alle")
   const [trainerTypeFilter, setTrainerTypeFilter] = useState("alle")
   const [trainerNameFilter, setTrainerNameFilter] = useState("")
+  const [mailTestEmail, setMailTestEmail] = useState("")
+  const [mailTestName, setMailTestName] = useState("Testmitglied")
+  const [mailTestSending, setMailTestSending] = useState(false)
+  const [mailConfigured, setMailConfigured] = useState<boolean | null>(null)
+  const [mailConfigSource, setMailConfigSource] = useState("")
+  const [mailFromAddress, setMailFromAddress] = useState("")
 
   const [selectedSessionId, setSelectedSessionId] = useState<string>(sessions[0].id)
   const [openPanel, setOpenPanel] = useState<"member" | "trial" | "register" | "area" | null>(null)
@@ -442,7 +444,6 @@ export default function Home() {
       console.error("QR access init failed", error)
     }
 
-    // E-Mail Verifizierung über Link ?verify=...
     try {
       const params = new URLSearchParams(window.location.search)
       const verifyToken = params.get("verify")
@@ -467,11 +468,8 @@ export default function Home() {
               return
             }
 
-            if (trainerMode && adminMode) {
-              await refreshAdminLists()
-            }
-            alert("E-Mail erfolgreich bestätigt. Du kannst jetzt vom Admin freigeschaltet werden.")
-            setOpenPanel(null)
+            alert("E-Mail erfolgreich bestätigt. Das Mitglied kann jetzt vom Admin freigegeben werden.")
+            setOpenPanel("area")
 
             params.delete("verify")
             const nextQuery = params.toString()
@@ -486,6 +484,7 @@ export default function Home() {
     } catch (error) {
       console.error("Verify handling failed", error)
     }
+
   }, [])
 
   useEffect(() => {
@@ -601,6 +600,34 @@ export default function Home() {
       console.error("QR access expiry check failed", error)
     }
   }, [isClient, now])
+
+  useEffect(() => {
+    if (!trainerMode) return
+
+    ;(async () => {
+      try {
+        const response = await fetch("/api/send-verification")
+        if (!response.ok) {
+          setMailConfigured(false)
+          setMailConfigSource("")
+          setMailFromAddress("")
+          return
+        }
+
+        const data = await response.json()
+        setMailConfigured(Boolean(data.configured))
+        setMailConfigSource(
+          data.using_server_key ? "RESEND_API_KEY" : data.using_public_fallback ? "NEXT_PUBLIC_RESEND_API_KEY" : ""
+        )
+        setMailFromAddress(typeof data.from === "string" ? data.from : "")
+      } catch (error) {
+        console.error("Mail status loading failed", error)
+        setMailConfigured(false)
+        setMailConfigSource("")
+        setMailFromAddress("")
+      }
+    })()
+  }, [trainerMode])
 
   const todaysSessions = useMemo(() => {
     const dayKey = getDayKey(liveDate)
@@ -741,7 +768,7 @@ export default function Home() {
     setOpenPanel(openPanel === panel ? null : panel)
   }
 
-  function toggleFreePanel(panel: "register" | "area") {
+  function toggleFreePanel(panel: "register") {
     setOpenPanel(openPanel === panel ? null : panel)
   }
 
@@ -963,6 +990,7 @@ export default function Home() {
             member_pin: pin,
             is_approved: false,
             email_verified: false,
+            email_verified_at: null,
             base_group: registerBaseGroup,
             email_verification_token: emailToken,
           })
@@ -984,6 +1012,7 @@ export default function Home() {
               member_pin: pin,
               is_approved: false,
               email_verified: false,
+              email_verified_at: null,
               email_verification_token: emailToken,
               base_group: registerBaseGroup,
             },
@@ -1013,19 +1042,24 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: registerEmail.trim(),
-            name: `${firstName} ${lastName}`,
+            name: `${firstName} ${lastName}`.trim(),
             link: verificationLink,
           }),
         })
 
         if (!response.ok) {
-          console.error("Mailversand fehlgeschlagen", await response.text())
+          const message = await response.text()
+          console.error("Mailversand fehlgeschlagen", message)
+          alert("Registrierung gespeichert.\n\nDie Bestätigungs-E-Mail konnte aber nicht versendet werden.")
+          return
         }
       } catch (error) {
         console.error("Mailversand fehlgeschlagen", error)
+        alert("Registrierung gespeichert.\n\nDie Bestätigungs-E-Mail konnte aber nicht versendet werden.")
+        return
       }
 
-      alert("Registrierung gespeichert.\n\nBitte E-Mail bestätigen.")
+      alert("Registrierung gespeichert.\n\nBitte zuerst die E-Mail bestätigen. Danach sind bis zu 6 Trainings ohne Admin-Freigabe möglich.")
     } catch (error) {
       console.error(error)
       alert("Fehler beim Anlegen des Mitglieds.")
@@ -1163,10 +1197,19 @@ export default function Home() {
             </div>
 
             {trainerMode ? (
-              <Button variant="outline" className="rounded-2xl" onClick={handleTrainerLogout}>
-                <Settings className="mr-2 h-4 w-4" />
-                {adminMode ? "Admin abmelden" : "Trainer abmelden"}
-              </Button>
+              <>
+                <div
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold ${
+                    adminMode ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
+                  }`}
+                >
+                  {adminMode ? "Admin-Modus aktiv" : "Trainer-Modus aktiv"}
+                </div>
+                <Button variant="outline" className="rounded-2xl" onClick={handleTrainerLogout}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  {adminMode ? "Admin abmelden" : "Trainer abmelden"}
+                </Button>
+              </>
             ) : (
               <Button variant="outline" className="rounded-2xl" onClick={openTrainerLogin}>
                 <Lock className="mr-2 h-4 w-4" />
@@ -1293,9 +1336,9 @@ export default function Home() {
             <div className="flex items-start gap-3">
               <div className="text-2xl">🚧</div>
               <div>
-                <div className="font-semibold text-zinc-900">Mitglieder-Check-in und Probetraining nur per QR-Code</div>
+                <div className="font-semibold text-zinc-900">Zugang im Gym nur per QR-Code</div>
                 <div className="mt-1 text-sm text-zinc-700">
-                  Der Zugang zu Mitglieder-Check-in und Probetraining ist nur nach dem Öffnen dieser Seite über den QR-Code im BoxGym möglich. Mitglied registrieren und Mein Bereich bleiben frei zugänglich.
+                  Mitglieder-Check-in und Probetraining sind nur nach dem Öffnen dieser Seite über den QR-Code im BoxGym möglich. Registrierung und Mein Bereich bleiben frei zugänglich.
                 </div>
               </div>
             </div>
@@ -1339,7 +1382,7 @@ export default function Home() {
             <Button
               variant="outline"
               className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
-              onClick={() => toggleFreePanel("area")}
+              onClick={() => setOpenPanel(openPanel === "area" ? null : "area")}
             >
               <div className="flex items-center gap-4">
                 <UserCircle2 className="h-6 w-6 text-[#154c83]" />
@@ -1591,10 +1634,10 @@ export default function Home() {
                   {dbLoading ? "Speichert..." : "Mitglied registrieren"}
                 </Button>
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                  Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Erst danach ist die Freigabe durch den Admin möglich.
+                  Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Danach sind bis zu 6 Trainings auch ohne Admin-Freigabe möglich.
                 </div>
                 <div className="text-xs text-zinc-500">
-                  In der Testphase wird der Bestätigungs-Link nach der Registrierung direkt angezeigt und kann sofort geöffnet werden.
+                  Mein Bereich bleibt frei zugänglich. Mitglieder-Check-in und Probetraining funktionieren nur im Gym per QR-Zugang.
                 </div>
               </CardContent>
             </Card>
@@ -1717,7 +1760,7 @@ export default function Home() {
               </div>
               {!memberAreaData.is_approved && memberAreaData.email_verified && (
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
-                  Deine E-Mail wurde bestätigt. Die finale Freigabe durch den Admin steht noch aus.
+                  Deine E-Mail wurde bestätigt. Du kannst jetzt bis zu 6 Trainings absolvieren, auch wenn die finale Freigabe durch den Admin noch aussteht.
                 </div>
               )}
               {memberAreaData.is_approved && memberAreaData.email_verified && (
@@ -1727,27 +1770,22 @@ export default function Home() {
               )}
               {!memberAreaData.email_verified && !memberAreaData.is_approved && (
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-                  Status: Registrierung abgeschlossen. Als Nächstes muss zuerst die E-Mail bestätigt werden.
+                  Status: Registrierung abgeschlossen. Als Nächstes muss zuerst die E-Mail bestätigt werden. Danach sind bis zu 6 Trainings ohne Admin-Freigabe möglich.
                 </div>
               )}
-              {!memberAreaData.email_verified && memberAreaData.email && (
+              {!!memberAreaData.email && (
                 <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
-                  Bestätigungsadresse: <span className="font-semibold">{memberAreaData.email}</span>
+                  Hinterlegte E-Mail: <span className="font-semibold">{memberAreaData.email}</span>
                 </div>
               )}
-              {!memberAreaData.email_verified && memberAreaData.email && (
+              {!memberAreaData.email_verified && !!memberAreaData.email && (
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
                   Bitte Posteingang und Spam-Ordner prüfen und anschließend den Bestätigungslink öffnen.
                 </div>
               )}
-              {!memberAreaData.email_verified && !memberAreaData.email && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                  Für dieses Konto ist aktuell keine E-Mail-Adresse hinterlegt. Eine Bestätigung ist so nicht möglich.
-                </div>
-              )}
               {!memberAreaData.email_verified && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-                  Bitte zuerst den Bestätigungslink aus der Registrierung öffnen. Erst danach ist die Freigabe durch den Admin möglich.
+                  Erst nach der E-Mail-Bestätigung kann der Admin freigeben. Bis dahin ist noch kein Mitglieder-Check-in moeglich.
                 </div>
               )}
               {memberAreaData.is_trial && !memberAreaData.is_approved && (
@@ -1846,6 +1884,94 @@ export default function Home() {
 
         {trainerMode && (
           <div className="mt-6 space-y-6">
+            <Card className="rounded-[24px] border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle>Mail-Test</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div
+                  className={`rounded-2xl border p-4 text-sm ${
+                    mailConfigured
+                      ? "border-green-200 bg-green-50 text-green-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {mailConfigured
+                    ? `Mailversand konfiguriert${mailConfigSource ? ` via ${mailConfigSource}` : ""}${mailFromAddress ? ` · Absender: ${mailFromAddress}` : ""}`
+                    : "Mailversand ist aktuell nicht vollstaendig konfiguriert. Bitte RESEND_API_KEY und RESEND_FROM_EMAIL pruefen."}
+                </div>
+
+                {!adminMode && (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+                    Du bist gerade im Trainer-Modus. Freigaben bleiben nur fuer Admin sichtbar, aber den Mailversand kannst du hier schon testen.
+                  </div>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Empfaenger</Label>
+                    <Input
+                      type="email"
+                      value={mailTestEmail}
+                      onChange={(e) => setMailTestEmail(e.target.value)}
+                      placeholder="test@beispiel.de"
+                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Name</Label>
+                    <Input
+                      value={mailTestName}
+                      onChange={(e) => setMailTestName(e.target.value)}
+                      placeholder="Testmitglied"
+                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  className={`${brand.primary} rounded-2xl text-white hover:bg-[#123d69]`}
+                  disabled={mailTestSending}
+                  onClick={async () => {
+                    if (!mailTestEmail.trim()) {
+                      alert("Bitte eine Empfaenger-E-Mail angeben.")
+                      return
+                    }
+
+                    try {
+                      setMailTestSending(true)
+                      const testLink = isClient ? window.location.origin : "https://tsvboxgym.de"
+
+                      const response = await fetch("/api/send-verification", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          email: mailTestEmail.trim(),
+                          name: mailTestName.trim() || "Testmitglied",
+                          link: testLink,
+                        }),
+                      })
+
+                      if (!response.ok) {
+                        const message = await response.text()
+                        throw new Error(message || "Mailversand fehlgeschlagen.")
+                      }
+
+                      alert("Probe-Mail erfolgreich versendet.")
+                    } catch (error) {
+                      console.error(error)
+                      const message = error instanceof Error ? error.message : "Mailversand fehlgeschlagen."
+                      alert(`Probe-Mail fehlgeschlagen: ${message}`)
+                    } finally {
+                      setMailTestSending(false)
+                    }
+                  }}
+                >
+                  {mailTestSending ? "Sendet..." : "Probe-Mail senden"}
+                </Button>
+              </CardContent>
+            </Card>
             {adminMode && (
               <>
                 <Card className="rounded-[24px] border-0 shadow-sm">
@@ -1938,15 +2064,36 @@ export default function Home() {
                               <div className="font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
                               <div className="text-zinc-600">Geburtsdatum: {member.birthdate || "—"}</div>
                               <div className="text-zinc-600">E-Mail: {member.email || "—"}</div>
+                              <div className="text-zinc-600">
+                                Status:{" "}
+                                <span
+                                  className={`font-semibold ${
+                                    member.is_approved
+                                      ? "text-green-600"
+                                      : member.email_verified
+                                        ? "text-blue-600"
+                                        : "text-amber-600"
+                                  }`}
+                                >
+                                  {member.is_approved
+                                    ? "freigegeben"
+                                    : member.email_verified
+                                      ? "E-Mail bestaetigt"
+                                      : "registriert"}
+                                </span>
+                              </div>
                               <div className="text-zinc-600">E-Mail bestätigt: {member.email_verified ? "Ja" : "Nein"}</div>
                               {!member.email_verified && (
-                                <div className="text-amber-600">Wartet auf E-Mail-Bestätigung</div>
+                                <div className="text-amber-600">Registriert · wartet auf E-Mail-Bestätigung</div>
                               )}
                               {member.email_verified && (
-                                <div className="text-green-600">Bereit für Admin-Freigabe</div>
+                                <div className="text-green-600">E-Mail bestätigt · Admin-Freigabe möglich</div>
                               )}
                               {!member.is_approved && member.email_verified && (
-                                <div className="text-xs text-blue-600">Admin-Freigabe steht noch aus</div>
+                                <div className="text-xs text-blue-600">Noch nicht freigegeben · Check-in bis zu 6 Trainings möglich</div>
+                              )}
+                              {member.is_approved && (
+                                <div className="text-xs text-green-600">Vollständig freigegeben</div>
                               )}
                               {member.email_verified_at && (
                                 <div className="text-zinc-500 text-xs">
@@ -1995,7 +2142,7 @@ export default function Home() {
                               {member.is_trial ? (
                                 <div className="text-xs text-amber-700">Freigabe ist nach dem Probetraining möglich, aber nicht sofort zwingend.</div>
                               ) : !member.is_approved ? (
-                                <div className="text-xs text-blue-700">Spätestens vor der 7. Einheit sollte die Admin-Freigabe erfolgen.</div>
+                                <div className="text-xs text-blue-700">Nach bestätigter E-Mail sind bis zu 6 Trainings ohne Admin-Freigabe möglich. Spätestens vor der 7. Einheit sollte freigegeben werden.</div>
                               ) : null}
                               {!member.is_approved && (
                                 <div className="text-xs text-zinc-500">Check-in-Limit wird automatisch beim Einchecken geprüft.</div>
@@ -2041,9 +2188,10 @@ export default function Home() {
                               onClick={async () => {
                                 try {
                                   if (!member.email_verified) {
-                                    alert("❌ E-Mail nicht bestätigt.\n\nMitglied muss zuerst den Bestätigungslink öffnen.")
+                                    alert("E-Mail nicht bestätigt.\n\nMitglied muss zuerst den Bestätigungslink öffnen.")
                                     return
                                   }
+
                                   const newGroup = adminGroupDrafts[member.id] ?? member.base_group ?? groupOptions[0] ?? ""
                                   if (newGroup) await changeMemberBaseGroup(member.id, newGroup)
 
@@ -2068,71 +2216,9 @@ export default function Home() {
                               <CheckCircle2 className="mr-2 h-4 w-4" />
                               {member.email_verified ? "Freigeben" : "Wartet auf E-Mail"}
                             </Button>
-                            {/* Test: Kopieren des E-Mail-Bestätigungs-Links */}
-                            {!member.email_verified && member.email && (
+                            {!member.email_verified && !!member.email && (
                               <div className="text-xs text-zinc-500">
                                 Bestätigung wird an: {member.email}
-                              </div>
-                            )}
-                            {/* TESTPHASE: Zeige Bestätigungslink */}
-                            {!member.email_verified && member.email_verification_token && (
-                              <div className="mt-2 space-y-2">
-                                <div className="text-xs text-zinc-500">Testlink (manuell öffnen):</div>
-                                <div className="rounded-xl bg-zinc-100 p-2 text-xs break-all">
-                                  {`${typeof window !== "undefined" ? window.location.origin : ""}/?verify=${member.email_verification_token}`}
-                                </div>
-                              </div>
-                            )}
-                            {!member.email_verified && !member.email && (
-                              <div className="text-xs text-red-600">
-                                Keine E-Mail-Adresse hinterlegt
-                              </div>
-                            )}
-                            {!member.email_verified && member.email_verification_token && (
-                              <div className="text-xs text-green-700">
-                                Bestätigungs-Token vorhanden
-                              </div>
-                            )}
-                            {!member.email_verified && member.email_verification_token && (
-                              <Button
-                                variant="outline"
-                                className="rounded-2xl"
-                                disabled={!member.email || !member.email_verification_token}
-                                onClick={async () => {
-                                  try {
-                                    const verificationLink = `${window.location.origin}/?verify=${member.email_verification_token}`
-                                    await navigator.clipboard.writeText(verificationLink)
-                                    alert("Bestätigungs-Link kopiert.")
-                                  } catch (error) {
-                                    console.error(error)
-                                    alert("Bestätigungs-Link konnte nicht kopiert werden.")
-                                  }
-                                }}
-                              >
-                                Bestätigungs-Link kopieren
-                              </Button>
-                            )}
-                            {/* Test: Bestätigungs-Link öffnen */}
-                            {!member.email_verified && member.email_verification_token && (
-                              <Button
-                                variant="outline"
-                                className="rounded-2xl"
-                                onClick={() => {
-                                  const verificationLink = `${window.location.origin}/?verify=${member.email_verification_token}`
-                                  window.open(verificationLink, "_blank")
-                                }}
-                              >
-                                Bestätigungs-Link öffnen
-                              </Button>
-                            )}
-                            {!member.email_verified && !member.email_verification_token && (
-                              <div className="text-xs text-red-600">
-                                Kein Bestätigungs-Token vorhanden
-                              </div>
-                            )}
-                            {member.email_verified && (
-                              <div className="text-xs text-green-700">
-                                Bestätigungs-Link nicht mehr erforderlich
                               </div>
                             )}
                           </div>
@@ -2275,7 +2361,6 @@ export default function Home() {
 
                                   <Button
                                     className={`${brand.primary} rounded-2xl text-white hover:bg-[#123d69]`}
-                                    disabled={!member.email_verified}
                                     onClick={async () => {
                                       try {
                                         const newPin = adminPinDrafts[member.id]?.trim()
