@@ -680,12 +680,16 @@ export default function Home() {
     setAllMembers(members as MemberRecord[])
   }
 
-  function togglePanelWithQrAccess(panel: "member" | "trial" | "register" | "area") {
+function togglePanelWithQrAccess(panel: "member" | "trial") {
     if (!qrAccessGranted) {
       alert("Zugang nur über den QR-Code im BoxGym möglich.")
       return
     }
 
+    setOpenPanel(openPanel === panel ? null : panel)
+  }
+
+  function toggleFreePanel(panel: "register" | "area") {
     setOpenPanel(openPanel === panel ? null : panel)
   }
 
@@ -1003,11 +1007,6 @@ export default function Home() {
   }
 
   function openTrainerLogin() {
-    if (!qrAccessGranted) {
-      alert("Trainerzugang ist nur über den QR-Code im BoxGym möglich.")
-      return
-    }
-
     setShowTrainerLogin(true)
     setTrainerPinInput("")
   }
@@ -1180,6 +1179,19 @@ export default function Home() {
           </div>
         </div>
 
+        {!qrAccessGranted && (
+          <div className="mb-6 rounded-[24px] border border-yellow-300 bg-yellow-50 p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="text-2xl">🚧</div>
+              <div>
+                <div className="font-semibold text-zinc-900">Mitglieder-Check-in und Probetraining nur per QR-Code</div>
+                <div className="mt-1 text-sm text-zinc-700">
+                  Der Zugang zu Mitglieder-Check-in und Probetraining ist nur nach dem Öffnen dieser Seite über den QR-Code im BoxGym möglich. Mitglied registrieren und Mein Bereich bleiben frei zugänglich.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Button
@@ -1207,7 +1219,7 @@ export default function Home() {
             <Button
               variant="outline"
               className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
-              onClick={() => togglePanelWithQrAccess("register")}
+              onClick={() => toggleFreePanel("register")}
             >
               <div className="flex items-center gap-4">
                 <UserRoundPlus className="h-6 w-6 text-[#154c83]" />
@@ -1218,7 +1230,7 @@ export default function Home() {
             <Button
               variant="outline"
               className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
-              onClick={() => togglePanelWithQrAccess("area")}
+              onClick={() => toggleFreePanel("area")}
             >
               <div className="flex items-center gap-4">
                 <UserCircle2 className="h-6 w-6 text-[#154c83]" />
@@ -1374,7 +1386,7 @@ export default function Home() {
             </Card>
           )}
 
-          {qrAccessGranted && openPanel === "register" && (
+          {openPanel === "register" && (
             <Card className="rounded-[24px] border-0 shadow-sm">
               <CardHeader>
                 <CardTitle>Mitglied registrieren</CardTitle>
@@ -1473,7 +1485,7 @@ export default function Home() {
             </Card>
           )}
 
-          {qrAccessGranted && openPanel === "area" && (
+          {openPanel === "area" && (
             <Card className="rounded-[24px] border-0 shadow-sm">
               <CardHeader>
                 <CardTitle>Mein Bereich</CardTitle>
@@ -1663,7 +1675,7 @@ export default function Home() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="rounded-2xl border border-yellow-300 bg-yellow-50 p-4 text-sm text-zinc-800">
-                      Dieser QR-Code öffnet den geschützten Zugang für Check-in, Registrierung, Probetraining und Mitgliederbereich im BoxGym.
+                      Dieser QR-Code öffnet den geschützten Zugang für Mitglieder-Check-in und Probetraining im BoxGym.
                     </div>
 
                     <div id="qr-print-area" className="flex flex-col gap-6 lg:flex-row lg:items-start rounded-[24px] bg-white p-4 print:block print:rounded-none print:p-0">
