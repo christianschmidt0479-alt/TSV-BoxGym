@@ -471,6 +471,7 @@ export default function Home() {
               await refreshAdminLists()
             }
             alert("E-Mail erfolgreich bestätigt. Du kannst jetzt vom Admin freigeschaltet werden.")
+            setOpenPanel(null)
 
             params.delete("verify")
             const nextQuery = params.toString()
@@ -775,8 +776,27 @@ export default function Home() {
         return
       }
 
-      if (!member.is_approved) {
-        alert("Mitglied ist noch nicht durch den Admin bestätigt. Bitte Trainer oder Admin ansprechen.")
+      if (!member.email_verified) {
+        alert("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink öffnen.")
+        return
+      }
+
+      const { data: existingMemberCheckins, error: existingMemberCheckinsError } = await supabase
+        .from("checkins")
+        .select("id")
+        .eq("member_id", member.id)
+
+      if (existingMemberCheckinsError) throw existingMemberCheckinsError
+
+      const existingCheckinCount = existingMemberCheckins?.length ?? 0
+
+      if (member.is_trial && existingCheckinCount >= 3) {
+        alert("Probemitglieder können maximal 3 Trainingseinheiten absolvieren.")
+        return
+      }
+
+      if (!member.is_trial && !member.is_approved && existingCheckinCount >= 6) {
+        alert("Ohne Admin-Freigabe sind maximal 6 Trainingseinheiten möglich. Bitte Trainer oder Admin ansprechen.")
         return
       }
 
@@ -978,9 +998,34 @@ export default function Home() {
       setMemberAreaFirstName(firstName)
       setMemberAreaLastName(lastName)
       setMemberAreaPin(pin)
+      setRegisterFirstName("")
+      setRegisterLastName("")
+      setRegisterBirthDate("")
+      setRegisterPin("")
+      setRegisterEmail("")
+      setRegisterPhone("")
 
       const verificationLink = `${window.location.origin}/?verify=${emailToken}`
-      alert(`Registrierung gespeichert.\n\nBitte E-Mail bestätigen.\n\nTest-Link (kopieren und im Browser öffnen):\n${verificationLink}`)
+
+      try {
+        const response = await fetch("/api/send-verification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: registerEmail.trim(),
+            name: `${firstName} ${lastName}`,
+            link: verificationLink,
+          }),
+        })
+
+        if (!response.ok) {
+          console.error("Mailversand fehlgeschlagen", await response.text())
+        }
+      } catch (error) {
+        console.error("Mailversand fehlgeschlagen", error)
+      }
+
+      alert("Registrierung gespeichert.\n\nBitte E-Mail bestätigen.")
     } catch (error) {
       console.error(error)
       alert("Fehler beim Anlegen des Mitglieds.")
@@ -1652,6 +1697,70 @@ export default function Home() {
               </div>
 
               <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+                E-Mail-Status: {memberAreaData.email_verified ? (
+                  <span className="font-semibold text-green-600">bestätigt</span>
+                ) : (
+                  <span className="font-semibold text-amber-600">noch nicht bestätigt</span>
+                )}
+              </div>
+              {memberAreaData.email_verified_at && (
+                <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+                  Bestätigt am: <span className="font-semibold">{new Date(memberAreaData.email_verified_at).toLocaleString("de-DE")}</span>
+                </div>
+              )}
+              <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+                Admin-Status: {memberAreaData.is_approved ? (
+                  <span className="font-semibold text-green-600">freigegeben</span>
+                ) : (
+                  <span className="font-semibold text-amber-600">noch nicht freigegeben</span>
+                )}
+              </div>
+              {!memberAreaData.is_approved && memberAreaData.email_verified && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+                  Deine E-Mail wurde bestätigt. Die finale Freigabe durch den Admin steht noch aus.
+                </div>
+              )}
+              {memberAreaData.is_approved && memberAreaData.email_verified && (
+                <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+                  Dein Konto ist vollständig freigegeben. Der Check-in ist jetzt möglich.
+                </div>
+              )}
+              {!memberAreaData.email_verified && !memberAreaData.is_approved && (
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+                  Status: Registrierung abgeschlossen. Als Nächstes muss zuerst die E-Mail bestätigt werden.
+                </div>
+              )}
+              {!memberAreaData.email_verified && memberAreaData.email && (
+                <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
+                  Bestätigungsadresse: <span className="font-semibold">{memberAreaData.email}</span>
+                </div>
+              )}
+              {!memberAreaData.email_verified && memberAreaData.email && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+                  Bitte Posteingang und Spam-Ordner prüfen und anschließend den Bestätigungslink öffnen.
+                </div>
+              )}
+              {!memberAreaData.email_verified && !memberAreaData.email && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  Für dieses Konto ist aktuell keine E-Mail-Adresse hinterlegt. Eine Bestätigung ist so nicht möglich.
+                </div>
+              )}
+              {!memberAreaData.email_verified && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+                  Bitte zuerst den Bestätigungslink aus der Registrierung öffnen. Erst danach ist die Freigabe durch den Admin möglich.
+                </div>
+              )}
+              {memberAreaData.is_trial && !memberAreaData.is_approved && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+                  Probemitglieder können maximal 3 Trainingseinheiten absolvieren.
+                  {typeof personalMonthVisits === "number" && (
+                    <div className="mt-1">
+                      Verbleibend: <span className="font-semibold">{Math.max(0, 3 - personalMonthVisits)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
                 Stammgruppe: <span className="font-semibold">{memberAreaData.base_group || "Nicht festgelegt"}</span>
                 {baseGroupPosition ? (
                   <>
@@ -1775,6 +1884,7 @@ export default function Home() {
                         <div className="rounded-2xl bg-zinc-100 p-4 text-sm break-all text-zinc-800">
                           {qrAccessUrl}
                         </div>
+                        <div className="text-[11px] text-zinc-400">Nur in der Testphase sichtbar.</div>
 
                         <div className="flex flex-wrap gap-3 print:hidden">
                           <Button
@@ -1835,12 +1945,61 @@ export default function Home() {
                               {member.email_verified && (
                                 <div className="text-green-600">Bereit für Admin-Freigabe</div>
                               )}
+                              {!member.is_approved && member.email_verified && (
+                                <div className="text-xs text-blue-600">Admin-Freigabe steht noch aus</div>
+                              )}
                               {member.email_verified_at && (
                                 <div className="text-zinc-500 text-xs">
                                   Bestätigt am: {new Date(member.email_verified_at).toLocaleString("de-DE")}
                                 </div>
                               )}
                               <div className="text-zinc-600">Telefon: {member.phone || "—"}</div>
+                              {member.is_trial ? (
+                                <div className="text-amber-600">Status: Probemitglied · max. 3 Einheiten</div>
+                              ) : !member.is_approved ? (
+                                <div className="text-blue-600">Status: registriert · max. 6 Einheiten bis Freigabe</div>
+                              ) : null}
+                              {(() => {
+                                const used = dbCheckins.filter((row) => row.member_id === member.id).length
+                                const limit = member.is_trial ? 3 : !member.is_approved ? 6 : null
+
+                                let color = "text-zinc-500"
+                                if (limit !== null) {
+                                  if (used >= limit) color = "text-red-600 font-semibold"
+                                  else if (used >= limit - 1) color = "text-amber-600 font-semibold"
+                                }
+
+                                return (
+                                  <div className={`text-xs ${color}`}>
+                                    Bisher genutzt: {used}{limit !== null ? ` / ${limit}` : ""}
+                                  </div>
+                                )
+                              })()}
+                              {(() => {
+                                const used = dbCheckins.filter((row) => row.member_id === member.id).length
+                                const limit = member.is_trial ? 3 : !member.is_approved ? 6 : null
+                                const remaining = limit !== null ? Math.max(0, limit - used) : null
+
+                                let color = "text-zinc-500"
+                                if (remaining !== null) {
+                                  if (remaining === 0) color = "text-red-600 font-semibold"
+                                  else if (remaining === 1) color = "text-amber-600 font-semibold"
+                                }
+
+                                return limit !== null ? (
+                                  <div className={`text-xs ${color}`}>
+                                    Verbleibend: <span className="font-semibold">{remaining}</span>
+                                  </div>
+                                ) : null
+                              })()}
+                              {member.is_trial ? (
+                                <div className="text-xs text-amber-700">Freigabe ist nach dem Probetraining möglich, aber nicht sofort zwingend.</div>
+                              ) : !member.is_approved ? (
+                                <div className="text-xs text-blue-700">Spätestens vor der 7. Einheit sollte die Admin-Freigabe erfolgen.</div>
+                              ) : null}
+                              {!member.is_approved && (
+                                <div className="text-xs text-zinc-500">Check-in-Limit wird automatisch beim Einchecken geprüft.</div>
+                              )}
                             </div>
 
                             <div className="space-y-2">
@@ -1907,7 +2066,7 @@ export default function Home() {
                               }}
                             >
                               <CheckCircle2 className="mr-2 h-4 w-4" />
-                              Freigeben
+                              {member.email_verified ? "Freigeben" : "Wartet auf E-Mail"}
                             </Button>
                             {/* Test: Kopieren des E-Mail-Bestätigungs-Links */}
                             {!member.email_verified && member.email && (
@@ -1915,9 +2074,23 @@ export default function Home() {
                                 Bestätigung wird an: {member.email}
                               </div>
                             )}
+                            {/* TESTPHASE: Zeige Bestätigungslink */}
+                            {!member.email_verified && member.email_verification_token && (
+                              <div className="mt-2 space-y-2">
+                                <div className="text-xs text-zinc-500">Testlink (manuell öffnen):</div>
+                                <div className="rounded-xl bg-zinc-100 p-2 text-xs break-all">
+                                  {`${typeof window !== "undefined" ? window.location.origin : ""}/?verify=${member.email_verification_token}`}
+                                </div>
+                              </div>
+                            )}
                             {!member.email_verified && !member.email && (
                               <div className="text-xs text-red-600">
                                 Keine E-Mail-Adresse hinterlegt
+                              </div>
+                            )}
+                            {!member.email_verified && member.email_verification_token && (
+                              <div className="text-xs text-green-700">
+                                Bestätigungs-Token vorhanden
                               </div>
                             )}
                             {!member.email_verified && member.email_verification_token && (
@@ -2102,6 +2275,7 @@ export default function Home() {
 
                                   <Button
                                     className={`${brand.primary} rounded-2xl text-white hover:bg-[#123d69]`}
+                                    disabled={!member.email_verified}
                                     onClick={async () => {
                                       try {
                                         const newPin = adminPinDrafts[member.id]?.trim()
