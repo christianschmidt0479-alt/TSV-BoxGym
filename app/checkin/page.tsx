@@ -2,12 +2,14 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { useEffect, useState } from "react"
-import { Clock3, UserPlus, UserRoundPlus, Users } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { Clock3, UserPlus, Users } from "lucide-react"
 
+import { GroupFilterBar } from "@/components/group-filter-bar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
+import { groupOptions, sessions } from "@/lib/boxgymSessions"
 
 function dateLabel(date: Date) {
   return date.toLocaleDateString("de-DE", {
@@ -25,8 +27,28 @@ function timeLabel(date: Date) {
   })
 }
 
+function getDayKey(date: Date) {
+  const day = date.getDay()
+
+  switch (day) {
+    case 1:
+      return "Montag"
+    case 2:
+      return "Dienstag"
+    case 3:
+      return "Mittwoch"
+    case 4:
+      return "Donnerstag"
+    case 5:
+      return "Freitag"
+    default:
+      return ""
+  }
+}
+
 export default function CheckinLandingPage() {
   const [now, setNow] = useState<Date | null>(null)
+  const [selectedGroup, setSelectedGroup] = useState("alle")
 
   useEffect(() => {
     const sync = () => setNow(new Date())
@@ -35,12 +57,25 @@ export default function CheckinLandingPage() {
     return () => window.clearInterval(interval)
   }, [])
 
-  const displayDate = now ? dateLabel(now) : "—"
-  const displayTime = now ? timeLabel(now) : "—"
+  const currentDate = now ?? new Date()
+  const displayDate = dateLabel(currentDate)
+  const displayTime = timeLabel(currentDate)
+  const todaysSessions = useMemo(() => {
+    const dayKey = getDayKey(currentDate)
+    return sessions.filter((session) => session.dayKey === dayKey)
+  }, [currentDate])
+
+  const filteredSessions = useMemo(() => {
+    if (selectedGroup === "alle") return todaysSessions
+    return todaysSessions.filter((session) => session.group === selectedGroup)
+  }, [selectedGroup, todaysSessions])
+
+  const selectedGroupLabel = selectedGroup === "alle" ? "Alle Gruppen" : selectedGroup
+  const selectedGroupQuery = selectedGroup === "alle" ? "" : `?group=${encodeURIComponent(selectedGroup)}`
 
   return (
     <div className="min-h-screen bg-zinc-50 px-4 py-2 text-zinc-900 md:px-6 md:py-8">
-      <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:gap-6">
+      <div className="mx-auto flex max-w-4xl flex-col gap-4 sm:gap-6">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2 rounded-[22px] bg-white p-2 shadow-sm">
           <div className="rounded-2xl bg-[#154c83] px-3 py-1.5 text-xs font-semibold text-white sm:text-sm">BoxGym Check-in</div>
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-600 sm:px-4 sm:py-2 sm:text-sm">
@@ -65,20 +100,13 @@ export default function CheckinLandingPage() {
                     className="h-8 w-auto rounded-md bg-white/90 p-1 sm:h-32"
                   />
                   <div className="min-w-0">
-                    <h1 className="text-lg font-bold tracking-tight sm:text-3xl">Willkommen im BoxGym</h1>
+                    <h1 className="text-lg font-bold tracking-tight sm:text-3xl">Check-in auswählen</h1>
                     <div className="mt-1 hidden items-center gap-2 text-[11px] leading-4 text-blue-50/85 sm:flex sm:text-base sm:leading-6">
-                      <span>Bereich auswählen.</span>
-                      <InfoHint text="Bitte jetzt den passenden Bereich auswählen." />
+                      <span>Erst Gruppe festlegen, dann Mitglied oder Probetraining öffnen.</span>
+                      <InfoHint text="Die Gruppenleiste bleibt direkt sichtbar und hilft gerade mobil beim schnellen Einstieg." />
                     </div>
                   </div>
                 </div>
-                <details className="mt-3 rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-[12px] text-blue-50 sm:hidden">
-                  <summary className="cursor-pointer list-none font-semibold">Mehr Infos</summary>
-                  <div className="mt-2 space-y-1 text-blue-50/85">
-                    <div>Mitglied, Probetraining oder Eintritt auswählen.</div>
-                    <div>Der Check-in öffnet sich automatisch zur Trainingszeit.</div>
-                  </div>
-                </details>
               </div>
 
               <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
@@ -93,8 +121,12 @@ export default function CheckinLandingPage() {
                       <div className="mt-1 text-xl font-bold sm:text-2xl">{displayTime}</div>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-2.5 sm:p-3">
-                      <div className="text-zinc-300">Zugang</div>
-                      <div className="mt-1 font-semibold">Per QR-Code</div>
+                      <div className="text-zinc-300">Gruppe</div>
+                      <div className="mt-1 font-semibold">{selectedGroupLabel}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/10 p-2.5 sm:p-3">
+                      <div className="text-zinc-300">Sessions heute</div>
+                      <div className="mt-1 font-semibold">{filteredSessions.length}</div>
                     </div>
                   </div>
                 </CardContent>
@@ -103,20 +135,33 @@ export default function CheckinLandingPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:gap-4">
+        <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
+          <CardContent className="p-4 sm:p-5">
+            <GroupFilterBar
+              options={groupOptions}
+              value={selectedGroup}
+              onChange={setSelectedGroup}
+              description="Die Auswahl gilt für den nächsten Einstieg in Mitglieder-Check-in oder Probetraining."
+            />
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4">
           <Button
             asChild
             variant="outline"
-            className="h-auto min-h-20 justify-start rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-3 text-left shadow-sm hover:border-[#154c83] hover:bg-[linear-gradient(180deg,#ffffff_0%,#f2f7fb_100%)] sm:min-h-24 sm:px-6 sm:py-4"
+            className="h-auto min-h-24 justify-start rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 text-left shadow-sm hover:border-[#154c83] hover:bg-[linear-gradient(180deg,#ffffff_0%,#f2f7fb_100%)] sm:px-6"
           >
-            <Link href="/checkin/mitglied">
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="rounded-2xl bg-[#154c83] p-2.5 text-white shadow-sm sm:p-3">
-                  <Users className="h-5 w-5 sm:h-6 sm:w-6" />
+            <Link href={`/checkin/mitglied${selectedGroupQuery}`}>
+              <div className="flex items-center gap-4">
+                <div className="rounded-2xl bg-[#154c83] p-3 text-white shadow-sm">
+                  <Users className="h-6 w-6" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-base font-semibold text-zinc-900">Mitglied</div>
-                  <div className="hidden text-sm leading-6 text-zinc-500 sm:block">Vorhandenes Mitglied direkt einchecken</div>
+                  <div className="text-lg font-semibold text-zinc-900">Mitglieder-Check-in</div>
+                  <div className="mt-1 text-sm leading-6 text-zinc-500">
+                    Vorhandene Mitglieder direkt für {selectedGroup === "alle" ? "die passende Gruppe" : selectedGroup} einchecken.
+                  </div>
                 </div>
               </div>
             </Link>
@@ -125,39 +170,34 @@ export default function CheckinLandingPage() {
           <Button
             asChild
             variant="outline"
-            className="h-auto min-h-20 justify-start rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-3 text-left shadow-sm hover:border-[#154c83] hover:bg-[linear-gradient(180deg,#ffffff_0%,#f2f7fb_100%)] sm:min-h-24 sm:px-6 sm:py-4"
+            className="h-auto min-h-24 justify-start rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 text-left shadow-sm hover:border-[#154c83] hover:bg-[linear-gradient(180deg,#ffffff_0%,#f2f7fb_100%)] sm:px-6"
           >
-            <Link href="/checkin/probetraining">
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="rounded-2xl bg-[#154c83] p-2.5 text-white shadow-sm sm:p-3">
-                  <UserPlus className="h-5 w-5 sm:h-6 sm:w-6" />
+            <Link href={`/checkin/probetraining${selectedGroupQuery}`}>
+              <div className="flex items-center gap-4">
+                <div className="rounded-2xl bg-[#154c83] p-3 text-white shadow-sm">
+                  <UserPlus className="h-6 w-6" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-base font-semibold text-zinc-900">Probetraining</div>
-                  <div className="hidden text-sm leading-6 text-zinc-500 sm:block">Neuen Gast für heute anmelden</div>
-                </div>
-              </div>
-            </Link>
-          </Button>
-
-          <Button
-            asChild
-            variant="outline"
-            className="h-auto min-h-20 justify-start rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-3 text-left shadow-sm hover:border-[#154c83] hover:bg-[linear-gradient(180deg,#ffffff_0%,#f2f7fb_100%)] sm:min-h-24 sm:px-6 sm:py-4"
-          >
-            <Link href="/checkin/beitritt">
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="rounded-2xl bg-[#154c83] p-2.5 text-white shadow-sm sm:p-3">
-                  <UserRoundPlus className="h-5 w-5 sm:h-6 sm:w-6" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-base font-semibold text-zinc-900">Boxbereich beitreten</div>
-                  <div className="hidden text-sm leading-6 text-zinc-500 sm:block">Neue Anmeldung für den Boxbereich starten</div>
+                  <div className="text-lg font-semibold text-zinc-900">Probetraining</div>
+                  <div className="mt-1 text-sm leading-6 text-zinc-500">
+                    Neue Gäste für {selectedGroup === "alle" ? "eine heutige Einheit" : selectedGroup} anmelden.
+                  </div>
                 </div>
               </div>
             </Link>
           </Button>
         </div>
+
+        <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle>Weitere Route</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button asChild variant="outline" className="min-h-12 w-full rounded-2xl">
+              <Link href="/registrieren">Zur Mitgliederregistrierung</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

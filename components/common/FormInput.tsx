@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { CheckCircle2, AlertCircle } from "lucide-react"
+import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react"
 import { ValidationResult } from "@/lib/formValidation"
 
 interface FormInputProps {
@@ -67,6 +67,11 @@ interface FormInputProps {
    * Required-Indikator
    */
   required?: boolean
+
+  /**
+   * Passwort-Sichtbarkeit per Button umschalten
+   */
+  allowPasswordToggle?: boolean
 }
 
 /**
@@ -88,13 +93,19 @@ export function FormInput({
   autoComplete,
   className = "",
   required = false,
+  allowPasswordToggle = false,
 }: FormInputProps) {
   const [touched, setTouched] = useState(false)
   const [validation, setValidation] = useState<ValidationResult | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
 
   const showError = touched || showValidation
   const hasError = showError && validation && !validation.valid
   const hasSuccess = touched && validation && validation.valid && value.trim().length > 0
+  const isPasswordField = type === "password"
+  const effectiveType = isPasswordField && allowPasswordToggle ? (showPassword ? "text" : "password") : type
+  const showPasswordToggle = isPasswordField && allowPasswordToggle
+  const hasRightAdornment = showPasswordToggle || hasSuccess || hasError
 
   // Validierung beim Input (aber zeige Fehler erst nach Blur oder showValidation=true)
   // Blur: Markiere als "touched" damit Fehler angezeigt werden
@@ -131,7 +142,7 @@ export function FormInput({
         <Input
           id={name}
           name={name}
-          type={type}
+          type={effectiveType}
           value={value}
           onChange={handleChange}
           onBlur={handleBlur}
@@ -141,22 +152,35 @@ export function FormInput({
           className={`
             rounded-2xl border-zinc-300 bg-white text-zinc-900
             transition-colors
+            ${hasRightAdornment ? "pr-12" : ""}
             ${hasError ? "border-red-400 focus:ring-red-200" : ""}
             ${hasSuccess ? "border-green-400 focus:ring-green-200" : ""}
             ${className}
           `}
         />
 
+        {showPasswordToggle && (
+          <button
+            type="button"
+            aria-label={showPassword ? "PIN ausblenden" : "PIN anzeigen"}
+            aria-pressed={showPassword}
+            className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full p-1 text-zinc-500 transition-colors hover:text-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#154c83]/30"
+            onClick={() => setShowPassword((prev) => !prev)}
+          >
+            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+          </button>
+        )}
+
         {/* Success Indicator */}
-        {hasSuccess && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+        {hasSuccess && !showPasswordToggle && (
+          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
             <CheckCircle2 className="h-5 w-5 text-green-500" />
           </div>
         )}
 
         {/* Error Indicator */}
-        {hasError && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+        {hasError && !showPasswordToggle && (
+          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
             <AlertCircle className="h-5 w-5 text-red-500" />
           </div>
         )}

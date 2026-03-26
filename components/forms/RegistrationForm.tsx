@@ -189,12 +189,14 @@ export function RegistrationForm({
           <FormInput
             label="PIN"
             name="pin"
+            type="password"
             value={pin}
             onChange={setPin}
             placeholder="z. B. A3X9Q1"
             required
             validator={(v: string) => validatePin(v)}
             showValidation={!!validationErrors.pin}
+            allowPasswordToggle
           />
 
           <FormInput

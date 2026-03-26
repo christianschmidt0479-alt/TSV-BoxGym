@@ -51,11 +51,14 @@ export default function TrialCheckinPage() {
   const [trialEmail, setTrialEmail] = useState("")
   const [trialPhone, setTrialPhone] = useState("")
   const [selectedSessionId, setSelectedSessionId] = useState<string>("")
+  const [requestedGroup, setRequestedGroup] = useState("")
 
   const liveDate = now ? todayStringFromDate(now) : todayString()
   useEffect(() => {
     setNow(new Date())
     window.localStorage.setItem(QR_ACCESS_STORAGE_KEY, String(Date.now() + QR_ACCESS_MINUTES * 60 * 1000))
+    const params = new URLSearchParams(window.location.search)
+    setRequestedGroup(params.get("group")?.trim() ?? "")
   }, [])
 
   const todaysSessions = useMemo(() => {
@@ -63,14 +66,23 @@ export default function TrialCheckinPage() {
     return sessions.filter((session) => session.dayKey === dayKey)
   }, [liveDate])
 
-  const displaySessions = todaysSessions
+  const displaySessions = useMemo(() => {
+    if (!requestedGroup) return todaysSessions
+    return todaysSessions.filter((session) => session.group === requestedGroup)
+  }, [requestedGroup, todaysSessions])
   const selectedSession = displaySessions.find((session) => session.id === selectedSessionId) ?? displaySessions[0] ?? null
 
   useEffect(() => {
-    if (displaySessions.length === 0) return
-    const activeId = displaySessions[0].id
-    setSelectedSessionId((current) => current || activeId)
-  }, [displaySessions])
+    if (displaySessions.length === 0) {
+      setSelectedSessionId("")
+      return
+    }
+
+    const exists = displaySessions.some((session) => session.id === selectedSessionId)
+    if (!exists) {
+      setSelectedSessionId(displaySessions[0].id)
+    }
+  }, [displaySessions, selectedSessionId])
 
   async function handleTrialCheckin() {
     const firstName = trialFirstName.trim()

@@ -9,10 +9,28 @@ type TrainerAccessSnapshot = {
   accountRole: TrainerRole
   linkedMemberId: string | null
   accountEmail: string
+  accountFirstName: string
+  accountLastName: string
 }
 
-const SERVER_SNAPSHOT: TrainerAccessSnapshot = { resolved: false, role: "", accountRole: "", linkedMemberId: null, accountEmail: "" }
-const EMPTY_SNAPSHOT: TrainerAccessSnapshot = { resolved: true, role: "", accountRole: "", linkedMemberId: null, accountEmail: "" }
+const SERVER_SNAPSHOT: TrainerAccessSnapshot = {
+  resolved: false,
+  role: "",
+  accountRole: "",
+  linkedMemberId: null,
+  accountEmail: "",
+  accountFirstName: "",
+  accountLastName: "",
+}
+const EMPTY_SNAPSHOT: TrainerAccessSnapshot = {
+  resolved: true,
+  role: "",
+  accountRole: "",
+  linkedMemberId: null,
+  accountEmail: "",
+  accountFirstName: "",
+  accountLastName: "",
+}
 let cachedSnapshot: TrainerAccessSnapshot = EMPTY_SNAPSHOT
 
 function getSnapshot(): TrainerAccessSnapshot {
@@ -20,7 +38,7 @@ function getSnapshot(): TrainerAccessSnapshot {
     return SERVER_SNAPSHOT
   }
 
-  const { role, accountRole, linkedMemberId, accountEmail } = readTrainerAccess()
+  const { role, accountRole, linkedMemberId, accountEmail, accountFirstName, accountLastName } = readTrainerAccess()
   if (!role) {
     cachedSnapshot = EMPTY_SNAPSHOT
     return cachedSnapshot
@@ -31,12 +49,14 @@ function getSnapshot(): TrainerAccessSnapshot {
     cachedSnapshot.role === role &&
     cachedSnapshot.accountRole === accountRole &&
     cachedSnapshot.linkedMemberId === linkedMemberId &&
-    cachedSnapshot.accountEmail === accountEmail
+    cachedSnapshot.accountEmail === accountEmail &&
+    cachedSnapshot.accountFirstName === accountFirstName &&
+    cachedSnapshot.accountLastName === accountLastName
   ) {
     return cachedSnapshot
   }
 
-  cachedSnapshot = { resolved: true, role, accountRole, linkedMemberId, accountEmail }
+  cachedSnapshot = { resolved: true, role, accountRole, linkedMemberId, accountEmail, accountFirstName, accountLastName }
   return cachedSnapshot
 }
 

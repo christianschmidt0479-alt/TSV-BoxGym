@@ -42,6 +42,7 @@ export default function TrainerZugangPage() {
   const [trainerRegisterPin, setTrainerRegisterPin] = useState("")
   const [trainerRegisterPinConfirm, setTrainerRegisterPinConfirm] = useState("")
   const [activeRole, setActiveRole] = useState<"" | "trainer" | "admin">("")
+  const [sessionChecking, setSessionChecking] = useState(true)
 
   useEffect(() => {
     const trainerAccess = readTrainerAccess()
@@ -62,42 +63,75 @@ export default function TrainerZugangPage() {
         setTrainerLoginEmail(requestedEmail)
       }
 
-      if (!verifyToken) return
+      if (verifyToken) {
+        void (async () => {
+          try {
+            const response = await fetch("/api/public/trainer-access", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "verify_email",
+                token: verifyToken,
+              }),
+            })
 
-      ;(async () => {
-        try {
-          const response = await fetch("/api/public/trainer-access", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "verify_email",
-              token: verifyToken,
-            }),
-          })
+            if (!response.ok) {
+              const message = await response.text()
+              alert(message || "Fehler bei der Trainer-E-Mail-Bestätigung.")
+              return
+            }
 
-          if (!response.ok) {
-            const message = await response.text()
-            alert(message || "Fehler bei der Trainer-E-Mail-Bestätigung.")
-            return
+            const result = (await response.json()) as { email?: string }
+            alert("Trainer-E-Mail erfolgreich bestätigt. Der Admin kann den Zugang jetzt freigeben.")
+            setTrainerAuthView("login")
+            setTrainerLoginEmail(result.email ?? "")
+
+            params.delete(TRAINER_VERIFY_PARAM)
+            const nextQuery = params.toString()
+            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
+            window.history.replaceState({}, "", nextUrl)
+          } catch (error) {
+            console.error(error)
+            alert("Fehler bei der Trainer-E-Mail-Bestätigung.")
           }
-
-          const result = (await response.json()) as { email?: string }
-          alert("Trainer-E-Mail erfolgreich bestätigt. Der Admin kann den Zugang jetzt freigeben.")
-          setTrainerAuthView("login")
-          setTrainerLoginEmail(result.email ?? "")
-
-          params.delete(TRAINER_VERIFY_PARAM)
-          const nextQuery = params.toString()
-          const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
-          window.history.replaceState({}, "", nextUrl)
-        } catch (error) {
-          console.error(error)
-          alert("Fehler bei der Trainer-E-Mail-Bestätigung.")
-        }
-      })()
+        })()
+      }
     } catch (error) {
       console.error("Trainer verify handling failed", error)
     }
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/trainer-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+
+        if (!response.ok) {
+          await clearTrainerAccessSession()
+          setActiveRole("")
+          return
+        }
+
+        const payload = (await response.json()) as TrainerAuthSuccessPayload
+        persistTrainerAccess(
+          payload.role,
+          payload.sessionUntil,
+          payload.accountRole,
+          payload.linkedMemberId,
+          {
+            email: payload.accountEmail,
+            firstName: payload.accountFirstName,
+            lastName: payload.accountLastName,
+          }
+        )
+        setActiveRole(payload.role)
+      } catch (error) {
+        console.error("Trainer session sync failed", error)
+      } finally {
+        setSessionChecking(false)
+      }
+    })()
   }, [])
 
   function persistTrainerLogin(payload: TrainerAuthSuccessPayload) {
@@ -113,7 +147,7 @@ export default function TrainerZugangPage() {
       }
     )
     setActiveRole(payload.role)
-    router.push(payload.role === "admin" ? "/verwaltung" : "/trainer")
+    window.location.assign(payload.role === "admin" ? "/verwaltung" : "/trainer")
   }
 
   async function loginTrainerWithCredentials(email: string, pin: string) {
@@ -222,6 +256,8 @@ export default function TrainerZugangPage() {
     await clearTrainerAccessSession()
     setActiveRole("")
     setTrainerPinInput("")
+    router.replace("/trainer-zugang")
+    router.refresh()
   }
 
   return (
@@ -281,7 +317,13 @@ export default function TrainerZugangPage() {
           </Card>
         ) : null}
 
-        {!activeRole ? (
+        {!activeRole && sessionChecking ? (
+          <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
+            <CardContent className="p-5 text-sm text-zinc-500">Trainer-Session wird geprüft...</CardContent>
+          </Card>
+        ) : null}
+
+        {!activeRole && !sessionChecking ? (
           <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
             <CardContent className="p-5">
               <Tabs value={trainerAuthView} onValueChange={(value) => setTrainerAuthView(value as "login" | "register")}>
