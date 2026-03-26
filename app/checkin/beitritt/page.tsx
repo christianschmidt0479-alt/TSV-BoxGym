@@ -130,7 +130,7 @@ export default function CheckinJoinPage() {
     }
 
     if (!registerPhone.trim()) {
-      alert(isBoxzwergeRegistration ? "Bitte Eltern-Telefonnummer angeben." : "Bitte Telefonnummer angeben.")
+      alert("Bitte Telefonnummer eingeben.")
       return
     }
 
@@ -266,22 +266,22 @@ export default function CheckinJoinPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Vorname</Label>
+                  <Label>Vorname <span className="ml-1 text-red-500">*</span></Label>
                   <Input value={registerFirstName} onChange={(e) => setRegisterFirstName(e.target.value)} placeholder="Vorname" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Nachname</Label>
+                  <Label>Nachname <span className="ml-1 text-red-500">*</span></Label>
                   <Input value={registerLastName} onChange={(e) => setRegisterLastName(e.target.value)} placeholder="Nachname" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Geburtsdatum</Label>
+                <Label>Geburtsdatum <span className="ml-1 text-red-500">*</span></Label>
                 <Input type="date" value={registerBirthDate} onChange={(e) => setRegisterBirthDate(e.target.value)} className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
               </div>
 
               <div className="space-y-2">
-                <Label>Stammgruppe</Label>
+                <Label>Stammgruppe <span className="ml-1 text-red-500">*</span></Label>
                 <Select value={registerBaseGroup} onValueChange={setRegisterBaseGroup}>
                   <SelectTrigger className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900">
                     <SelectValue placeholder="Gruppe auswählen" />
@@ -299,7 +299,7 @@ export default function CheckinJoinPage() {
               {registerBaseGroup === "Boxzwerge" ? (
                 <>
                   <div className="space-y-2">
-                    <Label>Eltern-Zugangscode</Label>
+                    <Label>Eltern-Zugangscode <span className="ml-1 text-red-500">*</span></Label>
                     <PasswordInput
                       value={registerParentAccessCode}
                       onChange={(e) => setRegisterParentAccessCode(e.target.value)}
@@ -309,7 +309,7 @@ export default function CheckinJoinPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Elternteil / Notfallkontakt</Label>
+                    <Label>Elternteil / Notfallkontakt <span className="ml-1 text-red-500">*</span></Label>
                     <Input
                       value={registerGuardianName}
                       onChange={(e) => setRegisterGuardianName(e.target.value)}
@@ -320,7 +320,7 @@ export default function CheckinJoinPage() {
                 </>
               ) : (
                 <div className="space-y-2">
-                  <Label>Zugangspin selbst wählen</Label>
+                  <Label>Zugangspin selbst wählen <span className="ml-1 text-red-500">*</span></Label>
                   <PasswordInput
                     value={registerPin}
                     onChange={(e) => setRegisterPin(e.target.value)}
@@ -332,7 +332,7 @@ export default function CheckinJoinPage() {
               )}
 
               <div className="space-y-2">
-                <Label>{registerBaseGroup === "Boxzwerge" ? "Eltern-E-Mail" : "E-Mail"}</Label>
+                <Label>{registerBaseGroup === "Boxzwerge" ? "Eltern-E-Mail *" : "E-Mail *"}</Label>
                 <Input
                   type="email"
                   value={registerEmail}
@@ -343,11 +343,11 @@ export default function CheckinJoinPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>{registerBaseGroup === "Boxzwerge" ? "Eltern-Telefon / Notfallkontakt" : "Telefonnummer"}</Label>
+                <Label>{registerBaseGroup === "Boxzwerge" ? "Eltern-Telefon / Notfallkontakt *" : "Telefon *"}</Label>
                 <Input
                   value={registerPhone}
                   onChange={(e) => setRegisterPhone(e.target.value)}
-                  placeholder={registerBaseGroup === "Boxzwerge" ? "Telefonnummer eines Elternteils" : "Telefonnummer"}
+                  placeholder="z. B. +49 123 456789"
                   className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
                 />
               </div>

@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     }
 
     if (!phone) {
-      return new NextResponse(isBoxzwergeRegistration ? "Bitte Eltern-Telefonnummer angeben." : "Bitte Telefonnummer angeben.", { status: 400 })
+      return new NextResponse("Telefonnummer ist erforderlich.", { status: 400 })
     }
 
     if (!baseGroup) {

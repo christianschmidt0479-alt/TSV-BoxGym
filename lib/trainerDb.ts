@@ -11,6 +11,21 @@ export const trainerLicenseOptions = [
 
 export type TrainerLicense = (typeof trainerLicenseOptions)[number]
 
+type SupabaseErrorLike = {
+  code?: string
+  message?: string
+  details?: string | null
+}
+
+const OPTIONAL_TRAINER_ACCOUNT_COLUMNS = ["linked_member_id", "phone", "trainer_license", "role"] as const
+
+export class TrainerAccountEmailConflictError extends Error {
+  constructor(public email: string) {
+    super("Diese E-Mail-Adresse ist bereits vergeben.")
+    this.name = "TrainerAccountEmailConflictError"
+  }
+}
+
 function isMissingColumnError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
   return (
@@ -18,6 +33,22 @@ function isMissingColumnError(error: { message?: string } | null) {
     (message.includes("could not find") && message.includes("column")) ||
     message.includes("schema cache")
   )
+}
+
+function isUniqueConstraintError(error: SupabaseErrorLike | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  const details = error?.details?.toLowerCase() ?? ""
+  return error?.code === "23505" || message.includes("duplicate key") || details.includes("already exists")
+}
+
+function isTrainerEmailConflictError(error: SupabaseErrorLike | null) {
+  const message = `${error?.message ?? ""} ${error?.details ?? ""}`.toLowerCase()
+  return isUniqueConstraintError(error) && (message.includes("email") || message.includes("trainer_accounts_email"))
+}
+
+function findMissingOptionalColumn(error: SupabaseErrorLike | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  return OPTIONAL_TRAINER_ACCOUNT_COLUMNS.find((column) => message.includes(column)) ?? null
 }
 
 export type TrainerAccountRecord = {
@@ -49,6 +80,10 @@ type TrainerAccountInput = {
   linked_member_id?: string | null
 }
 
+export function isTrainerAccountEmailConflict(value: unknown): value is TrainerAccountEmailConflictError {
+  return value instanceof TrainerAccountEmailConflictError
+}
+
 export async function findTrainerByEmail(email: string) {
   const { data, error } = await supabase
     .from("trainer_accounts")
@@ -63,13 +98,21 @@ export async function findTrainerByEmail(email: string) {
 }
 
 export async function createTrainerAccount(input: TrainerAccountInput) {
+  let passwordHash = ""
+  try {
+    passwordHash = await hashTrainerPin(input.pin)
+  } catch (error) {
+    console.error("[trainerDb.createTrainerAccount] pin hash failed", { email: input.email.trim().toLowerCase() }, error)
+    throw error
+  }
+
   const payload = {
     first_name: input.first_name.trim(),
     last_name: input.last_name.trim(),
     email: input.email.trim().toLowerCase(),
     phone: input.phone?.trim() || null,
     trainer_license: input.trainer_license ?? "Keine DOSB-Lizenz",
-    password_hash: await hashTrainerPin(input.pin),
+    password_hash: passwordHash,
     email_verified: false,
     email_verified_at: null,
     email_verification_token: input.email_verification_token,
@@ -79,42 +122,56 @@ export async function createTrainerAccount(input: TrainerAccountInput) {
     linked_member_id: input.linked_member_id ?? null,
   }
 
-  const primary = await supabase
-    .from("trainer_accounts")
-    .insert([payload])
-    .select("*")
-    .single()
+  const attemptPayload: Record<string, unknown> = { ...payload }
+  let removedOptionalColumns = 0
 
-  if (!primary.error) {
-    return primary.data as TrainerAccountRecord
+  while (true) {
+    const result = await supabase
+      .from("trainer_accounts")
+      .insert([attemptPayload])
+      .select("*")
+      .single()
+
+    if (!result.error) {
+      return result.data as TrainerAccountRecord
+    }
+
+    if (isTrainerEmailConflictError(result.error)) {
+      console.warn("[trainerDb.createTrainerAccount] duplicate email", { email: payload.email })
+      throw new TrainerAccountEmailConflictError(payload.email)
+    }
+
+    if (!isMissingColumnError(result.error) || removedOptionalColumns >= OPTIONAL_TRAINER_ACCOUNT_COLUMNS.length) {
+      console.error(
+        "[trainerDb.createTrainerAccount] db insert failed",
+        { email: payload.email, attemptedColumns: Object.keys(attemptPayload) },
+        result.error
+      )
+      throw result.error
+    }
+
+    const missingColumn =
+      findMissingOptionalColumn(result.error) ??
+      OPTIONAL_TRAINER_ACCOUNT_COLUMNS.find((column) => column in attemptPayload) ??
+      null
+
+    if (!missingColumn) {
+      console.error(
+        "[trainerDb.createTrainerAccount] missing column fallback exhausted",
+        { email: payload.email, attemptedColumns: Object.keys(attemptPayload) },
+        result.error
+      )
+      throw result.error
+    }
+
+    console.warn("[trainerDb.createTrainerAccount] optional column missing during insert", {
+      email: payload.email,
+      column: missingColumn,
+      step: missingColumn === "role" ? "role assignment" : "db insert",
+    })
+    delete attemptPayload[missingColumn]
+    removedOptionalColumns += 1
   }
-
-  if (!isMissingColumnError(primary.error)) {
-    throw primary.error
-  }
-
-  const fallbackPayload = {
-    first_name: payload.first_name,
-    last_name: payload.last_name,
-    email: payload.email,
-    phone: payload.phone,
-    trainer_license: payload.trainer_license,
-    password_hash: payload.password_hash,
-    email_verified: payload.email_verified,
-    email_verified_at: payload.email_verified_at,
-    email_verification_token: payload.email_verification_token,
-    is_approved: payload.is_approved,
-    approved_at: payload.approved_at,
-    role: payload.role,
-  }
-  const fallback = await supabase
-    .from("trainer_accounts")
-    .insert([fallbackPayload])
-    .select("*")
-    .single()
-
-  if (fallback.error) throw fallback.error
-  return fallback.data as TrainerAccountRecord
 }
 
 export async function verifyTrainerEmail(token: string) {

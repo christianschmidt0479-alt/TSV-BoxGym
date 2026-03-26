@@ -87,7 +87,7 @@ export function RegistrationForm({
       errors.email = emailValidation.error || ""
     }
 
-    const phoneValidation = validatePhone(phone, false)
+    const phoneValidation = validatePhone(phone, true)
     if (!phoneValidation.valid) {
       errors.phone = phoneValidation.error || ""
     }
@@ -143,8 +143,8 @@ export function RegistrationForm({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <FormInput
-              label="Vorname"
-              name="firstName"
+            label="Vorname"
+            name="firstName"
               value={firstName}
               onChange={setFirstName}
               placeholder="Vorname"
@@ -154,7 +154,7 @@ export function RegistrationForm({
             />
 
             <FormInput
-              label="Nachname"
+            label="Nachname"
               name="lastName"
               value={lastName}
               onChange={setLastName}
@@ -212,13 +212,14 @@ export function RegistrationForm({
           />
 
           <FormInput
-            label="Telefonnummer (freiwillig)"
+            label="Telefon"
             name="phone"
             value={phone}
             onChange={setPhone}
-            placeholder="+49 123 456789"
-            validator={(v: string) => validatePhone(v, false)}
+            placeholder="z. B. +49 123 456789"
+            validator={(v: string) => validatePhone(v, true)}
             showValidation={!!validationErrors.phone}
+            required
           />
 
           {submitError && (

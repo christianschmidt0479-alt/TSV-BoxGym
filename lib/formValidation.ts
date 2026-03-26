@@ -88,7 +88,7 @@ export function validatePhone(value: string, required: boolean = false): Validat
   const trimmed = value.trim()
 
   if (!trimmed) {
-    return { valid: !required, error: required ? "Telefonnummer ist erforderlich." : undefined }
+    return { valid: !required, error: required ? "Bitte Telefonnummer eingeben." : undefined }
   }
 
   // Nur Ziffern, +, -, Klammern, Leerzeichen erlaubt
