@@ -14,9 +14,8 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { clearRememberedMemberDevice, persistRememberedMemberDevice, readRememberedMemberDevice } from "@/lib/memberDeviceAccess"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { sessions } from "@/lib/boxgymSessions"
+import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { QR_ACCESS_MINUTES, QR_ACCESS_STORAGE_KEY } from "@/lib/qrAccess"
-
-const MEMBER_LOGIN_SECRET_REGEX = /^[A-Za-z0-9]{6,16}$/
 
 function todayString() {
   const today = new Date()
@@ -150,8 +149,8 @@ export default function MemberCheckinPage() {
       return
     }
 
-    if (!isBoxzwergeCheckin && !MEMBER_LOGIN_SECRET_REGEX.test(pin)) {
-      alert("Die PIN muss 6 bis 16 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten.")
+    if (!isBoxzwergeCheckin && !isValidPin(pin)) {
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -407,7 +406,10 @@ export default function MemberCheckinPage() {
                 {selectedSession?.group === "Boxzwerge" ? (
                   <Input type="date" value={memberBirthDate} onChange={(e) => setMemberBirthDate(e.target.value)} className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                 ) : (
-                  <PasswordInput value={memberPin} onChange={(e) => setMemberPin(e.target.value)} placeholder="6 bis 16 Zeichen" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                  <>
+                    <PasswordInput value={memberPin} onChange={(e) => setMemberPin(e.target.value)} placeholder="6 bis 16 Zeichen" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                    <div className="text-xs text-zinc-500">{PIN_HINT}</div>
+                  </>
                 )}
               </div>
 

@@ -14,8 +14,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { hashSecret } from "@/lib/clientCrypto"
 import { groupOptions } from "@/lib/boxgymSessions"
-
-const MEMBER_SECRET_REGEX = /^[A-Za-z0-9]{8,16}$/
+import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 
 function getStoredString(key: string) {
   if (typeof window === "undefined") return ""
@@ -129,8 +128,8 @@ export default function MitgliedRegistrierenPage() {
       return
     }
 
-    if (!isBoxzwergeRegistration && !MEMBER_SECRET_REGEX.test(pin)) {
-      alert("Der Zugangscode muss 8 bis 16 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten.")
+    if (!isBoxzwergeRegistration && !isValidPin(pin)) {
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -149,8 +148,8 @@ export default function MitgliedRegistrierenPage() {
       return
     }
 
-    if (isBoxzwergeRegistration && !MEMBER_SECRET_REGEX.test(parentAccessCode)) {
-      alert("Bitte einen Eltern-Zugangscode mit 8 bis 16 Zeichen angeben.")
+    if (isBoxzwergeRegistration && !isValidPin(parentAccessCode)) {
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -329,7 +328,7 @@ export default function MitgliedRegistrierenPage() {
                   <PasswordInput
                     value={registerParentAccessCode}
                     onChange={(e) => setRegisterParentAccessCode(e.target.value)}
-                    placeholder="8 bis 16 Zeichen"
+                    placeholder="6 bis 16 Zeichen"
                     className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                   />
                 </div>
@@ -392,7 +391,7 @@ export default function MitgliedRegistrierenPage() {
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
                 {registerBaseGroup === "Boxzwerge"
                   ? "Bei Boxzwergen registrieren Eltern ihre Kinder. Eltern-E-Mail, Eltern-Telefon, Eltern-Zugangscode und ein Notfallkontakt sind Pflicht. Mit demselben Elternkonto können später 2 oder 3 Kinder verwaltet werden."
-                  : "Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Geschlecht, Telefonnummer und E-Mail sind Pflichtdaten. Der Zugangspin wird bei der Registrierung selbst gewählt und muss 8 bis 16 Zeichen lang sein."}
+                  : `Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Geschlecht, Telefonnummer und E-Mail sind Pflichtdaten. Der Zugangspin wird bei der Registrierung selbst gewählt. ${PIN_HINT}`}
               </div>
             </form>
           </CardContent>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
+import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 type MemberProfileBody =
@@ -61,13 +62,18 @@ export async function POST(request: Request) {
     const supabase = getServerSupabase()
 
     if (body.action === "save_profile") {
+      const memberPin = body.memberPin?.trim() || ""
+      if (memberPin && !isValidPin(memberPin)) {
+        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+      }
+
       const { data: member, error: memberError } = await supabase
         .from("members")
         .update({
           email: body.email?.trim() || null,
           phone: body.phone?.trim() || null,
           guardian_name: body.guardianName?.trim() || null,
-          member_pin: body.memberPin?.trim() || undefined,
+          member_pin: memberPin || undefined,
         })
         .eq("id", body.memberId)
         .select("*")

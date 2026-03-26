@@ -12,6 +12,7 @@ import { InfoHint } from "@/components/ui/info-hint"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
+import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 export type ProfileSection = "wettkampf" | "gewicht" | "einstellungen"
 
 type CheckinRow = {
@@ -49,7 +50,6 @@ type MemberRecord = {
 type MemberAreaSnapshot = {
   member: MemberRecord
   memberAttendanceRows: CheckinRow[]
-  requiresPinUpdate?: boolean
 }
 
 function getStoredString(key: string) {
@@ -152,7 +152,6 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
   const [memberAttendanceRows, setMemberAttendanceRows] = useState<CheckinRow[]>([])
   const [newMemberPin, setNewMemberPin] = useState("")
   const [confirmNewMemberPin, setConfirmNewMemberPin] = useState("")
-  const [pinUpdateRequired, setPinUpdateRequired] = useState(false)
   const profileSection = section
 
   useEffect(() => {
@@ -189,7 +188,6 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
         setMemberAreaData(snapshot.member)
         setProfileEmail(snapshot.member.email || "")
         setProfilePhone(snapshot.member.phone || "")
-        setPinUpdateRequired(Boolean(snapshot.requiresPinUpdate))
       } catch (error) {
         console.error(error)
         router.replace("/mein-bereich")
@@ -324,11 +322,6 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
             <div className="rounded-2xl border bg-white p-4">
               {profileSection === "einstellungen" ? (
                 <div className="space-y-6">
-                  {pinUpdateRequired && (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                      Dein Zugangscode ist noch kürzer als 8 Zeichen. Bitte passe ihn jetzt auf 8 bis 16 Zeichen an.
-                    </div>
-                  )}
                   <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                     <div className="mb-4 flex items-center gap-2 font-semibold text-zinc-900">
                       <ShieldCheck className="h-4 w-4 text-[#154c83]" />
@@ -347,8 +340,8 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
 
                         const trimmedNewPin = newMemberPin.trim()
                         if (trimmedNewPin || confirmNewMemberPin.trim()) {
-                          if (!/^[A-Za-z0-9]{8,16}$/.test(trimmedNewPin)) {
-                            alert("Der neue Zugangscode muss 8 bis 16 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten.")
+                          if (!isValidPin(trimmedNewPin)) {
+                            alert(PIN_REQUIREMENTS_MESSAGE)
                             return
                           }
 
@@ -389,7 +382,6 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                               localStorage.setItem("tsv_member_area_pin", JSON.stringify(trimmedNewPin))
                               setNewMemberPin("")
                               setConfirmNewMemberPin("")
-                              setPinUpdateRequired(false)
                             }
                             alert("Kontaktdaten gespeichert.")
                           } catch (error) {
@@ -413,11 +405,12 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                         </div>
                         <div className="space-y-2">
                           <Label>Neuer Zugangscode</Label>
-                          <PasswordInput value={newMemberPin} onChange={(event) => setNewMemberPin(event.target.value)} placeholder="8 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                          <PasswordInput value={newMemberPin} onChange={(event) => setNewMemberPin(event.target.value)} placeholder="6 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                          <div className="text-xs text-zinc-500">{PIN_HINT}</div>
                         </div>
                         <div className="space-y-2">
                           <Label>Zugangscode wiederholen</Label>
-                          <PasswordInput value={confirmNewMemberPin} onChange={(event) => setConfirmNewMemberPin(event.target.value)} placeholder="8 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                          <PasswordInput value={confirmNewMemberPin} onChange={(event) => setConfirmNewMemberPin(event.target.value)} placeholder="6 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                         </div>
                       </div>
 

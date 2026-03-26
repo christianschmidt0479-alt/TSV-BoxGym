@@ -17,6 +17,7 @@ import {
   type ParentAccountRow,
 } from "@/lib/parentAccountsDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
+import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { supabase } from "@/lib/supabaseClient"
 
@@ -100,8 +101,6 @@ type MemberAreaBody =
       pin?: string
     }
 
-const MEMBER_LOGIN_SECRET_REGEX = /^[A-Za-z0-9]{6,16}$/
-const MEMBER_SECRET_REGEX = /^[A-Za-z0-9]{8,16}$/
 const MEMBER_LOGIN_ERROR_MESSAGE = "Mitglied nicht gefunden oder PIN nicht korrekt."
 const MEMBER_MISSING_EMAIL_MESSAGE =
   "Für dieses Konto ist noch keine E-Mail-Adresse hinterlegt. Bitte Trainer oder Admin ansprechen."
@@ -249,7 +248,7 @@ async function resolveEditableMember(request: Request, body: { memberId?: string
   const loginEmail = body.loginEmail?.trim().toLowerCase() ?? ""
   const pin = body.pin?.trim() ?? ""
 
-  if (!loginEmail || !MEMBER_LOGIN_SECRET_REGEX.test(pin)) {
+  if (!loginEmail || !isValidPin(pin)) {
     return null
   }
 
@@ -284,8 +283,8 @@ export async function POST(request: Request) {
         return new NextResponse("Bitte E-Mail und PIN eingeben.", { status: 400 })
       }
 
-      if (!MEMBER_LOGIN_SECRET_REGEX.test(pin)) {
-        return new NextResponse("Die PIN muss 6 bis 16 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten.", { status: 400 })
+      if (!isValidPin(pin)) {
+        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
       const memberMatch = await findMemberByEmailAndPin(email, pin)
@@ -298,10 +297,7 @@ export async function POST(request: Request) {
         return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 404 })
       }
 
-      return NextResponse.json({
-        ...(await buildMemberSnapshot(member)),
-        requiresPinUpdate: pin.length < 8,
-      })
+      return NextResponse.json(await buildMemberSnapshot(member))
     }
 
     if (body.action === "trainer_linked_member") {
@@ -421,8 +417,8 @@ export async function POST(request: Request) {
       }
 
       const newPin = body.newPin?.trim() ?? ""
-      if (newPin && !MEMBER_SECRET_REGEX.test(newPin)) {
-        return new NextResponse("Der Zugangscode muss 8 bis 16 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten.", { status: 400 })
+      if (newPin && !isValidPin(newPin)) {
+        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
       const updated = await updateMemberProfile(member.id, {

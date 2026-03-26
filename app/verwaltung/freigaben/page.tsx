@@ -9,9 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
-
-const MEMBER_SECRET_REGEX = /^[A-Za-z0-9]{8,16}$/
 
 type PendingMemberRecord = {
   id: string
@@ -285,9 +284,10 @@ export default function FreigabenPage() {
                         onChange={(event) =>
                           setPinDrafts((prev) => ({ ...prev, [member.id]: event.target.value }))
                         }
-                        placeholder="optional, 8 bis 16 Zeichen"
+                        placeholder="optional, 6 bis 16 Zeichen"
                         className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                       />
+                      <div className="text-xs text-zinc-500">{PIN_HINT}</div>
                     </div>
 
                     <div className="flex flex-col gap-2">
@@ -301,8 +301,8 @@ export default function FreigabenPage() {
                           }
 
                           const newPin = (pinDrafts[member.id] ?? "").trim()
-                          if (newPin && !MEMBER_SECRET_REGEX.test(newPin)) {
-                            alert("Neuer Zugangscode muss 8 bis 16 Zeichen lang sein.")
+                          if (newPin && !isValidPin(newPin)) {
+                            alert(PIN_REQUIREMENTS_MESSAGE)
                             return
                           }
 

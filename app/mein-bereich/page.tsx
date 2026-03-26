@@ -15,6 +15,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { hashSecret } from "@/lib/clientCrypto"
 import { sessions } from "@/lib/boxgymSessions"
+import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { readTrainerAccess } from "@/lib/trainerAccess"
 
 type CheckinRow = {
@@ -72,11 +73,7 @@ type MemberAreaSnapshot = {
   trainingStreak: number
   baseGroupMonthVisits: number
   baseGroupPosition: number | null
-  requiresPinUpdate?: boolean
 }
-
-const MEMBER_LOGIN_SECRET_REGEX = /^[A-Za-z0-9]{6,16}$/
-const MEMBER_SECRET_REGEX = /^[A-Za-z0-9]{8,16}$/
 
 function getDayKey(dateString: string) {
   const date = new Date(`${dateString}T12:00:00`)
@@ -383,8 +380,8 @@ export default function MemberAreaPage() {
       return
     }
 
-    if (!MEMBER_LOGIN_SECRET_REGEX.test(pin)) {
-      alert("Der Zugangscode muss 6 bis 16 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten.")
+    if (!isValidPin(pin)) {
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -408,12 +405,6 @@ export default function MemberAreaPage() {
 
       const snapshot = (await response.json()) as MemberAreaSnapshot
       applyMemberSnapshot(snapshot)
-      if (snapshot.requiresPinUpdate) {
-        alert("Bitte deinen Zugangscode jetzt auf 8 bis 16 Zeichen anpassen.")
-        router.push("/mein-bereich/profil/einstellungen")
-        return
-      }
-
       router.push("/mein-bereich/profil/wettkampf")
     } catch (error) {
       console.error(error)
@@ -465,8 +456,8 @@ export default function MemberAreaPage() {
       return
     }
 
-    if (!MEMBER_SECRET_REGEX.test(accessCode)) {
-      alert("Der Eltern-Zugangscode muss 8 bis 16 Zeichen lang sein.")
+    if (!isValidPin(accessCode)) {
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -607,11 +598,11 @@ export default function MemberAreaPage() {
 
                   <div className="space-y-2">
                     <Label>PIN</Label>
-                    <PasswordInput value={memberAreaPin} onChange={(event) => setMemberAreaPin(event.target.value)} placeholder="8 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                    <PasswordInput value={memberAreaPin} onChange={(event) => setMemberAreaPin(event.target.value)} placeholder="6 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                   </div>
 
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    Neuer Standard: 8 bis 16 Zeichen. Alte kürzere Zugangscodes können noch genutzt werden, müssen danach aber angepasst werden.
+                    Hinweis: {PIN_REQUIREMENTS_MESSAGE}
                   </div>
 
                   <div className="flex flex-wrap gap-3">

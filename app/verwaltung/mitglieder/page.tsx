@@ -1023,7 +1023,7 @@ export default function MitgliederverwaltungPage() {
                                       <PasswordInput
                                         value={editParentAccessCode}
                                         onChange={(event) => setEditParentAccessCode(event.target.value)}
-                                        placeholder={editingParentLink ? "Nur ausfüllen, wenn der Elterncode geändert werden soll" : "8 bis 16 Zeichen für neues Elternkonto"}
+                                        placeholder={editingParentLink ? "Nur ausfüllen, wenn der Elterncode geändert werden soll" : "6 bis 16 Zeichen für neues Elternkonto"}
                                         className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                                       />
                                     </div>

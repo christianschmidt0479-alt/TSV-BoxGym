@@ -3,6 +3,7 @@ import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity
 import { createCheckin, findMemberByEmailAndPin, findMemberByFirstLastAndBirthdate } from "@/lib/boxgymDb"
 import { createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
 import { sessions } from "@/lib/boxgymSessions"
+import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { supabase } from "@/lib/supabaseClient"
 
 type MemberCheckinBody = {
@@ -26,8 +27,6 @@ type MemberRecord = {
   is_approved?: boolean | null
   is_competition_member?: boolean | null
 }
-
-const MEMBER_LOGIN_SECRET_REGEX = /^[A-Za-z0-9]{6,16}$/
 
 function getBerlinDateParts(date = new Date()) {
   const formatter = new Intl.DateTimeFormat("de-DE", {
@@ -130,8 +129,8 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte das Geburtsdatum des Boxzwergs eingeben.", { status: 400 })
     }
 
-    if (!isBoxzwergeCheckin && !MEMBER_LOGIN_SECRET_REGEX.test(pin)) {
-      return new NextResponse("Die PIN muss 6 bis 16 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten.", { status: 400 })
+    if (!isBoxzwergeCheckin && !isValidPin(pin)) {
+      return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
     // TESTPHASE: Zeitfenster fuer Mitglieder-Check-ins spaeter wieder aktivieren.

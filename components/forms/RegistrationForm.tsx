@@ -187,7 +187,7 @@ export function RegistrationForm({
           />
 
           <FormInput
-            label="PIN (6-stellig)"
+            label="PIN"
             name="pin"
             value={pin}
             onChange={setPin}

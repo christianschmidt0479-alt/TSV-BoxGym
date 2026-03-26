@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient"
-import { isTrainerPinCompliant, verifyTrainerPinHash } from "./trainerPin"
+import { verifyTrainerPinHash } from "./trainerPin"
 
 function isMissingColumnError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
@@ -55,17 +55,7 @@ export type TrainerCredentialsMatch = TrainerRecord & {
   role: "trainer" | "admin"
 }
 
-export type TrainerPinMatchResult =
-  | {
-      status: "success"
-      trainer: TrainerCredentialsMatch
-    }
-  | {
-      status: "requires_pin_update"
-      trainer: TrainerCredentialsMatch
-    }
-
-export async function findTrainerByEmailAndPin(email: string, pin: string): Promise<TrainerPinMatchResult | null> {
+export async function findTrainerByEmailAndPin(email: string, pin: string): Promise<TrainerCredentialsMatch | null> {
   const normalizedEmail = email.trim().toLowerCase()
   const { data, error } = await supabase
     .from("trainer_accounts")
@@ -87,17 +77,7 @@ export async function findTrainerByEmailAndPin(email: string, pin: string): Prom
     role: trainer.role === "admin" ? "admin" : "trainer",
   } as TrainerCredentialsMatch
 
-  if (!isTrainerPinCompliant(pin)) {
-    return {
-      status: "requires_pin_update",
-      trainer: resolvedTrainer,
-    }
-  }
-
-  return {
-    status: "success",
-    trainer: resolvedTrainer,
-  }
+  return resolvedTrainer
 }
 
 export async function findMemberByNameAndBirthdate(name: string, birthdate: string) {

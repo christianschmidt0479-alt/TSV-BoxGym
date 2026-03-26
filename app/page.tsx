@@ -32,7 +32,7 @@ import { CheckinForm, type MemberCheckinData, type TrialCheckinData } from "@/co
 import { RegistrationForm, type RegistrationFormData } from "@/components/forms/RegistrationForm"
 import { MemberAreaForm, type MemberAreaFormData } from "@/components/forms/MemberAreaForm"
 import { ErrorMessages } from "@/lib/errorHandling"
-import { TRAINER_PIN_UPDATE_REQUIRED_MESSAGE } from "@/lib/trainerPin"
+import { PIN_HINT, PIN_REGEX, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import {
   findMemberByEmailAndPin,
   findMemberByFirstLastAndBirthdate,
@@ -60,9 +60,7 @@ const brand = {
 
 const TRAINER_SESSION_MINUTES = 15
 const TRAINER_ROLE_STORAGE_KEY = "tsv_trainer_role"
-const PIN_REGEX = /^[A-Za-z0-9]{6}$/
 const QR_OPEN_PANEL_PARAM = "panel"
-const TRAINER_PIN_HINT = "PIN: 8–16 Zeichen, mit Buchstaben, Zahlen und mindestens 1 Sonderzeichen."
 const MEMBER_LOGIN_ERROR_MESSAGE = "Mitglied nicht gefunden oder PIN nicht korrekt."
 const MEMBER_MISSING_EMAIL_MESSAGE =
   "Für dieses Konto ist noch keine E-Mail-Adresse hinterlegt. Bitte Trainer oder Admin ansprechen."
@@ -816,7 +814,7 @@ export default function Home() {
     }
 
     if (!PIN_REGEX.test(pin)) {
-      alert("Der PIN muss genau 6-stellig sein und darf nur Buchstaben und Zahlen enthalten.")
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -1038,7 +1036,7 @@ export default function Home() {
     }
 
     if (!PIN_REGEX.test(pin)) {
-      alert("Der PIN muss genau 6-stellig sein und darf nur Buchstaben und Zahlen enthalten.")
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -1116,7 +1114,7 @@ export default function Home() {
     }
 
     if (!PIN_REGEX.test(pin)) {
-      alert("Der PIN muss genau 6-stellig sein und darf nur Buchstaben und Zahlen enthalten.")
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -1212,24 +1210,6 @@ export default function Home() {
       })
 
       if (!response.ok) {
-        if (response.status === 428) {
-          const payload = (await response.json().catch(() => null)) as
-            | { email?: string; message?: string }
-            | null
-          const message = payload?.message || TRAINER_PIN_UPDATE_REQUIRED_MESSAGE
-          const email = payload?.email?.trim().toLowerCase() || trainerLoginEmail.trim().toLowerCase()
-
-          alert(message)
-          setShowTrainerLogin(false)
-          if (typeof window !== "undefined") {
-            const params = new URLSearchParams({
-              tab: "login",
-              email,
-            })
-            window.location.href = `/trainer-zugang?${params.toString()}`
-          }
-          return
-        }
         alert("Zugangsdaten nicht korrekt oder noch nicht freigegeben.")
         return
       }
@@ -1334,7 +1314,7 @@ export default function Home() {
                   placeholder="PIN eingeben"
                   className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                 />
-                <div className="text-xs text-zinc-500">{TRAINER_PIN_HINT}</div>
+                <div className="text-xs text-zinc-500">{PIN_HINT}</div>
               </div>
 
               <Button
@@ -1892,7 +1872,7 @@ export default function Home() {
                                     const newPin = adminPinDrafts[member.id]?.trim()
                                     if (newPin) {
                                       if (!PIN_REGEX.test(newPin)) {
-                                        alert("Neue PIN muss genau 6-stellig sein.")
+                                        alert(PIN_REQUIREMENTS_MESSAGE)
                                         return
                                       }
                                       await resetMemberPin(member.id, newPin)
@@ -2024,7 +2004,7 @@ export default function Home() {
                                   onChange={(e: ChangeEvent<HTMLInputElement>) =>
                                     setAdminPinDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))
                                   }
-                                  placeholder="6-stellig"
+                                  placeholder="6 bis 16 Zeichen"
                                   className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                                 />
                               </TableCell>
@@ -2087,7 +2067,7 @@ export default function Home() {
                                           return
                                         }
                                         if (!PIN_REGEX.test(newPin)) {
-                                          alert("Neue PIN muss genau 6-stellig sein.")
+                                          alert(PIN_REQUIREMENTS_MESSAGE)
                                           return
                                         }
                                         await resetMemberPin(member.id, newPin)

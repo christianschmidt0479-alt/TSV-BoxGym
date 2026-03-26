@@ -15,9 +15,8 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { hashSecret } from "@/lib/clientCrypto"
 import { groupOptions } from "@/lib/boxgymSessions"
+import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { QR_ACCESS_MINUTES, QR_ACCESS_STORAGE_KEY } from "@/lib/qrAccess"
-
-const MEMBER_SECRET_REGEX = /^[A-Za-z0-9]{8,16}$/
 
 function getStoredString(key: string) {
   if (typeof window === "undefined") return ""
@@ -120,8 +119,8 @@ export default function CheckinJoinPage() {
       return
     }
 
-    if (!isBoxzwergeRegistration && !MEMBER_SECRET_REGEX.test(pin)) {
-      alert("Der Zugangspin muss 8 bis 16 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten.")
+    if (!isBoxzwergeRegistration && !isValidPin(pin)) {
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -140,8 +139,8 @@ export default function CheckinJoinPage() {
       return
     }
 
-    if (isBoxzwergeRegistration && !MEMBER_SECRET_REGEX.test(parentAccessCode)) {
-      alert("Bitte einen Eltern-Zugangscode mit 8 bis 16 Zeichen angeben.")
+    if (isBoxzwergeRegistration && !isValidPin(parentAccessCode)) {
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -304,7 +303,7 @@ export default function CheckinJoinPage() {
                     <PasswordInput
                       value={registerParentAccessCode}
                       onChange={(e) => setRegisterParentAccessCode(e.target.value)}
-                      placeholder="8 bis 16 Zeichen"
+                      placeholder="6 bis 16 Zeichen"
                       className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
                     />
                   </div>
@@ -363,12 +362,12 @@ export default function CheckinJoinPage() {
 
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
                 <div className="flex items-center gap-2">
-                  <span>{registerBaseGroup === "Boxzwerge" ? "Pflichtangaben für Eltern beachten." : "Zugangspin 8 bis 16 Zeichen."}</span>
+                  <span>{registerBaseGroup === "Boxzwerge" ? "Pflichtangaben für Eltern beachten." : PIN_HINT}</span>
                   <InfoHint
                     text={
                       registerBaseGroup === "Boxzwerge"
                         ? "Eltern-E-Mail, Eltern-Telefon, Eltern-Zugangscode und ein Notfallkontakt sind Pflicht."
-                        : "Der Zugangspin wird bei der Registrierung selbst gewählt und muss 8 bis 16 Zeichen lang sein."
+                        : `Der Zugangspin wird bei der Registrierung selbst gewählt. ${PIN_HINT}`
                     }
                   />
                 </div>

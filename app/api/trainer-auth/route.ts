@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { checkRateLimit, clearLoginFailures, getLoginLockState, getRequestIp, isAllowedOrigin, registerLoginFailure } from "@/lib/apiSecurity"
 import { applyTrainerSessionCookie, clearTrainerSessionCookie, getTrainerSessionMaxAgeMs } from "@/lib/authSession"
 import { findTrainerByEmailAndPin } from "@/lib/boxgymDb"
-import { TRAINER_PIN_UPDATE_REQUIRED_MESSAGE } from "@/lib/trainerPin"
 
 type TrainerAuthBody = {
   email?: string
@@ -46,19 +45,7 @@ export async function POST(request: Request) {
 
     clearLoginFailures(loginKey)
 
-    if (trainerMatch.status === "requires_pin_update") {
-      return NextResponse.json(
-        {
-          ok: false,
-          requiresPinUpdate: true,
-          email: trainerMatch.trainer.email,
-          message: TRAINER_PIN_UPDATE_REQUIRED_MESSAGE,
-        },
-        { status: 428 }
-      )
-    }
-
-    const trainer = trainerMatch.trainer
+    const trainer = trainerMatch
     const role = trainer.role
     const response = NextResponse.json({
       ok: true,

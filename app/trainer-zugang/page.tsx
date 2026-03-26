@@ -14,15 +14,10 @@ import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { clearTrainerAccessSession, persistTrainerAccess, readTrainerAccess } from "@/lib/trainerAccess"
-import {
-  isTrainerPinCompliant,
-  TRAINER_PIN_REQUIREMENTS_MESSAGE,
-  TRAINER_PIN_UPDATE_REQUIRED_MESSAGE,
-} from "@/lib/trainerPin"
+import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 
 const TRAINER_VERIFY_PARAM = "trainer_verify"
 const TRAINER_LOGIN_EMAIL_PARAM = "email"
-const TRAINER_PIN_HINT = "PIN: 8–16 Zeichen, mit Buchstaben, Zahlen und mindestens 1 Sonderzeichen."
 
 type TrainerAuthSuccessPayload = {
   ok: boolean
@@ -33,13 +28,6 @@ type TrainerAuthSuccessPayload = {
   accountFirstName: string
   accountLastName: string
   sessionUntil: number
-}
-
-type TrainerPinUpdatePromptPayload = {
-  ok?: boolean
-  requiresPinUpdate?: boolean
-  email?: string
-  message?: string
 }
 
 export default function TrainerZugangPage() {
@@ -53,10 +41,6 @@ export default function TrainerZugangPage() {
   const [trainerRegisterPhone, setTrainerRegisterPhone] = useState("")
   const [trainerRegisterPin, setTrainerRegisterPin] = useState("")
   const [trainerRegisterPinConfirm, setTrainerRegisterPinConfirm] = useState("")
-  const [trainerPinUpdateRequired, setTrainerPinUpdateRequired] = useState(false)
-  const [trainerPinUpdateMessage, setTrainerPinUpdateMessage] = useState("")
-  const [trainerNewPin, setTrainerNewPin] = useState("")
-  const [trainerNewPinConfirm, setTrainerNewPinConfirm] = useState("")
   const [activeRole, setActiveRole] = useState<"" | "trainer" | "admin">("")
 
   useEffect(() => {
@@ -116,13 +100,6 @@ export default function TrainerZugangPage() {
     }
   }, [])
 
-  function resetTrainerPinUpdateFlow() {
-    setTrainerPinUpdateRequired(false)
-    setTrainerPinUpdateMessage("")
-    setTrainerNewPin("")
-    setTrainerNewPinConfirm("")
-  }
-
   function persistTrainerLogin(payload: TrainerAuthSuccessPayload) {
     persistTrainerAccess(
       payload.role,
@@ -135,7 +112,6 @@ export default function TrainerZugangPage() {
         lastName: payload.accountLastName,
       }
     )
-    resetTrainerPinUpdateFlow()
     setActiveRole(payload.role)
     router.push(payload.role === "admin" ? "/verwaltung" : "/trainer")
   }
@@ -154,20 +130,6 @@ export default function TrainerZugangPage() {
     })
 
     if (!response.ok) {
-      if (response.status === 428) {
-        const payload = (await response.json().catch(() => null)) as TrainerPinUpdatePromptPayload | null
-        const message = payload?.message || TRAINER_PIN_UPDATE_REQUIRED_MESSAGE
-
-        setTrainerAuthView("login")
-        setTrainerLoginEmail(payload?.email?.trim().toLowerCase() || normalizedEmail)
-        setTrainerPinInput(normalizedPin)
-        setTrainerPinUpdateRequired(true)
-        setTrainerPinUpdateMessage(message)
-        setTrainerNewPin("")
-        setTrainerNewPinConfirm("")
-        alert(message)
-        return
-      }
       if (response.status === 401) {
         alert("Zugangsdaten nicht korrekt oder noch nicht freigegeben.")
         return
@@ -198,53 +160,6 @@ export default function TrainerZugangPage() {
     }
   }
 
-  async function handleTrainerPinUpdate() {
-    const email = trainerLoginEmail.trim().toLowerCase()
-    const currentPin = trainerPinInput.trim()
-    const newPin = trainerNewPin.trim()
-    const newPinConfirm = trainerNewPinConfirm.trim()
-
-    if (!email || !currentPin || !newPin || !newPinConfirm) {
-      alert("Bitte aktuellen PIN sowie neuen PIN zweimal eingeben.")
-      return
-    }
-
-    if (!isTrainerPinCompliant(newPin)) {
-      alert(TRAINER_PIN_REQUIREMENTS_MESSAGE)
-      return
-    }
-
-    if (newPin !== newPinConfirm) {
-      alert("Die PINs stimmen nicht ueberein.")
-      return
-    }
-
-    try {
-      const response = await fetch("/api/public/trainer-access", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "update_pin",
-          email,
-          currentPin,
-          newPin,
-        }),
-      })
-
-      if (!response.ok) {
-        const message = await response.text()
-        throw new Error(message || "PIN-Aktualisierung fehlgeschlagen.")
-      }
-
-      setTrainerPinInput(newPin)
-      await loginTrainerWithCredentials(email, newPin)
-    } catch (error) {
-      console.error(error)
-      const message = error instanceof Error ? error.message : "PIN-Aktualisierung fehlgeschlagen."
-      alert(message)
-    }
-  }
-
   async function handleTrainerRegistration() {
     const firstName = trainerRegisterFirstName.trim()
     const lastName = trainerRegisterLastName.trim()
@@ -257,8 +172,8 @@ export default function TrainerZugangPage() {
       return
     }
 
-    if (!isTrainerPinCompliant(pin)) {
-      alert(TRAINER_PIN_REQUIREMENTS_MESSAGE)
+    if (!isValidPin(pin)) {
+      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -307,7 +222,6 @@ export default function TrainerZugangPage() {
     await clearTrainerAccessSession()
     setActiveRole("")
     setTrainerPinInput("")
-    resetTrainerPinUpdateFlow()
   }
 
   return (
@@ -403,7 +317,7 @@ export default function TrainerZugangPage() {
                           placeholder="PIN eingeben"
                           className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                         />
-                        <div className="text-xs text-zinc-500">{TRAINER_PIN_HINT}</div>
+                        <div className="text-xs text-zinc-500">{PIN_HINT}</div>
                       </div>
                     </div>
 
@@ -417,40 +331,6 @@ export default function TrainerZugangPage() {
                     </div>
                   </form>
 
-                  {trainerPinUpdateRequired ? (
-                    <div className="mt-4 space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                      <div className="text-sm text-amber-900">{trainerPinUpdateMessage || TRAINER_PIN_UPDATE_REQUIRED_MESSAGE}</div>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label>Neuer PIN</Label>
-                          <PasswordInput
-                            value={trainerNewPin}
-                            onChange={(e) => setTrainerNewPin(e.target.value)}
-                            placeholder="8-16 Zeichen mit Sonderzeichen"
-                            className="rounded-2xl border-amber-300 bg-white text-zinc-900"
-                          />
-                          <div className="text-xs text-amber-800">{TRAINER_PIN_HINT}</div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Neuen PIN wiederholen</Label>
-                          <PasswordInput
-                            value={trainerNewPinConfirm}
-                            onChange={(e) => setTrainerNewPinConfirm(e.target.value)}
-                            placeholder="PIN wiederholen"
-                            className="rounded-2xl border-amber-300 bg-white text-zinc-900"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-3">
-                        <Button type="button" className="rounded-2xl bg-amber-600 text-white hover:bg-amber-700" onClick={() => void handleTrainerPinUpdate()}>
-                          PIN aktualisieren
-                        </Button>
-                        <Button type="button" variant="outline" className="rounded-2xl" onClick={resetTrainerPinUpdateFlow}>
-                          Abbrechen
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
                 </TabsContent>
 
                 <TabsContent value="register">
@@ -483,10 +363,10 @@ export default function TrainerZugangPage() {
                         <PasswordInput
                           value={trainerRegisterPin}
                           onChange={(e) => setTrainerRegisterPin(e.target.value)}
-                          placeholder="8-16 Zeichen mit Sonderzeichen"
+                          placeholder="6 bis 16 Zeichen"
                           className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                         />
-                        <div className="text-xs text-zinc-500">{TRAINER_PIN_HINT}</div>
+                        <div className="text-xs text-zinc-500">{PIN_HINT}</div>
                       </div>
                       <div className="space-y-2 md:col-span-2">
                         <Label>PIN wiederholen</Label>

@@ -17,10 +17,8 @@ import {
   type TrainerAccountRecord,
   updateTrainerAccountRole,
 } from "@/lib/trainerDb"
-import { isTrainerPinCompliant, TRAINER_PIN_REQUIREMENTS_MESSAGE } from "@/lib/trainerPin"
+import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
-
-const TRAINER_PIN_HINT = "PIN: 8–16 Zeichen, mit Buchstaben, Zahlen und mindestens 1 Sonderzeichen."
 
 function getTrainerDisplayName(trainer: TrainerAccountRecord) {
   return `${trainer.first_name} ${trainer.last_name}`.trim()
@@ -196,10 +194,10 @@ export default function TrainerverwaltungPage() {
                       onChange={(event) =>
                         setPinDrafts((current) => ({ ...current, [member.id]: event.target.value }))
                       }
-                      placeholder="8-16 Zeichen mit Sonderzeichen"
+                      placeholder="6 bis 16 Zeichen"
                       className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                     />
-                    <div className="text-xs text-zinc-500">{TRAINER_PIN_HINT}</div>
+                    <div className="text-xs text-zinc-500">{PIN_HINT}</div>
                   </div>
 
                   <Button
@@ -215,8 +213,8 @@ export default function TrainerverwaltungPage() {
                         return
                       }
 
-                      if (!isTrainerPinCompliant(pin)) {
-                        alert(TRAINER_PIN_REQUIREMENTS_MESSAGE)
+                      if (!isValidPin(pin)) {
+                        alert(PIN_REQUIREMENTS_MESSAGE)
                         return
                       }
 

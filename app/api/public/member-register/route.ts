@@ -5,6 +5,7 @@ import { createMember, findMemberByFirstLastAndBirthdate, updateMemberRegistrati
 import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { linkParentAccountToMember, upsertParentAccount } from "@/lib/parentAccountsDb"
+import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
 
 type MemberRegisterBody = {
@@ -19,8 +20,6 @@ type MemberRegisterBody = {
   parentAccessCodeHash?: string
   baseGroup?: string
 }
-
-const MEMBER_SECRET_REGEX = /^[A-Za-z0-9]{8,16}$/
 
 function generateEmailVerificationToken() {
   return randomUUID()
@@ -58,8 +57,8 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte Geburtsdatum angeben.", { status: 400 })
     }
 
-    if (!isBoxzwergeRegistration && !MEMBER_SECRET_REGEX.test(pin)) {
-      return new NextResponse("Der Zugangscode muss 8 bis 16 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten.", { status: 400 })
+    if (!isBoxzwergeRegistration && !isValidPin(pin)) {
+      return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
     if (!email) {

@@ -4,6 +4,7 @@ import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
+import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendAccessCodeChangedEmail, sendApprovalEmail, sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
@@ -94,6 +95,9 @@ export async function POST(request: Request) {
       }
 
       if (body.newPin?.trim()) {
+        if (!isValidPin(body.newPin.trim())) {
+          return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+        }
         updatePayload.member_pin = body.newPin.trim()
       }
 

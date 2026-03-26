@@ -5,8 +5,8 @@ import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createTrainerAccount, type TrainerLicense } from "@/lib/trainerDb"
 import { findMemberByEmail } from "@/lib/boxgymDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
+import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
-import { isTrainerPinCompliant, TRAINER_PIN_REQUIREMENTS_MESSAGE } from "@/lib/trainerPin"
 
 type AdminTrainerAccountBody = {
   firstName?: string
@@ -47,8 +47,8 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte alle Felder fuer das Trainerkonto ausfuellen.", { status: 400 })
     }
 
-    if (!isTrainerPinCompliant(pin)) {
-      return new NextResponse(TRAINER_PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+    if (!isValidPin(pin)) {
+      return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
     const verificationToken = randomUUID()

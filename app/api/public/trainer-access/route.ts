@@ -4,12 +4,9 @@ import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity
 import { createTrainerAccount, findTrainerByEmail, updateTrainerAccountPin, verifyTrainerEmail } from "@/lib/trainerDb"
 import { findMemberByEmail } from "@/lib/boxgymDb"
 import { getAppBaseUrl } from "@/lib/mailConfig"
+import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
-import {
-  isTrainerPinCompliant,
-  TRAINER_PIN_REQUIREMENTS_MESSAGE,
-  verifyTrainerPinHash,
-} from "@/lib/trainerPin"
+import { verifyTrainerPinHash } from "@/lib/trainerPin"
 
 type TrainerAccessBody =
   | {
@@ -75,8 +72,8 @@ export async function POST(request: Request) {
         return new NextResponse("Bitte alle Felder fuer die Trainerregistrierung ausfuellen.", { status: 400 })
       }
 
-      if (!isTrainerPinCompliant(pin)) {
-        return new NextResponse(TRAINER_PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+      if (!isValidPin(pin)) {
+        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
       const existingTrainer = await findTrainerByEmail(email)
@@ -124,8 +121,8 @@ export async function POST(request: Request) {
         return new NextResponse("Bitte E-Mail, aktuellen PIN und neuen PIN angeben.", { status: 400 })
       }
 
-      if (!isTrainerPinCompliant(newPin)) {
-        return new NextResponse(TRAINER_PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+      if (!isValidPin(newPin)) {
+        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
       const trainer = await findTrainerByEmail(email)

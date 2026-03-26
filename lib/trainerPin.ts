@@ -1,21 +1,16 @@
-export const TRAINER_PIN_REGEX = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,16}$/
-export const TRAINER_PIN_REQUIREMENTS_MESSAGE =
-  "Der PIN muss 8-16 Zeichen lang sein und Buchstaben, Zahlen sowie mindestens ein Sonderzeichen enthalten."
-export const TRAINER_PIN_UPDATE_REQUIRED_MESSAGE =
-  "PIN entspricht nicht den aktuellen Anforderungen. Bitte neuen PIN vergeben."
+import { isValidPin, normalizePin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "./pin"
+
+export const TRAINER_PIN_HINT = PIN_HINT
+export const TRAINER_PIN_REQUIREMENTS_MESSAGE = PIN_REQUIREMENTS_MESSAGE
 
 const textEncoder = new TextEncoder()
 
-export function normalizeTrainerPin(value: string) {
-  return value.trim()
-}
-
 export function isTrainerPinCompliant(value: string) {
-  return TRAINER_PIN_REGEX.test(normalizeTrainerPin(value))
+  return isValidPin(value)
 }
 
 export async function hashTrainerPin(value: string) {
-  const bytes = textEncoder.encode(normalizeTrainerPin(value))
+  const bytes = textEncoder.encode(normalizePin(value))
   const digest = await crypto.subtle.digest("SHA-256", bytes)
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))

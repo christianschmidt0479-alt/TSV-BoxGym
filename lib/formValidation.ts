@@ -1,3 +1,5 @@
+import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+
 /**
  * Zentrale Validierungs-Utilities für Formulare
  * Rückgabe: { valid: boolean; error?: string }
@@ -37,7 +39,7 @@ export function validateName(value: string, fieldName: string = "Name"): Validat
 }
 
 /**
- * Validiert PIN (6-stellig, Buchstaben + Zahlen)
+ * Validiert PIN (6 bis 16 Zeichen, ohne Leerzeichen)
  */
 export function validatePin(value: string): ValidationResult {
   const trimmed = value.trim()
@@ -46,10 +48,10 @@ export function validatePin(value: string): ValidationResult {
     return { valid: false, error: "PIN ist erforderlich." }
   }
 
-  if (!/^[A-Za-z0-9]{6}$/.test(trimmed)) {
+  if (!isValidPin(trimmed)) {
     return {
       valid: false,
-      error: "PIN muss genau 6 Zeichen sein (Buchstaben und Zahlen, z. B. A3X9Q1).",
+      error: PIN_REQUIREMENTS_MESSAGE,
     }
   }
 
