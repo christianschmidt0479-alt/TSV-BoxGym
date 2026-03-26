@@ -4,7 +4,8 @@
 export const dynamic = "force-dynamic"
 
 
-import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { useEffect, useMemo, useState, type ChangeEvent } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,11 +25,17 @@ import {
   RefreshCcw,
 } from "lucide-react"
 
+import { QR_ACCESS_PARAM, QR_ACCESS_STORAGE_KEY, QR_ACCESS_MINUTES } from "@/lib/qrAccess"
 
 import { supabase } from "@/lib/supabaseClient"
+import { CheckinForm, type MemberCheckinData, type TrialCheckinData } from "@/components/forms/CheckinForm"
+import { RegistrationForm, type RegistrationFormData } from "@/components/forms/RegistrationForm"
+import { MemberAreaForm, type MemberAreaFormData } from "@/components/forms/MemberAreaForm"
+import { ErrorMessages } from "@/lib/errorHandling"
+import { TRAINER_PIN_UPDATE_REQUIRED_MESSAGE } from "@/lib/trainerPin"
 import {
+  findMemberByEmailAndPin,
   findMemberByFirstLastAndBirthdate,
-  findMemberByFirstLastAndPin,
   createMember,
   updateTrialMember,
   createCheckin,
@@ -52,12 +59,13 @@ const brand = {
 }
 
 const TRAINER_SESSION_MINUTES = 15
+const TRAINER_ROLE_STORAGE_KEY = "tsv_trainer_role"
 const PIN_REGEX = /^[A-Za-z0-9]{6}$/
-const ADMIN_PASSWORD = "32108"
-const QR_ACCESS_PARAM = "gym"
-const QR_ACCESS_TOKEN = "boxgym-checkin-2026-X9kLm4Pq72Za8R"
-const QR_ACCESS_STORAGE_KEY = "tsv_qr_access_until"
-const QR_ACCESS_MINUTES = 180
+const QR_OPEN_PANEL_PARAM = "panel"
+const TRAINER_PIN_HINT = "PIN: 8–16 Zeichen, mit Buchstaben, Zahlen und mindestens 1 Sonderzeichen."
+const MEMBER_LOGIN_ERROR_MESSAGE = "Mitglied nicht gefunden oder PIN nicht korrekt."
+const MEMBER_MISSING_EMAIL_MESSAGE =
+  "Für dieses Konto ist noch keine E-Mail-Adresse hinterlegt. Bitte Trainer oder Admin ansprechen."
 
 type Session = {
   id: string
@@ -129,7 +137,18 @@ const sessions: Session[] = [
 const groupOptions = Array.from(new Set(sessions.map((s) => s.group)))
 
 function todayString() {
-  return new Date().toISOString().slice(0, 10)
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function localDateString(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }
 
 function liveDateString(date: Date | null) {
@@ -207,8 +226,8 @@ function getStoredNumber(key: string) {
   }
 }
 
-function generateEmailVerificationToken() {
-  return `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`
+function normalizeText(value: string) {
+  return value.trim().toLowerCase()
 }
 
 function getMemberDisplayName(member?: Partial<MemberRecord> | null) {
@@ -281,7 +300,7 @@ function getNextTrainingDaySessions(fromDateString: string) {
   for (let i = 1; i <= 7; i++) {
     const next = new Date(base)
     next.setDate(base.getDate() + i)
-    const nextDateString = next.toISOString().slice(0, 10)
+    const nextDateString = localDateString(next)
     const nextDayKey = getDayKey(nextDateString)
     const nextSessions = sessions.filter((session) => session.dayKey === nextDayKey)
 
@@ -322,8 +341,7 @@ export default function Home() {
   const [qrAccessGranted, setQrAccessGranted] = useState(false)
   const [now, setNow] = useState<Date | null>(null)
 
-  const [memberFirstName, setMemberFirstName] = useState("")
-  const [memberLastName, setMemberLastName] = useState("")
+  const [memberEmail, setMemberEmail] = useState("")
   const [memberPin, setMemberPin] = useState("")
 
   const [trialFirstName, setTrialFirstName] = useState("")
@@ -340,8 +358,7 @@ export default function Home() {
   const [registerPhone, setRegisterPhone] = useState("")
   const [registerBaseGroup, setRegisterBaseGroup] = useState(groupOptions[0] ?? "")
 
-  const [memberAreaFirstName, setMemberAreaFirstName] = useState("")
-  const [memberAreaLastName, setMemberAreaLastName] = useState("")
+  const [memberAreaEmail, setMemberAreaEmail] = useState("")
   const [memberAreaPin, setMemberAreaPin] = useState("")
   const [memberAreaUnlocked, setMemberAreaUnlocked] = useState(false)
   const [memberAreaData, setMemberAreaData] = useState<MemberRecord | null>(null)
@@ -349,6 +366,7 @@ export default function Home() {
   const [profileEmail, setProfileEmail] = useState("")
   const [profilePhone, setProfilePhone] = useState("")
   const [personalMonthVisits, setPersonalMonthVisits] = useState(0)
+  const [personalTotalVisits, setPersonalTotalVisits] = useState(0)
   const [previousMonthVisits, setPreviousMonthVisits] = useState(0)
   const [personalYearVisits, setPersonalYearVisits] = useState(0)
   const [personalLastCheckin, setPersonalLastCheckin] = useState<CheckinRow | null>(null)
@@ -358,14 +376,15 @@ export default function Home() {
   const [baseGroupBestMonthVisits, setBaseGroupBestMonthVisits] = useState(0)
   const [lastCheckinPosition, setLastCheckinPosition] = useState<number | null>(null)
 
-  const [trainerPin, setTrainerPin] = useState("2026")
   const [trainerPinInput, setTrainerPinInput] = useState("")
+  const [trainerLoginEmail, setTrainerLoginEmail] = useState("")
   const [trainerMode, setTrainerMode] = useState(false)
   const [adminMode, setAdminMode] = useState(false)
   const [pendingMembers, setPendingMembers] = useState<MemberRecord[]>([])
   const [allMembers, setAllMembers] = useState<MemberRecord[]>([])
   const [showTrainerLogin, setShowTrainerLogin] = useState(false)
   const [trainerSessionUntil, setTrainerSessionUntil] = useState(0)
+  const [qrAccessUrl, setQrAccessUrl] = useState("")
 
   const [adminGroupDrafts, setAdminGroupDrafts] = useState<Record<string, string>>({})
   const [adminPinDrafts, setAdminPinDrafts] = useState<Record<string, string>>({})
@@ -378,18 +397,12 @@ export default function Home() {
   const [trainerGroupFilter, setTrainerGroupFilter] = useState("alle")
   const [trainerTypeFilter, setTrainerTypeFilter] = useState("alle")
   const [trainerNameFilter, setTrainerNameFilter] = useState("")
-  const [mailTestEmail, setMailTestEmail] = useState("")
-  const [mailTestName, setMailTestName] = useState("Testmitglied")
-  const [mailTestSending, setMailTestSending] = useState(false)
-  const [mailConfigured, setMailConfigured] = useState<boolean | null>(null)
-  const [mailConfigSource, setMailConfigSource] = useState("")
-  const [mailFromAddress, setMailFromAddress] = useState("")
 
   const [selectedSessionId, setSelectedSessionId] = useState<string>(sessions[0].id)
   const [openPanel, setOpenPanel] = useState<"member" | "trial" | "register" | "area" | null>(null)
 
 
-  const liveDate = now ? now.toISOString().slice(0, 10) : todayString()
+  const liveDate = now ? localDateString(now) : todayString()
   const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
   const currentMonthKey = getMonthKey(liveDate)
 
@@ -397,8 +410,7 @@ export default function Home() {
     setIsClient(true)
     setNow(new Date())
 
-    setMemberFirstName(getStoredString("tsv_member_checkin_first_name"))
-    setMemberLastName(getStoredString("tsv_member_checkin_last_name"))
+    setMemberEmail(getStoredString("tsv_member_checkin_email"))
     setMemberPin(getStoredString("tsv_member_checkin_pin"))
 
     setRegisterFirstName(getStoredString("tsv_register_first_name"))
@@ -409,41 +421,71 @@ export default function Home() {
     setRegisterPhone(getStoredString("tsv_register_phone"))
     setRegisterBaseGroup(getStoredString("tsv_register_base_group") || (groupOptions[0] ?? ""))
 
-    setMemberAreaFirstName(getStoredString("tsv_member_area_first_name"))
-    setMemberAreaLastName(getStoredString("tsv_member_area_last_name"))
+    setMemberAreaEmail(getStoredString("tsv_member_area_email"))
     setMemberAreaPin(getStoredString("tsv_member_area_pin"))
 
-    const savedTrainerPin = getStoredString("tsv_trainer_pin")
-    if (savedTrainerPin) setTrainerPin(savedTrainerPin)
-
     const savedTrainerUntil = getStoredNumber("tsv_trainer_session_until")
+    const savedTrainerRole = getStoredString(TRAINER_ROLE_STORAGE_KEY)
     if (savedTrainerUntil && savedTrainerUntil > Date.now()) {
       setTrainerSessionUntil(savedTrainerUntil)
       setTrainerMode(true)
+      if (savedTrainerRole === "admin") {
+        setAdminMode(true)
+      }
     }
 
     try {
       const params = new URLSearchParams(window.location.search)
       const qrToken = params.get(QR_ACCESS_PARAM)
+      const requestedPanel = params.get(QR_OPEN_PANEL_PARAM)
       const savedQrUntilRaw = window.localStorage.getItem(QR_ACCESS_STORAGE_KEY)
       const savedQrUntil = savedQrUntilRaw ? Number(savedQrUntilRaw) : 0
 
-      if (qrToken === QR_ACCESS_TOKEN) {
-        const accessUntil = Date.now() + QR_ACCESS_MINUTES * 60 * 1000
-        window.localStorage.setItem(QR_ACCESS_STORAGE_KEY, String(accessUntil))
-        setQrAccessGranted(true)
+      if (qrToken) {
+        void (async () => {
+          try {
+            const response = await fetch(`/api/qr-access?token=${encodeURIComponent(qrToken)}`)
+            if (!response.ok) return
 
-        params.delete(QR_ACCESS_PARAM)
-        const nextQuery = params.toString()
-        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
-        window.history.replaceState({}, "", nextUrl)
+            const data = (await response.json()) as { accessUntil?: number }
+            const accessUntil = data.accessUntil ?? Date.now() + QR_ACCESS_MINUTES * 60 * 1000
+            window.localStorage.setItem(QR_ACCESS_STORAGE_KEY, String(accessUntil))
+            setQrAccessGranted(true)
+            setOpenPanel("member")
+
+            if (requestedPanel === "trial") {
+              setOpenPanel("trial")
+            }
+
+            params.delete(QR_ACCESS_PARAM)
+            params.delete(QR_OPEN_PANEL_PARAM)
+            const nextQuery = params.toString()
+            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
+            window.history.replaceState({}, "", nextUrl)
+          } catch (error) {
+            console.error("QR access verification failed", error)
+          }
+        })()
       } else if (savedQrUntil > Date.now()) {
         setQrAccessGranted(true)
+        setOpenPanel("member")
+
+        if (requestedPanel === "trial") {
+          setOpenPanel("trial")
+        }
+
+        if (requestedPanel) {
+          params.delete(QR_OPEN_PANEL_PARAM)
+          const nextQuery = params.toString()
+          const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
+          window.history.replaceState({}, "", nextUrl)
+        }
       }
     } catch (error) {
       console.error("QR access init failed", error)
     }
 
+    // E-Mail Verifizierung über Link ?verify=...
     try {
       const params = new URLSearchParams(window.location.search)
       const verifyToken = params.get("verify")
@@ -468,8 +510,11 @@ export default function Home() {
               return
             }
 
-            alert("E-Mail erfolgreich bestätigt. Das Mitglied kann jetzt vom Admin freigegeben werden.")
-            setOpenPanel("area")
+            if (savedTrainerUntil > Date.now() && savedTrainerRole === "admin") {
+              await refreshAdminLists()
+            }
+            alert("E-Mail erfolgreich bestätigt. Du kannst jetzt vom Admin freigeschaltet werden.")
+            setOpenPanel(null)
 
             params.delete("verify")
             const nextQuery = params.toString()
@@ -484,18 +529,12 @@ export default function Home() {
     } catch (error) {
       console.error("Verify handling failed", error)
     }
-
   }, [])
 
   useEffect(() => {
     if (!isClient) return
-    localStorage.setItem("tsv_member_checkin_first_name", JSON.stringify(memberFirstName))
-  }, [memberFirstName, isClient])
-
-  useEffect(() => {
-    if (!isClient) return
-    localStorage.setItem("tsv_member_checkin_last_name", JSON.stringify(memberLastName))
-  }, [memberLastName, isClient])
+    localStorage.setItem("tsv_member_checkin_email", JSON.stringify(memberEmail))
+  }, [memberEmail, isClient])
 
   useEffect(() => {
     if (!isClient) return
@@ -539,23 +578,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!isClient) return
-    localStorage.setItem("tsv_member_area_first_name", JSON.stringify(memberAreaFirstName))
-  }, [memberAreaFirstName, isClient])
-
-  useEffect(() => {
-    if (!isClient) return
-    localStorage.setItem("tsv_member_area_last_name", JSON.stringify(memberAreaLastName))
-  }, [memberAreaLastName, isClient])
+    localStorage.setItem("tsv_member_area_email", JSON.stringify(memberAreaEmail))
+  }, [memberAreaEmail, isClient])
 
   useEffect(() => {
     if (!isClient) return
     localStorage.setItem("tsv_member_area_pin", JSON.stringify(memberAreaPin))
   }, [memberAreaPin, isClient])
-
-  useEffect(() => {
-    if (!isClient) return
-    localStorage.setItem("tsv_trainer_pin", JSON.stringify(trainerPin))
-  }, [trainerPin, isClient])
 
   useEffect(() => {
     if (!isClient) return
@@ -573,6 +602,11 @@ export default function Home() {
   useEffect(() => {
     if (!isClient || !trainerMode) return
     if (trainerSessionUntil && Date.now() > trainerSessionUntil) {
+      try {
+        localStorage.removeItem(TRAINER_ROLE_STORAGE_KEY)
+      } catch {
+        // Ignore storage failures.
+      }
       setTrainerMode(false)
       setAdminMode(false)
       setPendingMembers([])
@@ -600,34 +634,6 @@ export default function Home() {
       console.error("QR access expiry check failed", error)
     }
   }, [isClient, now])
-
-  useEffect(() => {
-    if (!trainerMode) return
-
-    ;(async () => {
-      try {
-        const response = await fetch("/api/send-verification")
-        if (!response.ok) {
-          setMailConfigured(false)
-          setMailConfigSource("")
-          setMailFromAddress("")
-          return
-        }
-
-        const data = await response.json()
-        setMailConfigured(Boolean(data.configured))
-        setMailConfigSource(
-          data.using_server_key ? "RESEND_API_KEY" : data.using_public_fallback ? "NEXT_PUBLIC_RESEND_API_KEY" : ""
-        )
-        setMailFromAddress(typeof data.from === "string" ? data.from : "")
-      } catch (error) {
-        console.error("Mail status loading failed", error)
-        setMailConfigured(false)
-        setMailConfigSource("")
-        setMailFromAddress("")
-      }
-    })()
-  }, [trainerMode])
 
   const todaysSessions = useMemo(() => {
     const dayKey = getDayKey(liveDate)
@@ -680,10 +686,32 @@ export default function Home() {
     return displaySessions.find((session) => session.id === selectedSessionId) ?? memberFlow.session ?? null
   }, [displaySessions, selectedSessionId, memberFlow.session])
 
-  const qrAccessUrl = useMemo(() => {
-    if (!isClient) return `https://tsvboxgym.de/?${QR_ACCESS_PARAM}=${encodeURIComponent(QR_ACCESS_TOKEN)}`
-    return `${window.location.origin}/?${QR_ACCESS_PARAM}=${encodeURIComponent(QR_ACCESS_TOKEN)}`
-  }, [isClient])
+  useEffect(() => {
+    if (!isClient || (!trainerMode && !adminMode)) {
+      setQrAccessUrl("")
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/qr-access-url?panel=member")
+        if (!response.ok) return
+
+        const data = (await response.json()) as { url?: string }
+        if (!cancelled) {
+          setQrAccessUrl(data.url ?? "")
+        }
+      } catch (error) {
+        console.error("QR access URL load failed", error)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [adminMode, isClient, trainerMode])
 
   const qrImageUrl = useMemo(() => {
     return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qrAccessUrl)}`
@@ -768,17 +796,22 @@ export default function Home() {
     setOpenPanel(openPanel === panel ? null : panel)
   }
 
-  function toggleFreePanel(panel: "register") {
+  function toggleFreePanel(panel: "register" | "area") {
     setOpenPanel(openPanel === panel ? null : panel)
   }
 
-  async function handleMemberCheckin() {
-    const firstName = memberFirstName.trim()
-    const lastName = memberLastName.trim()
-    const pin = memberPin.trim()
+  async function handleMemberCheckin(data: MemberCheckinData | TrialCheckinData) {
+    if (!("pin" in data)) {
+      alert("Ungültige Member-Checkin-Daten.")
+      return
+    }
 
-    if (!firstName || !lastName) {
-      alert("Bitte Vorname und Nachname eingeben.")
+    const email = (data.email ?? memberEmail).trim().toLowerCase()
+    const pin = (data.pin ?? memberPin).trim()
+    const sessionId = data.sessionId ?? selectedSessionId
+
+    if (!email || !pin) {
+      alert("Bitte E-Mail und PIN eingeben.")
       return
     }
 
@@ -787,19 +820,30 @@ export default function Home() {
       return
     }
 
+    const session = displaySessions.find((session) => session.id === sessionId) ?? selectedSession
 
-    if (!selectedSession || !memberFlow.canCheckin) {
+    if (!session || !memberFlow.canCheckin) {
       alert("Check-in ist für diese Gruppe aktuell nicht möglich.")
       return
     }
 
+    setMemberEmail(email)
+    setMemberPin(pin)
+    setSelectedSessionId(sessionId)
+
     try {
       setDbLoading(true)
 
-      const member = await findMemberByFirstLastAndPin(firstName, lastName, pin)
+      const memberMatch = await findMemberByEmailAndPin(email, pin)
+      if (memberMatch?.status === "missing_email") {
+        alert(MEMBER_MISSING_EMAIL_MESSAGE)
+        return
+      }
+
+      const member = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
 
       if (!member) {
-        alert("Mitglied nicht gefunden oder PIN nicht korrekt.")
+        alert(MEMBER_LOGIN_ERROR_MESSAGE)
         return
       }
 
@@ -830,7 +874,7 @@ export default function Home() {
 
       await createCheckin({
         member_id: member.id,
-        group_name: selectedSession.group,
+        group_name: session.group,
         date: liveDate,
         time: timeString(),
         year: currentYear,
@@ -840,7 +884,7 @@ export default function Home() {
       const rows = ((await getTodayCheckins(liveDate)) as CheckinRow[]) || []
       setDbCheckins(rows)
 
-      const sameGroupRows = rows.filter((entry) => entry.group_name === selectedSession.group)
+      const sameGroupRows = rows.filter((entry) => entry.group_name === session.group)
       setLastCheckinPosition(sameGroupRows.length)
 
       alert("Check-in erfolgreich gespeichert.")
@@ -852,66 +896,96 @@ export default function Home() {
     }
   }
 
-  async function handleTrialCheckin() {
-    const firstName = trialFirstName.trim()
-    const lastName = trialLastName.trim()
+  async function handleTrialCheckin(data: MemberCheckinData | TrialCheckinData) {
+    if (!("birthDate" in data && "email" in data && "phone" in data)) {
+      alert("Ungültige Probetraining-Daten.")
+      return
+    }
+
+    const firstName = (data.firstName ?? trialFirstName).trim()
+    const lastName = (data.lastName ?? trialLastName).trim()
+    const birthDate = data.birthDate ?? trialBirthDate
+    const email = data.email ?? trialEmail
+    const phone = data.phone ?? trialPhone
+    const sessionId = data.sessionId ?? selectedSessionId
 
     if (!firstName || !lastName) {
       alert("Bitte Vorname und Nachname eingeben.")
       return
     }
 
-    if (!trialBirthDate) {
+    if (!birthDate) {
       alert("Bitte Geburtsdatum angeben.")
       return
     }
 
-    if (!trialEmail.trim()) {
+    if (!email.trim()) {
       alert("Bitte E-Mail angeben.")
       return
     }
 
-    if (!trialPhone.trim()) {
+    if (!phone.trim()) {
       alert("Bitte Telefonnummer angeben.")
       return
     }
 
-    if (!selectedSession || !memberFlow.canCheckin) {
+    const session = displaySessions.find((session) => session.id === sessionId) ?? selectedSession
+
+    if (!session || !memberFlow.canCheckin) {
       alert("Check-in ist für diese Gruppe aktuell nicht möglich.")
       return
     }
 
+    setTrialFirstName(firstName)
+    setTrialLastName(lastName)
+    setTrialBirthDate(birthDate)
+    setTrialEmail(email)
+    setTrialPhone(phone)
+    setSelectedSessionId(sessionId)
+
     try {
       setDbLoading(true)
 
-      let member = await findMemberByFirstLastAndBirthdate(firstName, lastName, trialBirthDate)
+      let member = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
 
       if (!member) {
         member = await createMember({
           first_name: firstName,
           last_name: lastName,
-          birthdate: trialBirthDate,
-          email: trialEmail.trim(),
-          phone: trialPhone.trim(),
+          birthdate: birthDate,
+          email: email.trim(),
+          phone: phone.trim(),
           is_trial: true,
           is_approved: true,
-          base_group: selectedSession.group,
+          base_group: session.group,
         })
-      } else {
-        const nextTrialCount = (member.trial_count || 0) + 1
-
-        if (nextTrialCount > 3) {
-          alert("Probetraining erschöpft. Diese Person hat bereits 3 Probetrainings absolviert.")
-          return
-        }
-
-        member = await updateTrialMember(member.id, nextTrialCount, trialEmail.trim(), trialPhone.trim())
       }
 
+      const { data: trialCheckins, error: trialCheckinsError } = await supabase
+        .from("checkins")
+        .select("id")
+        .eq("member_id", member.id)
+
+      if (trialCheckinsError) throw trialCheckinsError
+
+      const trialCheckinCount = trialCheckins?.length ?? 0
+      if (member.is_trial && trialCheckinCount >= 3) {
+        alert("Probetraining erschöpft. Diese Person hat bereits 3 Probetrainings absolviert.")
+        return
+      }
+
+      if (member.is_trial) {
+        member = await updateTrialMember(member.id, trialCheckinCount + 1, email.trim(), phone.trim())
+      } else {
+        member = await updateMemberProfile(member.id, {
+          email: email.trim(),
+          phone: phone.trim(),
+        })
+      }
 
       await createCheckin({
         member_id: member.id,
-        group_name: selectedSession.group,
+        group_name: session.group,
         date: liveDate,
         time: timeString(),
         year: currentYear,
@@ -936,17 +1010,29 @@ export default function Home() {
     }
   }
 
-  async function handleMemberRegistration() {
-    const firstName = registerFirstName.trim()
-    const lastName = registerLastName.trim()
-    const pin = registerPin.trim()
+  async function handleMemberRegistration(data?: RegistrationFormData) {
+    const firstName = (data?.firstName ?? registerFirstName).trim()
+    const lastName = (data?.lastName ?? registerLastName).trim()
+    const birthDate = data?.birthDate ?? registerBirthDate
+    const pin = (data?.pin ?? registerPin).trim()
+    const email = (data?.email ?? registerEmail).trim()
+    const phone = (data?.phone ?? registerPhone).trim()
+    const baseGroup = (data?.baseGroup ?? registerBaseGroup).trim()
+
+    setRegisterFirstName(firstName)
+    setRegisterLastName(lastName)
+    setRegisterBirthDate(birthDate)
+    setRegisterPin(pin)
+    setRegisterEmail(email)
+    setRegisterPhone(phone)
+    setRegisterBaseGroup(baseGroup)
 
     if (!firstName || !lastName) {
       alert("Bitte Vorname und Nachname eingeben.")
       return
     }
 
-    if (!registerBirthDate) {
+    if (!birthDate) {
       alert("Bitte Geburtsdatum angeben.")
       return
     }
@@ -956,76 +1042,43 @@ export default function Home() {
       return
     }
 
-    if (!registerEmail.trim()) {
+    if (!email) {
       alert("Bitte E-Mail angeben.")
       return
     }
 
-    if (!registerBaseGroup) {
+    if (!baseGroup) {
       alert("Bitte Stammgruppe auswählen.")
       return
     }
 
     try {
       setDbLoading(true)
-      const emailToken = generateEmailVerificationToken()
 
-      const existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, registerBirthDate)
-      if (existing && !existing.is_trial) {
-        alert("Mitglied existiert bereits.")
-        return
+      const response = await fetch("/api/public/member-register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          birthDate,
+          pin,
+          email,
+          phone,
+          baseGroup,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || "Registrierung konnte nicht gespeichert werden.")
       }
 
-      if (existing && existing.is_trial) {
-        const { error } = await supabase
-          .from("members")
-          .update({
-            first_name: firstName,
-            last_name: lastName,
-            name: `${firstName} ${lastName}`.trim(),
-            birthdate: registerBirthDate,
-            email: registerEmail.trim(),
-            phone: registerPhone.trim(),
-            is_trial: false,
-            member_pin: pin,
-            is_approved: false,
-            email_verified: false,
-            email_verified_at: null,
-            base_group: registerBaseGroup,
-            email_verification_token: emailToken,
-          })
-          .eq("id", existing.id)
+      const result = (await response.json()) as { verificationSent?: boolean }
 
-        if (error) throw error
-      } else {
-        const { error } = await supabase
-          .from("members")
-          .insert([
-            {
-              name: `${firstName} ${lastName}`.trim(),
-              first_name: firstName,
-              last_name: lastName,
-              birthdate: registerBirthDate,
-              email: registerEmail.trim(),
-              phone: registerPhone.trim(),
-              is_trial: false,
-              member_pin: pin,
-              is_approved: false,
-              email_verified: false,
-              email_verified_at: null,
-              email_verification_token: emailToken,
-              base_group: registerBaseGroup,
-            },
-          ])
-
-        if (error) throw error
-      }
-
-      setMemberFirstName(firstName)
-      setMemberLastName(lastName)
+      setMemberEmail(email.toLowerCase())
       setMemberPin(pin)
-      setMemberAreaFirstName(firstName)
-      setMemberAreaLastName(lastName)
+      setMemberAreaEmail(email.toLowerCase())
       setMemberAreaPin(pin)
       setRegisterFirstName("")
       setRegisterLastName("")
@@ -1033,33 +1086,13 @@ export default function Home() {
       setRegisterPin("")
       setRegisterEmail("")
       setRegisterPhone("")
+      setRegisterBaseGroup(groupOptions[0] ?? "")
 
-      const verificationLink = `${window.location.origin}/?verify=${emailToken}`
-
-      try {
-        const response = await fetch("/api/send-verification", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: registerEmail.trim(),
-            name: `${firstName} ${lastName}`.trim(),
-            link: verificationLink,
-          }),
-        })
-
-        if (!response.ok) {
-          const message = await response.text()
-          console.error("Mailversand fehlgeschlagen", message)
-          alert("Registrierung gespeichert.\n\nDie Bestätigungs-E-Mail konnte aber nicht versendet werden.")
-          return
-        }
-      } catch (error) {
-        console.error("Mailversand fehlgeschlagen", error)
-        alert("Registrierung gespeichert.\n\nDie Bestätigungs-E-Mail konnte aber nicht versendet werden.")
-        return
+      if (result.verificationSent === false) {
+        alert("Registrierung gespeichert.\n\nDie Bestätigungs-E-Mail konnte aktuell nicht versendet werden.")
+      } else {
+        alert("Registrierung gespeichert.\n\nBitte E-Mail bestätigen.")
       }
-
-      alert("Registrierung gespeichert.\n\nBitte zuerst die E-Mail bestätigen. Danach sind bis zu 6 Trainings ohne Admin-Freigabe möglich.")
     } catch (error) {
       console.error(error)
       alert("Fehler beim Anlegen des Mitglieds.")
@@ -1068,13 +1101,17 @@ export default function Home() {
     }
   }
 
-  async function loadMemberArea() {
-    const firstName = memberAreaFirstName.trim()
-    const lastName = memberAreaLastName.trim()
-    const pin = memberAreaPin.trim()
+  async function loadMemberArea(data?: MemberAreaFormData) {
+    const email = (data?.email ?? memberAreaEmail).trim().toLowerCase()
+    const pin = (data?.pin ?? memberAreaPin).trim()
 
-    if (!firstName || !lastName || !pin) {
-      alert("Bitte Vorname, Nachname und PIN eingeben.")
+    setMemberAreaEmail(email)
+    setMemberAreaPin(pin)
+    setMemberAreaUnlocked(false)
+    setMemberAreaData(null)
+
+    if (!email || !pin) {
+      alert("Bitte E-Mail und PIN eingeben.")
       return
     }
 
@@ -1084,10 +1121,16 @@ export default function Home() {
     }
 
     try {
-      const member = (await findMemberByFirstLastAndPin(firstName, lastName, pin)) as MemberRecord | null
+      const memberMatch = await findMemberByEmailAndPin(email, pin)
+      if (memberMatch?.status === "missing_email") {
+        alert(MEMBER_MISSING_EMAIL_MESSAGE)
+        return
+      }
+
+      const member = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
 
       if (!member) {
-        alert("Mitglied nicht gefunden oder PIN nicht korrekt.")
+        alert(MEMBER_LOGIN_ERROR_MESSAGE)
         return
       }
 
@@ -1109,6 +1152,7 @@ export default function Home() {
         ])
 
       setPersonalMonthVisits(monthRows?.length ?? 0)
+      setPersonalTotalVisits(allRows?.length ?? 0)
       setPreviousMonthVisits(previousMonthRows?.length ?? 0)
       setPersonalYearVisits(yearRows?.length ?? 0)
       setPersonalLastCheckin((lastRow as CheckinRow | null) ?? null)
@@ -1124,11 +1168,12 @@ export default function Home() {
           .eq("group_name", member.base_group)
           .eq("month_key", currentMonthKey)
 
-        const myBaseGroupVisits = (baseGroupRows || []).filter((row) => row.member_id === member.id).length
+        const baseGroupVisits = (baseGroupRows || []) as Array<{ member_id: string }>
+        const myBaseGroupVisits = baseGroupVisits.filter((row) => row.member_id === member.id).length
         setBaseGroupMonthVisits(myBaseGroupVisits)
 
         const countsMap = new Map<string, number>()
-        for (const row of baseGroupRows || []) {
+        for (const row of baseGroupVisits) {
           countsMap.set(row.member_id, (countsMap.get(row.member_id) || 0) + 1)
         }
 
@@ -1151,30 +1196,66 @@ export default function Home() {
 
   function openTrainerLogin() {
     setShowTrainerLogin(true)
+    setTrainerLoginEmail("")
     setTrainerPinInput("")
   }
 
   async function handleTrainerLogin() {
-    if (trainerPinInput === trainerPin || trainerPinInput === ADMIN_PASSWORD) {
-      const sessionUntil = Date.now() + TRAINER_SESSION_MINUTES * 60 * 1000
+    try {
+      const response = await fetch("/api/trainer-auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: trainerLoginEmail,
+          pin: trainerPinInput,
+        }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 428) {
+          const payload = (await response.json().catch(() => null)) as
+            | { email?: string; message?: string }
+            | null
+          const message = payload?.message || TRAINER_PIN_UPDATE_REQUIRED_MESSAGE
+          const email = payload?.email?.trim().toLowerCase() || trainerLoginEmail.trim().toLowerCase()
+
+          alert(message)
+          setShowTrainerLogin(false)
+          if (typeof window !== "undefined") {
+            const params = new URLSearchParams({
+              tab: "login",
+              email,
+            })
+            window.location.href = `/trainer-zugang?${params.toString()}`
+          }
+          return
+        }
+        alert("Zugangsdaten nicht korrekt oder noch nicht freigegeben.")
+        return
+      }
+
+      const data = (await response.json()) as { role?: string; sessionUntil?: number }
+      const sessionUntil = data.sessionUntil ?? Date.now() + TRAINER_SESSION_MINUTES * 60 * 1000
+
       setTrainerSessionUntil(sessionUntil)
       setTrainerMode(true)
-      setAdminMode(trainerPinInput === ADMIN_PASSWORD)
+      setAdminMode(data.role === "admin")
       setShowTrainerLogin(false)
+      setTrainerLoginEmail("")
       setTrainerPinInput("")
-      
+      localStorage.setItem(TRAINER_ROLE_STORAGE_KEY, JSON.stringify(data.role === "admin" ? "admin" : "trainer"))
 
-      if (trainerPinInput === ADMIN_PASSWORD) {
+      if (data.role === "admin") {
         try {
           await refreshAdminLists()
         } catch (error) {
           console.error(error)
         }
       }
-      return
+    } catch (error) {
+      console.error(error)
+      alert("PIN nicht korrekt.")
     }
-
-    alert("PIN nicht korrekt.")
   }
 
   function handleTrainerLogout() {
@@ -1184,7 +1265,14 @@ export default function Home() {
     setAllMembers([])
     setTrainerSessionUntil(0)
     setShowTrainerLogin(false)
+    setTrainerLoginEmail("")
     setTrainerPinInput("")
+    setQrAccessUrl("")
+    try {
+      localStorage.removeItem(TRAINER_ROLE_STORAGE_KEY)
+    } catch {
+      // Ignore storage failures.
+    }
   }
 
   return (
@@ -1197,19 +1285,10 @@ export default function Home() {
             </div>
 
             {trainerMode ? (
-              <>
-                <div
-                  className={`rounded-2xl px-4 py-2 text-sm font-semibold ${
-                    adminMode ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
-                  }`}
-                >
-                  {adminMode ? "Admin-Modus aktiv" : "Trainer-Modus aktiv"}
-                </div>
-                <Button variant="outline" className="rounded-2xl" onClick={handleTrainerLogout}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  {adminMode ? "Admin abmelden" : "Trainer abmelden"}
-                </Button>
-              </>
+              <Button variant="outline" className="rounded-2xl" onClick={handleTrainerLogout}>
+                <Settings className="mr-2 h-4 w-4" />
+                {adminMode ? "Admin abmelden" : "Trainer abmelden"}
+              </Button>
             ) : (
               <Button variant="outline" className="rounded-2xl" onClick={openTrainerLogin}>
                 <Lock className="mr-2 h-4 w-4" />
@@ -1234,16 +1313,28 @@ export default function Home() {
               <div className="font-semibold">Trainerbereich entsperren</div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-end">
+            <div className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto_auto] md:items-end">
               <div className="space-y-2">
-                <Label>Trainer- oder Admin-Passwort</Label>
+                <Label>E-Mail</Label>
+                <Input
+                  type="email"
+                  value={trainerLoginEmail}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setTrainerLoginEmail(e.target.value)}
+                  placeholder="name@tsv-falkensee.de"
+                  className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>PIN</Label>
                 <Input
                   type="password"
                   value={trainerPinInput}
-                  onChange={(e) => setTrainerPinInput(e.target.value)}
-                  placeholder="Passwort eingeben"
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setTrainerPinInput(e.target.value)}
+                  placeholder="PIN eingeben"
                   className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                 />
+                <div className="text-xs text-zinc-500">{TRAINER_PIN_HINT}</div>
               </div>
 
               <Button
@@ -1258,51 +1349,65 @@ export default function Home() {
                 className="rounded-2xl"
                 onClick={() => {
                   setShowTrainerLogin(false)
+                  setTrainerLoginEmail("")
                   setTrainerPinInput("")
                 }}
               >
                 Abbrechen
               </Button>
+              <Button asChild variant="outline" className="rounded-2xl">
+                <Link href="/trainer-zugang?tab=register">Neu als Trainer registrieren</Link>
+              </Button>
             </div>
           </div>
         )}
 
-        <div className="mb-6 overflow-hidden rounded-[28px] shadow-xl">
-          <div className={`${brand.dark} relative px-6 py-8 text-white md:px-8`}>
+        <div className="mb-5 overflow-hidden rounded-[28px] shadow-xl md:mb-6">
+          <div className={`${brand.dark} relative px-4 py-5 text-white sm:px-6 sm:py-8 md:px-8`}>
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(230,51,42,0.25),transparent_35%)]" />
-            <div className="relative grid gap-6 md:grid-cols-[1.6fr_1fr] md:items-center">
+            <div className="relative grid gap-4 md:grid-cols-[1.6fr_1fr] md:items-center">
               <div>
                 <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-sm">
                   <ShieldCheck className="h-4 w-4" />
-                  TSV Falkensee · BoxGym Check-in
+                  <span className="hidden sm:inline">TSV Falkensee · BoxGym Check-in</span>
+                  <span className="sm:hidden">TSV BoxGym</span>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
                   <img
                     src="/BoxGym Kompakt.png"
                     alt="TSV Falkensee BoxGym"
-                    className="h-32 w-auto rounded-md bg-white/90 p-1"
+                    className="h-14 w-auto rounded-md bg-white/90 p-1 sm:h-32"
                   />
                   <div>
-                    <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+                    <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">
                       TSV BoxGym Check-in
                     </h1>
-                    <div className="mt-3 inline-flex items-center gap-3 rounded-xl bg-yellow-400 px-4 py-2 text-base font-bold text-black shadow-lg">
-                      <span>🚧</span>
-                      <span>TESTPHASE – SYSTEM WIRD GETESTET</span>
-                    </div>
                   </div>
                 </div>
+
+                <details className="mt-3 rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-blue-50 sm:hidden">
+                  <summary className="cursor-pointer list-none font-semibold">Mehr anzeigen</summary>
+                  <div className="mt-2 space-y-1 text-xs leading-5 text-blue-50/85">
+                    <div>Mitglieder, Probetraining und Registrierung starten hier.</div>
+                    <div>Die Mitglieder- und Probetrainings-Funktionen sind per QR-Code geschützt.</div>
+                    <div>Den Admin-Hinweis gibt es nur in der Vollansicht.</div>
+                  </div>
+                </details>
               </div>
 
               <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
-                <CardContent className="p-5">
-                  <div className="grid grid-cols-2 gap-3 text-sm">
+                <CardContent className="p-4 sm:p-5">
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
                     <div className="rounded-2xl bg-white/10 p-3">
                       <div className="text-zinc-300">Trainingstag</div>
                       <div className="mt-1 font-semibold">{displayedTrainingDate}</div>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-3">
+                      <div className="text-zinc-300">Status</div>
+                      <div className="mt-1 font-semibold">{memberFlow.statusText}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/10 p-3 sm:col-span-2">
                       <div className="text-zinc-300">Läuft gerade</div>
                       <div className="mt-1 font-semibold">{memberFlow.session?.group ?? "Keine aktive Gruppe"}</div>
                     </div>
@@ -1317,14 +1422,6 @@ export default function Home() {
                       <div className="mt-1 font-semibold">{memberFlow.nextSession?.group ?? "Keine weitere Gruppe"}</div>
                     </div>
                   </div>
-
-                  <div className="mt-3 rounded-2xl bg-white/10 p-3 text-sm">
-                    <div className="text-zinc-300">Status</div>
-                    <div className="mt-1 font-semibold">{memberFlow.statusText}</div>
-                    <div className="mt-1 text-zinc-300">
-                      Nächster Zeitraum: {memberFlow.nextSession ? `${memberFlow.nextSession.start} – ${memberFlow.nextSession.end}` : "—"}
-                    </div>
-                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -1332,375 +1429,113 @@ export default function Home() {
         </div>
 
         {!qrAccessGranted && (
-          <div className="mb-6 rounded-[24px] border border-yellow-300 bg-yellow-50 p-5 shadow-sm">
+          <details className="mb-5 rounded-[24px] border border-yellow-300 bg-yellow-50 p-4 shadow-sm md:hidden">
+            <summary className="cursor-pointer list-none font-semibold text-zinc-900">Hinweis zum QR-Zugang</summary>
+            <div className="mt-2 text-sm text-zinc-700">
+              Der Zugang zu Mitglieder-Check-in und Probetraining ist nur nach dem Öffnen dieser Seite über den QR-Code im BoxGym möglich. Mitglied registrieren und Mein Bereich bleiben frei zugänglich.
+            </div>
+          </details>
+        )}
+        {!qrAccessGranted && (
+          <div className="mb-6 hidden rounded-[24px] border border-yellow-300 bg-yellow-50 p-5 shadow-sm md:block">
             <div className="flex items-start gap-3">
               <div className="text-2xl">🚧</div>
               <div>
-                <div className="font-semibold text-zinc-900">Zugang im Gym nur per QR-Code</div>
+                <div className="font-semibold text-zinc-900">Mitglieder-Check-in und Probetraining nur per QR-Code</div>
                 <div className="mt-1 text-sm text-zinc-700">
-                  Mitglieder-Check-in und Probetraining sind nur nach dem Öffnen dieser Seite über den QR-Code im BoxGym möglich. Registrierung und Mein Bereich bleiben frei zugänglich.
+                  Der Zugang zu Mitglieder-Check-in und Probetraining ist nur nach dem Öffnen dieser Seite über den QR-Code im BoxGym möglich. Mitglied registrieren und Mein Bereich bleiben frei zugänglich.
                 </div>
               </div>
             </div>
           </div>
         )}
         <div className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-4">
             <Button
               variant="outline"
-              className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
+              className="h-auto min-h-20 justify-start rounded-[24px] border-2 bg-white px-4 py-3 text-left shadow-sm hover:bg-zinc-50 sm:min-h-24 sm:px-6"
               onClick={() => togglePanelWithQrAccess("member")}
             >
               <div className="flex items-center gap-4">
-                <Users className="h-6 w-6 text-[#154c83]" />
+                <Users className="h-5 w-5 text-[#154c83] sm:h-6 sm:w-6" />
                 <div className="text-base font-semibold text-zinc-900">Mitglieder-Check-in</div>
               </div>
             </Button>
 
             <Button
               variant="outline"
-              className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
+              className="h-auto min-h-20 justify-start rounded-[24px] border-2 bg-white px-4 py-3 text-left shadow-sm hover:bg-zinc-50 sm:min-h-24 sm:px-6"
               onClick={() => togglePanelWithQrAccess("trial")}
             >
               <div className="flex items-center gap-4">
-                <UserPlus className="h-6 w-6 text-[#e6332a]" />
+                <UserPlus className="h-5 w-5 text-[#e6332a] sm:h-6 sm:w-6" />
                 <div className="text-base font-semibold text-zinc-900">Probetraining</div>
               </div>
             </Button>
 
             <Button
               variant="outline"
-              className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
+              className="h-auto min-h-20 justify-start rounded-[24px] border-2 bg-white px-4 py-3 text-left shadow-sm hover:bg-zinc-50 sm:min-h-24 sm:px-6"
               onClick={() => toggleFreePanel("register")}
             >
               <div className="flex items-center gap-4">
-                <UserRoundPlus className="h-6 w-6 text-[#154c83]" />
+                <UserRoundPlus className="h-5 w-5 text-[#154c83] sm:h-6 sm:w-6" />
                 <div className="text-base font-semibold text-zinc-900">Mitglied registrieren</div>
               </div>
             </Button>
 
             <Button
               variant="outline"
-              className="h-24 justify-start rounded-[24px] border-2 bg-white px-6 text-left shadow-sm hover:bg-zinc-50"
-              onClick={() => setOpenPanel(openPanel === "area" ? null : "area")}
+              className="h-auto min-h-20 justify-start rounded-[24px] border-2 bg-white px-4 py-3 text-left shadow-sm hover:bg-zinc-50 sm:min-h-24 sm:px-6"
+              onClick={() => toggleFreePanel("area")}
             >
               <div className="flex items-center gap-4">
-                <UserCircle2 className="h-6 w-6 text-[#154c83]" />
+                <UserCircle2 className="h-5 w-5 text-[#154c83] sm:h-6 sm:w-6" />
                 <div className="text-base font-semibold text-zinc-900">Mein Bereich</div>
               </div>
             </Button>
           </div>
 
           {qrAccessGranted && openPanel === "member" && (
-            <Card className="rounded-[24px] border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>Mitglieder-Check-in</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Vorname</Label>
-                    <Input
-                      value={memberFirstName}
-                      onChange={(e) => setMemberFirstName(e.target.value)}
-                      placeholder="Vorname"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nachname</Label>
-                    <Input
-                      value={memberLastName}
-                      onChange={(e) => setMemberLastName(e.target.value)}
-                      placeholder="Nachname"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>PIN (6-stellig)</Label>
-                  <Input
-                    value={memberPin}
-                    onChange={(e) => setMemberPin(e.target.value)}
-                    placeholder="z. B. A3X9Q1"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Trainingsgruppe</Label>
-                  <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-                    <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {displaySessions.length === 0 ? (
-                        <SelectItem value="none" disabled>
-                          Keine Gruppen verfügbar
-                        </SelectItem>
-                      ) : (
-                        displaySessions.map((session) => (
-                          <SelectItem key={session.id} value={session.id}>
-                            {session.title}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button
-                  className={`${brand.primary} w-full rounded-2xl text-white hover:bg-[#123d69]`}
-                  onClick={handleMemberCheckin}
-                  disabled={dbLoading || !selectedSession || !memberFlow.canCheckin}
-                >
-                  {dbLoading ? "Speichert..." : "Mitglied einchecken"}
-                </Button>
-
-                {lastCheckinPosition && selectedSession && (
-                  <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-                    Deine Position heute in der Gruppe: <span className="font-semibold">{lastCheckinPosition}</span> von{" "}
-                    <span className="font-semibold">{currentGroupCount}</span>.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
+            <CheckinForm
+              type="member"
+              sessions={displaySessions}
+              defaultSessionId={selectedSessionId}
+              canCheckin={memberFlow.canCheckin}
+              isLoading={dbLoading}
+              onSubmit={handleMemberCheckin}
+              submitLabel="Mitglied einchecken"
+              infoText={memberFlow.statusText}
+            />
           )}
 
         {qrAccessGranted && openPanel === "trial" && (
-            <Card className="rounded-[24px] border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>Probetraining</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Vorname</Label>
-                    <Input
-                      value={trialFirstName}
-                      onChange={(e) => setTrialFirstName(e.target.value)}
-                      placeholder="Vorname"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nachname</Label>
-                    <Input
-                      value={trialLastName}
-                      onChange={(e) => setTrialLastName(e.target.value)}
-                      placeholder="Nachname"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Geburtsdatum</Label>
-                  <Input
-                    type="date"
-                    value={trialBirthDate}
-                    onChange={(e) => setTrialBirthDate(e.target.value)}
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>E-Mail</Label>
-                  <Input
-                    type="email"
-                    value={trialEmail}
-                    onChange={(e) => setTrialEmail(e.target.value)}
-                    placeholder="E-Mail"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Telefonnummer</Label>
-                  <Input
-                    value={trialPhone}
-                    onChange={(e) => setTrialPhone(e.target.value)}
-                    placeholder="Telefonnummer"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-
-                <Button
-                  className="w-full rounded-2xl"
-                  onClick={handleTrialCheckin}
-                  disabled={dbLoading || !selectedSession || !memberFlow.canCheckin}
-                >
-                  {dbLoading ? "Speichert..." : "Probetraining anmelden"}
-                </Button>
-              </CardContent>
-            </Card>
+            <CheckinForm
+              type="trial"
+              sessions={displaySessions}
+              defaultSessionId={selectedSessionId}
+              canCheckin={memberFlow.canCheckin}
+              isLoading={dbLoading}
+              onSubmit={handleTrialCheckin}
+              submitLabel="Probetraining anmelden"
+              infoText={memberFlow.statusText}
+            />
           )}
 
           {openPanel === "register" && (
-            <Card className="rounded-[24px] border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>Mitglied registrieren</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-sm text-zinc-500">
-                  Neues Mitglied anlegen. Die Stammgruppe ist Grundlage für die Besuchsauswertung.
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Vorname</Label>
-                    <Input
-                      value={registerFirstName}
-                      onChange={(e) => setRegisterFirstName(e.target.value)}
-                      placeholder="Vorname"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nachname</Label>
-                    <Input
-                      value={registerLastName}
-                      onChange={(e) => setRegisterLastName(e.target.value)}
-                      placeholder="Nachname"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Geburtsdatum</Label>
-                  <Input
-                    type="date"
-                    value={registerBirthDate}
-                    onChange={(e) => setRegisterBirthDate(e.target.value)}
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Stammgruppe</Label>
-                  <Select value={registerBaseGroup} onValueChange={setRegisterBaseGroup}>
-                    <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
-                      <SelectValue placeholder="Gruppe auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {groupOptions.map((group) => (
-                        <SelectItem key={group} value={group}>
-                          {group}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>PIN (6-stellig)</Label>
-                  <Input
-                    value={registerPin}
-                    onChange={(e) => setRegisterPin(e.target.value)}
-                    placeholder="z. B. A3X9Q1"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>E-Mail</Label>
-                  <Input
-                    type="email"
-                    value={registerEmail}
-                    onChange={(e) => setRegisterEmail(e.target.value)}
-                    placeholder="E-Mail"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Telefonnummer (freiwillig)</Label>
-                  <Input
-                    value={registerPhone}
-                    onChange={(e) => setRegisterPhone(e.target.value)}
-                    placeholder="Telefonnummer"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-
-                <Button
-                  className={`${brand.primary} w-full rounded-2xl text-white hover:bg-[#123d69]`}
-                  onClick={handleMemberRegistration}
-                  disabled={dbLoading}
-                >
-                  {dbLoading ? "Speichert..." : "Mitglied registrieren"}
-                </Button>
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                  Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Danach sind bis zu 6 Trainings auch ohne Admin-Freigabe möglich.
-                </div>
-                <div className="text-xs text-zinc-500">
-                  Mein Bereich bleibt frei zugänglich. Mitglieder-Check-in und Probetraining funktionieren nur im Gym per QR-Zugang.
-                </div>
-              </CardContent>
-            </Card>
+            <RegistrationForm
+              groupOptions={groupOptions}
+              isLoading={dbLoading}
+              onSubmit={handleMemberRegistration}
+            />
           )}
 
           {openPanel === "area" && (
-            <Card className="rounded-[24px] border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>Mein Bereich</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Vorname</Label>
-                    <Input
-                      value={memberAreaFirstName}
-                      onChange={(e) => setMemberAreaFirstName(e.target.value)}
-                      placeholder="Vorname"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nachname</Label>
-                    <Input
-                      value={memberAreaLastName}
-                      onChange={(e) => setMemberAreaLastName(e.target.value)}
-                      placeholder="Nachname"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>PIN (6-stellig)</Label>
-                  <Input
-                    value={memberAreaPin}
-                    onChange={(e) => setMemberAreaPin(e.target.value)}
-                    placeholder="z. B. A3X9Q1"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    className={`${brand.primary} rounded-2xl text-white hover:bg-[#123d69]`}
-                    onClick={loadMemberArea}
-                  >
-                    Mitgliederbereich öffnen
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    className="rounded-2xl"
-                    onClick={() => {
-                      setMemberAreaUnlocked(false)
-                      setMemberAreaData(null)
-                    }}
-                  >
-                    Schließen
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <MemberAreaForm
+              isLoading={dbLoading}
+              onSubmit={loadMemberArea}
+              error={null}
+            />
           )}
         </div>
 
@@ -1760,7 +1595,7 @@ export default function Home() {
               </div>
               {!memberAreaData.is_approved && memberAreaData.email_verified && (
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
-                  Deine E-Mail wurde bestätigt. Du kannst jetzt bis zu 6 Trainings absolvieren, auch wenn die finale Freigabe durch den Admin noch aussteht.
+                  Deine E-Mail wurde bestätigt. Die finale Freigabe durch den Admin steht noch aus.
                 </div>
               )}
               {memberAreaData.is_approved && memberAreaData.email_verified && (
@@ -1770,32 +1605,35 @@ export default function Home() {
               )}
               {!memberAreaData.email_verified && !memberAreaData.is_approved && (
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-                  Status: Registrierung abgeschlossen. Als Nächstes muss zuerst die E-Mail bestätigt werden. Danach sind bis zu 6 Trainings ohne Admin-Freigabe möglich.
+                  Status: Registrierung abgeschlossen. Als Nächstes muss zuerst die E-Mail bestätigt werden.
                 </div>
               )}
-              {!!memberAreaData.email && (
+              {!memberAreaData.email_verified && memberAreaData.email && (
                 <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
-                  Hinterlegte E-Mail: <span className="font-semibold">{memberAreaData.email}</span>
+                  Bestätigungsadresse: <span className="font-semibold">{memberAreaData.email}</span>
                 </div>
               )}
-              {!memberAreaData.email_verified && !!memberAreaData.email && (
+              {!memberAreaData.email_verified && memberAreaData.email && (
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
                   Bitte Posteingang und Spam-Ordner prüfen und anschließend den Bestätigungslink öffnen.
                 </div>
               )}
+              {!memberAreaData.email_verified && !memberAreaData.email && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  Für dieses Konto ist aktuell keine E-Mail-Adresse hinterlegt. Eine Bestätigung ist so nicht möglich.
+                </div>
+              )}
               {!memberAreaData.email_verified && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-                  Erst nach der E-Mail-Bestätigung kann der Admin freigeben. Bis dahin ist noch kein Mitglieder-Check-in moeglich.
+                  Bitte zuerst den Bestätigungslink aus der Registrierung öffnen. Erst danach ist die Freigabe durch den Admin möglich.
                 </div>
               )}
               {memberAreaData.is_trial && !memberAreaData.is_approved && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
                   Probemitglieder können maximal 3 Trainingseinheiten absolvieren.
-                  {typeof personalMonthVisits === "number" && (
-                    <div className="mt-1">
-                      Verbleibend: <span className="font-semibold">{Math.max(0, 3 - personalMonthVisits)}</span>
-                    </div>
-                  )}
+                  <div className="mt-1">
+                    Verbleibend: <span className="font-semibold">{Math.max(0, 3 - personalTotalVisits)}</span>
+                  </div>
                 </div>
               )}
               <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
@@ -1832,17 +1670,18 @@ export default function Home() {
                     <Input
                       type="email"
                       value={profileEmail}
-                      onChange={(e) => setProfileEmail(e.target.value)}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => setProfileEmail(e.target.value)}
                       placeholder="E-Mail"
                       className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                     />
+
                   </div>
 
                   <div className="space-y-2">
                     <Label>Telefonnummer</Label>
                     <Input
                       value={profilePhone}
-                      onChange={(e) => setProfilePhone(e.target.value)}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => setProfilePhone(e.target.value)}
                       placeholder="Telefonnummer"
                       className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                     />
@@ -1866,6 +1705,7 @@ export default function Home() {
                         })
 
                         setMemberAreaData(updated as MemberRecord)
+                        setMemberAreaEmail(updated.email?.trim().toLowerCase() || profileEmail.trim().toLowerCase())
                         alert("Kontaktdaten gespeichert.")
                       } catch (error) {
                         console.error(error)
@@ -1884,94 +1724,6 @@ export default function Home() {
 
         {trainerMode && (
           <div className="mt-6 space-y-6">
-            <Card className="rounded-[24px] border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>Mail-Test</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div
-                  className={`rounded-2xl border p-4 text-sm ${
-                    mailConfigured
-                      ? "border-green-200 bg-green-50 text-green-700"
-                      : "border-amber-200 bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  {mailConfigured
-                    ? `Mailversand konfiguriert${mailConfigSource ? ` via ${mailConfigSource}` : ""}${mailFromAddress ? ` · Absender: ${mailFromAddress}` : ""}`
-                    : "Mailversand ist aktuell nicht vollstaendig konfiguriert. Bitte RESEND_API_KEY und RESEND_FROM_EMAIL pruefen."}
-                </div>
-
-                {!adminMode && (
-                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
-                    Du bist gerade im Trainer-Modus. Freigaben bleiben nur fuer Admin sichtbar, aber den Mailversand kannst du hier schon testen.
-                  </div>
-                )}
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Empfaenger</Label>
-                    <Input
-                      type="email"
-                      value={mailTestEmail}
-                      onChange={(e) => setMailTestEmail(e.target.value)}
-                      placeholder="test@beispiel.de"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Name</Label>
-                    <Input
-                      value={mailTestName}
-                      onChange={(e) => setMailTestName(e.target.value)}
-                      placeholder="Testmitglied"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                  </div>
-                </div>
-
-                <Button
-                  className={`${brand.primary} rounded-2xl text-white hover:bg-[#123d69]`}
-                  disabled={mailTestSending}
-                  onClick={async () => {
-                    if (!mailTestEmail.trim()) {
-                      alert("Bitte eine Empfaenger-E-Mail angeben.")
-                      return
-                    }
-
-                    try {
-                      setMailTestSending(true)
-                      const testLink = isClient ? window.location.origin : "https://tsvboxgym.de"
-
-                      const response = await fetch("/api/send-verification", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          email: mailTestEmail.trim(),
-                          name: mailTestName.trim() || "Testmitglied",
-                          link: testLink,
-                        }),
-                      })
-
-                      if (!response.ok) {
-                        const message = await response.text()
-                        throw new Error(message || "Mailversand fehlgeschlagen.")
-                      }
-
-                      alert("Probe-Mail erfolgreich versendet.")
-                    } catch (error) {
-                      console.error(error)
-                      const message = error instanceof Error ? error.message : "Mailversand fehlgeschlagen."
-                      alert(`Probe-Mail fehlgeschlagen: ${message}`)
-                    } finally {
-                      setMailTestSending(false)
-                    }
-                  }}
-                >
-                  {mailTestSending ? "Sendet..." : "Probe-Mail senden"}
-                </Button>
-              </CardContent>
-            </Card>
             {adminMode && (
               <>
                 <Card className="rounded-[24px] border-0 shadow-sm">
@@ -2010,7 +1762,6 @@ export default function Home() {
                         <div className="rounded-2xl bg-zinc-100 p-4 text-sm break-all text-zinc-800">
                           {qrAccessUrl}
                         </div>
-                        <div className="text-[11px] text-zinc-400">Nur in der Testphase sichtbar.</div>
 
                         <div className="flex flex-wrap gap-3 print:hidden">
                           <Button
@@ -2064,36 +1815,15 @@ export default function Home() {
                               <div className="font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
                               <div className="text-zinc-600">Geburtsdatum: {member.birthdate || "—"}</div>
                               <div className="text-zinc-600">E-Mail: {member.email || "—"}</div>
-                              <div className="text-zinc-600">
-                                Status:{" "}
-                                <span
-                                  className={`font-semibold ${
-                                    member.is_approved
-                                      ? "text-green-600"
-                                      : member.email_verified
-                                        ? "text-blue-600"
-                                        : "text-amber-600"
-                                  }`}
-                                >
-                                  {member.is_approved
-                                    ? "freigegeben"
-                                    : member.email_verified
-                                      ? "E-Mail bestaetigt"
-                                      : "registriert"}
-                                </span>
-                              </div>
                               <div className="text-zinc-600">E-Mail bestätigt: {member.email_verified ? "Ja" : "Nein"}</div>
                               {!member.email_verified && (
-                                <div className="text-amber-600">Registriert · wartet auf E-Mail-Bestätigung</div>
+                                <div className="text-amber-600">Wartet auf E-Mail-Bestätigung</div>
                               )}
                               {member.email_verified && (
-                                <div className="text-green-600">E-Mail bestätigt · Admin-Freigabe möglich</div>
+                                <div className="text-green-600">Bereit für Admin-Freigabe</div>
                               )}
                               {!member.is_approved && member.email_verified && (
-                                <div className="text-xs text-blue-600">Noch nicht freigegeben · Check-in bis zu 6 Trainings möglich</div>
-                              )}
-                              {member.is_approved && (
-                                <div className="text-xs text-green-600">Vollständig freigegeben</div>
+                                <div className="text-xs text-blue-600">Admin-Freigabe steht noch aus</div>
                               )}
                               {member.email_verified_at && (
                                 <div className="text-zinc-500 text-xs">
@@ -2106,46 +1836,10 @@ export default function Home() {
                               ) : !member.is_approved ? (
                                 <div className="text-blue-600">Status: registriert · max. 6 Einheiten bis Freigabe</div>
                               ) : null}
-                              {(() => {
-                                const used = dbCheckins.filter((row) => row.member_id === member.id).length
-                                const limit = member.is_trial ? 3 : !member.is_approved ? 6 : null
-
-                                let color = "text-zinc-500"
-                                if (limit !== null) {
-                                  if (used >= limit) color = "text-red-600 font-semibold"
-                                  else if (used >= limit - 1) color = "text-amber-600 font-semibold"
-                                }
-
-                                return (
-                                  <div className={`text-xs ${color}`}>
-                                    Bisher genutzt: {used}{limit !== null ? ` / ${limit}` : ""}
-                                  </div>
-                                )
-                              })()}
-                              {(() => {
-                                const used = dbCheckins.filter((row) => row.member_id === member.id).length
-                                const limit = member.is_trial ? 3 : !member.is_approved ? 6 : null
-                                const remaining = limit !== null ? Math.max(0, limit - used) : null
-
-                                let color = "text-zinc-500"
-                                if (remaining !== null) {
-                                  if (remaining === 0) color = "text-red-600 font-semibold"
-                                  else if (remaining === 1) color = "text-amber-600 font-semibold"
-                                }
-
-                                return limit !== null ? (
-                                  <div className={`text-xs ${color}`}>
-                                    Verbleibend: <span className="font-semibold">{remaining}</span>
-                                  </div>
-                                ) : null
-                              })()}
-                              {member.is_trial ? (
-                                <div className="text-xs text-amber-700">Freigabe ist nach dem Probetraining möglich, aber nicht sofort zwingend.</div>
-                              ) : !member.is_approved ? (
-                                <div className="text-xs text-blue-700">Nach bestätigter E-Mail sind bis zu 6 Trainings ohne Admin-Freigabe möglich. Spätestens vor der 7. Einheit sollte freigegeben werden.</div>
-                              ) : null}
                               {!member.is_approved && (
-                                <div className="text-xs text-zinc-500">Check-in-Limit wird automatisch beim Einchecken geprüft.</div>
+                                <div className="text-xs text-zinc-500">
+                                  Das Check-in-Limit wird automatisch beim Einchecken anhand der gespeicherten Trainingshistorie geprüft.
+                                </div>
                               )}
                             </div>
 
@@ -2153,7 +1847,7 @@ export default function Home() {
                               <Label>Stammgruppe</Label>
                               <Select
                                 value={adminGroupDrafts[member.id] ?? member.base_group ?? groupOptions[0] ?? ""}
-                                onValueChange={(value) =>
+                                onValueChange={(value: string) =>
                                   setAdminGroupDrafts((prev) => ({ ...prev, [member.id]: value }))
                                 }
                               >
@@ -2174,7 +1868,7 @@ export default function Home() {
                               <Label>Neue PIN</Label>
                               <Input
                                 value={adminPinDrafts[member.id] ?? ""}
-                                onChange={(e) =>
+                                onChange={(e: ChangeEvent<HTMLInputElement>) =>
                                   setAdminPinDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))
                                 }
                                 placeholder="optional"
@@ -2182,45 +1876,67 @@ export default function Home() {
                               />
                             </div>
 
-                            <Button
-                              className={`${brand.primary} rounded-2xl text-white hover:bg-[#123d69]`}
-                              disabled={!member.email_verified}
-                              onClick={async () => {
-                                try {
-                                  if (!member.email_verified) {
-                                    alert("E-Mail nicht bestätigt.\n\nMitglied muss zuerst den Bestätigungslink öffnen.")
-                                    return
-                                  }
+                            <div className="flex flex-col space-y-2">
+                              <Button
+                                className={`${brand.primary} rounded-2xl text-white hover:bg-[#123d69] disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500`}
+                                disabled={!member.email_verified}
+                                onClick={async () => {
+                                  if (!member.email_verified) return
 
-                                  const newGroup = adminGroupDrafts[member.id] ?? member.base_group ?? groupOptions[0] ?? ""
-                                  if (newGroup) await changeMemberBaseGroup(member.id, newGroup)
-
-                                  const newPin = adminPinDrafts[member.id]?.trim()
-                                  if (newPin) {
-                                    if (!PIN_REGEX.test(newPin)) {
-                                      alert("Neue PIN muss genau 6-stellig sein.")
-                                      return
+                                  try {
+                                    const newGroup = adminGroupDrafts[member.id] ?? member.base_group ?? groupOptions[0] ?? ""
+                                    if (newGroup) {
+                                      await changeMemberBaseGroup(member.id, newGroup)
                                     }
-                                    await resetMemberPin(member.id, newPin)
-                                  }
 
-                                  await approveMember(member.id)
-                                  await refreshAdminLists()
-                                  alert("Mitglied bestätigt.")
-                                } catch (error) {
-                                  console.error(error)
-                                  alert("Fehler bei der Bestätigung.")
-                                }
-                              }}
-                            >
-                              <CheckCircle2 className="mr-2 h-4 w-4" />
-                              {member.email_verified ? "Freigeben" : "Wartet auf E-Mail"}
-                            </Button>
-                            {!member.email_verified && !!member.email && (
-                              <div className="text-xs text-zinc-500">
-                                Bestätigung wird an: {member.email}
-                              </div>
-                            )}
+                                    const newPin = adminPinDrafts[member.id]?.trim()
+                                    if (newPin) {
+                                      if (!PIN_REGEX.test(newPin)) {
+                                        alert("Neue PIN muss genau 6-stellig sein.")
+                                        return
+                                      }
+                                      await resetMemberPin(member.id, newPin)
+                                    }
+
+                                    await approveMember(member.id)
+                                    await refreshAdminLists()
+                                    alert("Mitglied bestätigt.")
+                                  } catch (error) {
+                                    console.error(error)
+                                    alert("Fehler bei der Bestätigung.")
+                                  }
+                                }}
+                              >
+                                <CheckCircle2 className="mr-2 h-4 w-4" />
+                                {member.email_verified ? "Freigeben" : "Wartet auf E-Mail"}
+                              </Button>
+
+                              {!member.email_verified && (
+                                <div className="mt-1 text-xs text-red-600">
+                                  Freigabe erst nach E-Mail-Bestätigung möglich
+                                </div>
+                              )}
+                              {!member.email_verified && !member.email && (
+                                <div className="text-xs text-red-600">
+                                  Keine E-Mail-Adresse hinterlegt
+                                </div>
+                              )}
+                              {!member.email_verified && member.email_verification_token && (
+                                <div className="text-xs text-green-700">
+                                  Bestätigungs-Token vorhanden
+                                </div>
+                              )}
+                              {!member.email_verified && !member.email_verification_token && (
+                                <div className="text-xs text-red-600">
+                                  Kein Bestätigungs-Token vorhanden
+                                </div>
+                              )}
+                              {member.email_verified && (
+                                <div className="text-xs text-green-700">
+                                  Bestätigungs-Link nicht mehr erforderlich
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))
@@ -2259,7 +1975,7 @@ export default function Home() {
                               <TableCell>
                                 <Input
                                   value={adminFirstNameDrafts[member.id] ?? member.first_name ?? ""}
-                                  onChange={(e) =>
+                                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
                                     setAdminFirstNameDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))
                                   }
                                   placeholder="Vorname"
@@ -2270,7 +1986,7 @@ export default function Home() {
                               <TableCell>
                                 <Input
                                   value={adminLastNameDrafts[member.id] ?? member.last_name ?? ""}
-                                  onChange={(e) =>
+                                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
                                     setAdminLastNameDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))
                                   }
                                   placeholder="Nachname"
@@ -2278,12 +1994,14 @@ export default function Home() {
                                 />
                               </TableCell>
 
-                              <TableCell>{member.is_approved ? "Bestätigt" : "Probemitglied"}</TableCell>
+                              <TableCell>
+                                {member.is_trial ? "Probemitglied" : member.is_approved ? "Freigegeben" : "Registriert"}
+                              </TableCell>
 
                               <TableCell className="min-w-[220px]">
                                 <Select
                                   value={adminGroupDrafts[member.id] ?? member.base_group ?? groupOptions[0] ?? ""}
-                                  onValueChange={(value) =>
+                                  onValueChange={(value: string) =>
                                     setAdminGroupDrafts((prev) => ({ ...prev, [member.id]: value }))
                                   }
                                 >
@@ -2303,7 +2021,7 @@ export default function Home() {
                               <TableCell className="min-w-[160px]">
                                 <Input
                                   value={adminPinDrafts[member.id] ?? ""}
-                                  onChange={(e) =>
+                                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
                                     setAdminPinDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))
                                   }
                                   placeholder="6-stellig"
@@ -2399,7 +2117,6 @@ export default function Home() {
                                         const rows = ((await getTodayCheckins(liveDate)) as CheckinRow[]) || []
                                         setDbCheckins(rows)
                                         alert("Mitglied gelöscht.")
-                                        window.location.reload()
                                       } catch (error) {
                                         console.error(error)
                                         const message = error instanceof Error ? error.message : "Unbekannter Fehler"
@@ -2497,7 +2214,7 @@ export default function Home() {
                     <Label>Name suchen</Label>
                     <Input
                       value={trainerNameFilter}
-                      onChange={(e) => setTrainerNameFilter(e.target.value)}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => setTrainerNameFilter(e.target.value)}
                       placeholder="Name eingeben"
                       className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                     />
