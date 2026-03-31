@@ -108,7 +108,6 @@ export default function Home() {
   const [now, setNow] = useState<Date | null>(null)
   const [sessions, setSessions] = useState<HeroSession[]>([...fallbackSessions])
   const [openInfoCard, setOpenInfoCard] = useState<HeroInfoCard["id"] | null>(null)
-  const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "dev"
 
   useEffect(() => {
     const updateNow = () => setNow(new Date())
@@ -220,8 +219,6 @@ export default function Home() {
             <span>{liveDateString(now)}</span>
             <span>·</span>
             <span>{liveTimeString(now)}</span>
-            <span className="text-zinc-300">·</span>
-            <span className="text-xs text-zinc-400">v{appVersion}</span>
           </div>
         </div>
 
