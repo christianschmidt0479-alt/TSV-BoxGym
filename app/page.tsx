@@ -247,6 +247,9 @@ export default function Home() {
                     <p className="max-w-2xl text-sm leading-6 text-blue-50/85 sm:text-base">
                       Check-in, Registrierung und wichtige Zugänge schnell und übersichtlich.
                     </p>
+                    <p className="mt-1 max-w-2xl truncate text-xs text-white/70 sm:text-sm">
+                      Check-in im Gym ausschließlich per QR-Code
+                    </p>
                   </div>
                 </div>
               </div>
