@@ -65,7 +65,7 @@ export function validateEmail(value: string): ValidationResult {
   const trimmed = value.trim()
 
   if (!trimmed) {
-    return { valid: false, error: "E-Mail ist erforderlich." }
+    return { valid: false, error: "Bitte E-Mail eingeben." }
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

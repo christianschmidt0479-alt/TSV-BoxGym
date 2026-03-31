@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic"
 
 import Image from "next/image"
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ArrowRight, Lock, ShieldCheck, UserCircle2, UserRoundPlus, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,67 @@ type NavigationCard = {
   accentClass: string
 }
 
+type HeroSession = {
+  name: string
+  start: string
+  end: string
+}
+
+const fallbackSessions: HeroSession[] = [
+  { name: "Boxen", start: "18:00", end: "19:30" },
+  { name: "Jugend", start: "16:30", end: "17:45" },
+]
+
+function parseTimeToDate(time: string, referenceDate: Date) {
+  const [hours, minutes] = time.split(":").map(Number)
+  const parsed = new Date(referenceDate)
+  parsed.setHours(hours, minutes, 0, 0)
+  return parsed
+}
+
+function isNowBetween(now: Date, start: Date, end: Date) {
+  return now.getTime() >= start.getTime() && now.getTime() < end.getTime()
+}
+
+function formatSessionCompact(session: HeroSession | null) {
+  if (!session) return "—"
+  return `${session.start} · ${session.name}`
+}
+
+function formatCheckinTime(date: Date | null) {
+  if (!date) return "—"
+  return date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+}
+
+function getCurrentSession(referenceDate: Date, sessions: HeroSession[]) {
+  return (
+    sessions.find((session) => {
+      const start = parseTimeToDate(session.start, referenceDate)
+      const end = parseTimeToDate(session.end, referenceDate)
+      return isNowBetween(referenceDate, start, end)
+    }) ?? null
+  )
+}
+
+function getNextSession(referenceDate: Date, sessions: HeroSession[]) {
+  return (
+    sessions
+      .map((session) => ({
+        session,
+        startDate: parseTimeToDate(session.start, referenceDate),
+      }))
+      .filter(({ startDate }) => startDate.getTime() > referenceDate.getTime())
+      .sort((left, right) => left.startDate.getTime() - right.startDate.getTime())[0]?.session ?? null
+  )
+}
+
+function getNextCheckinTime(referenceDate: Date, sessions: HeroSession[]) {
+  const nextSession = getNextSession(referenceDate, sessions)
+  if (!nextSession) return null
+  const nextStart = parseTimeToDate(nextSession.start, referenceDate)
+  return new Date(nextStart.getTime() - 15 * 60 * 1000)
+}
+
 function liveDateString(date: Date | null) {
   if (!date) return "—"
   return date.toLocaleDateString("de-DE")
@@ -38,6 +99,7 @@ function liveTimeString(date: Date | null) {
 
 export default function Home() {
   const [now, setNow] = useState<Date | null>(null)
+  const [sessions, setSessions] = useState<HeroSession[]>([...fallbackSessions])
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "dev"
 
   useEffect(() => {
@@ -46,6 +108,47 @@ export default function Home() {
     const interval = window.setInterval(updateNow, 60000)
     return () => window.clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch("/api/public/sessions-today")
+        if (!response.ok) return
+
+        type SessionApiRow = {
+          start?: string
+          end?: string
+          group?: string
+          name?: string
+        }
+
+        const payload = (await response.json()) as
+          | HeroSession[]
+          | {
+              data?: SessionApiRow[]
+            }
+
+        const rows: SessionApiRow[] = Array.isArray(payload) ? payload : payload.data ?? []
+        const normalized = rows
+          .map((row) => ({
+            name: String(row.name ?? row.group ?? "").trim(),
+            start: String(row.start ?? "").trim(),
+            end: String(row.end ?? "").trim(),
+          }))
+          .filter((row) => row.name && row.start && row.end)
+
+        if (normalized.length > 0) {
+          setSessions(normalized)
+        }
+      } catch {
+        // Fallback intentionally stays quiet on the homepage.
+      }
+    })()
+  }, [])
+
+  const currentSession = useMemo(() => (now ? getCurrentSession(now, sessions) : null), [now, sessions])
+  const nextSession = useMemo(() => (now ? getNextSession(now, sessions) : null), [now, sessions])
+  const nextCheckinTime = useMemo(() => (now ? getNextCheckinTime(now, sessions) : null), [now, sessions])
 
   const navigationCards: NavigationCard[] = [
     {
@@ -125,17 +228,23 @@ export default function Home() {
 
               <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
                 <CardContent className="grid gap-2.5 p-3.5 sm:grid-cols-2 sm:p-4">
-                  <div className="flex h-full flex-col justify-between rounded-2xl bg-white/10 p-2.5">
-                    <div className="text-xs uppercase tracking-wide text-zinc-300">Fokus</div>
-                    <div className="mt-1 text-sm font-semibold leading-snug">Startseite mit klaren Wegen</div>
+                  <div className="flex min-h-[68px] flex-col rounded-2xl bg-white/10 p-2">
+                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">Kommend</div>
+                    <div className="mt-1 truncate text-sm font-semibold leading-tight">{formatSessionCompact(nextSession)}</div>
                   </div>
-                  <div className="flex h-full flex-col justify-between rounded-2xl bg-white/10 p-2.5">
-                    <div className="text-xs uppercase tracking-wide text-zinc-300">Check-in</div>
-                    <div className="mt-1 text-sm font-semibold leading-snug">Mit Gruppenwahl auf eigener Seite</div>
+                  <div className="flex min-h-[68px] flex-col rounded-2xl bg-white/10 p-2">
+                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">Live</div>
+                    <div className="mt-1 truncate text-sm font-semibold leading-tight">
+                      {currentSession ? `läuft · ${currentSession.name}` : "kein Training"}
+                    </div>
                   </div>
-                  <div className="flex h-full flex-col justify-between rounded-2xl bg-white/10 p-2.5 sm:col-span-2">
-                    <div className="text-xs uppercase tracking-wide text-zinc-300">Hinweis</div>
-                    <div className="mt-1 text-sm font-semibold leading-snug">Alle wichtigen Bereiche sind direkt erreichbar und mobil gut nutzbar.</div>
+                  <div className="flex min-h-[68px] flex-col rounded-2xl bg-white/10 p-2">
+                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">Nächster</div>
+                    <div className="mt-1 truncate text-sm font-semibold leading-tight">{formatCheckinTime(nextCheckinTime)}</div>
+                  </div>
+                  <div className="flex min-h-[68px] flex-col rounded-2xl bg-white/10 p-2">
+                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">Info</div>
+                    <div className="mt-1 text-sm font-semibold leading-tight">nur per QR-Code im Gym</div>
                   </div>
                 </CardContent>
               </Card>

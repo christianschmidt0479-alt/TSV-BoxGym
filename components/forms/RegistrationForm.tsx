@@ -214,9 +214,10 @@ export function RegistrationForm({
           <FormInput
             label="Telefon"
             name="phone"
+            type="tel"
             value={phone}
             onChange={setPhone}
-            placeholder="z. B. +49 123 456789"
+            placeholder="Telefonnummer eingeben"
             validator={(v: string) => validatePhone(v, true)}
             showValidation={!!validationErrors.phone}
             required

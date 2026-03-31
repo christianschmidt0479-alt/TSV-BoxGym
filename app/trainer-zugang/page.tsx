@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { validateEmail, validateName, validatePhone } from "@/lib/formValidation"
 import { clearTrainerAccessSession, persistTrainerAccess, readTrainerAccess } from "@/lib/trainerAccess"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 
@@ -44,6 +45,7 @@ export default function TrainerZugangPage() {
   const [activeRole, setActiveRole] = useState<"" | "trainer" | "admin">("")
   const [sessionChecking, setSessionChecking] = useState(true)
   const [authFeedback, setAuthFeedback] = useState<{ tone: "error" | "success"; message: string } | null>(null)
+  const [trainerRegisterErrors, setTrainerRegisterErrors] = useState<Record<string, string>>({})
 
   function showAuthError(message: string) {
     setAuthFeedback({ tone: "error", message })
@@ -92,6 +94,7 @@ export default function TrainerZugangPage() {
 
             const result = (await response.json()) as { email?: string }
             showAuthSuccess("Trainer-E-Mail erfolgreich bestaetigt. Der Admin kann den Zugang jetzt freigeben.")
+            setTrainerRegisterErrors({})
             setTrainerAuthView("login")
             setTrainerLoginEmail(result.email ?? "")
 
@@ -211,28 +214,44 @@ export default function TrainerZugangPage() {
     const email = trainerRegisterEmail.trim().toLowerCase()
     const phone = trainerRegisterPhone.trim()
     const pin = trainerRegisterPin.trim()
+    const fieldErrors: Record<string, string> = {}
 
-    if (!firstName || !lastName || !email || !pin || !trainerRegisterPinConfirm) {
-      showAuthError("Bitte alle Felder fuer die Trainerregistrierung ausfuellen.")
-      return
+    const firstNameValidation = validateName(firstName, "Vorname")
+    if (!firstNameValidation.valid) {
+      fieldErrors.firstName = firstNameValidation.error || ""
     }
 
-    if (!phone) {
-      showAuthError("Bitte Telefonnummer eingeben.")
-      return
+    const lastNameValidation = validateName(lastName, "Nachname")
+    if (!lastNameValidation.valid) {
+      fieldErrors.lastName = lastNameValidation.error || ""
+    }
+
+    const emailValidation = validateEmail(email)
+    if (!emailValidation.valid) {
+      fieldErrors.email = emailValidation.error || ""
+    }
+
+    const phoneValidation = validatePhone(phone, true)
+    if (!phoneValidation.valid) {
+      fieldErrors.phone = phoneValidation.error || ""
     }
 
     if (!isValidPin(pin)) {
-      showAuthError(PIN_REQUIREMENTS_MESSAGE)
-      return
+      fieldErrors.pin = PIN_REQUIREMENTS_MESSAGE
     }
 
     if (pin !== trainerRegisterPinConfirm.trim()) {
-      showAuthError("Die PINs stimmen nicht ueberein.")
+      fieldErrors.pinConfirm = "Die PINs stimmen nicht ueberein."
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+      setTrainerRegisterErrors(fieldErrors)
+      showAuthError("Bitte alle Pflichtfelder korrekt ausfuellen.")
       return
     }
 
     try {
+      setTrainerRegisterErrors({})
       setAuthFeedback(null)
       const response = await fetch("/api/public/trainer-access", {
         method: "POST",
@@ -253,6 +272,7 @@ export default function TrainerZugangPage() {
       }
 
       showAuthSuccess("Trainerregistrierung erfasst. Bitte E-Mail bestaetigen und danach auf die Admin-Freigabe warten.")
+      setTrainerRegisterErrors({})
       setTrainerAuthView("login")
       setTrainerLoginEmail(email)
       setTrainerPinInput("")
@@ -360,6 +380,7 @@ export default function TrainerZugangPage() {
                 value={trainerAuthView}
                 onValueChange={(value) => {
                   setAuthFeedback(null)
+                  setTrainerRegisterErrors({})
                   setTrainerAuthView(value as "login" | "register")
                 }}
               >
@@ -409,6 +430,7 @@ export default function TrainerZugangPage() {
                         className="rounded-2xl"
                         onClick={() => {
                           setAuthFeedback(null)
+                          setTrainerRegisterErrors({})
                           setTrainerAuthView("register")
                         }}
                       >
@@ -431,18 +453,22 @@ export default function TrainerZugangPage() {
                       <div className="space-y-2">
                         <Label>Vorname <span className="ml-1 text-red-500">*</span></Label>
                         <Input value={trainerRegisterFirstName} onChange={(e) => setTrainerRegisterFirstName(e.target.value)} placeholder="Vorname" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                        {trainerRegisterErrors.firstName ? <p className="mt-1 text-sm text-red-500">{trainerRegisterErrors.firstName}</p> : null}
                       </div>
                       <div className="space-y-2">
                         <Label>Nachname <span className="ml-1 text-red-500">*</span></Label>
                         <Input value={trainerRegisterLastName} onChange={(e) => setTrainerRegisterLastName(e.target.value)} placeholder="Nachname" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                        {trainerRegisterErrors.lastName ? <p className="mt-1 text-sm text-red-500">{trainerRegisterErrors.lastName}</p> : null}
                       </div>
                       <div className="space-y-2">
                         <Label>E-Mail <span className="ml-1 text-red-500">*</span></Label>
                         <Input type="email" value={trainerRegisterEmail} onChange={(e) => setTrainerRegisterEmail(e.target.value)} placeholder="name@tsv-falkensee.de" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                        {trainerRegisterErrors.email ? <p className="mt-1 text-sm text-red-500">{trainerRegisterErrors.email}</p> : null}
                       </div>
                       <div className="space-y-2">
                         <Label>Telefon <span className="ml-1 text-red-500">*</span></Label>
-                        <Input value={trainerRegisterPhone} onChange={(e) => setTrainerRegisterPhone(e.target.value)} placeholder="z. B. +49 123 456789" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                        <Input type="tel" value={trainerRegisterPhone} onChange={(e) => setTrainerRegisterPhone(e.target.value)} placeholder="Telefonnummer eingeben" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                        {trainerRegisterErrors.phone ? <p className="mt-1 text-sm text-red-500">{trainerRegisterErrors.phone}</p> : null}
                       </div>
                       <div className="space-y-2">
                         <Label>PIN <span className="ml-1 text-red-500">*</span></Label>
@@ -452,11 +478,13 @@ export default function TrainerZugangPage() {
                           placeholder="6 bis 16 Zeichen"
                           className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                         />
+                        {trainerRegisterErrors.pin ? <p className="mt-1 text-sm text-red-500">{trainerRegisterErrors.pin}</p> : null}
                         <div className="text-xs text-zinc-500">{PIN_HINT}</div>
                       </div>
                       <div className="space-y-2 md:col-span-2">
                         <Label>PIN wiederholen <span className="ml-1 text-red-500">*</span></Label>
                         <PasswordInput value={trainerRegisterPinConfirm} onChange={(e) => setTrainerRegisterPinConfirm(e.target.value)} placeholder="PIN wiederholen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                        {trainerRegisterErrors.pinConfirm ? <p className="mt-1 text-sm text-red-500">{trainerRegisterErrors.pinConfirm}</p> : null}
                       </div>
                     </div>
 
@@ -477,6 +505,7 @@ export default function TrainerZugangPage() {
                         className="rounded-2xl"
                         onClick={() => {
                           setAuthFeedback(null)
+                          setTrainerRegisterErrors({})
                           setTrainerAuthView("login")
                         }}
                       >

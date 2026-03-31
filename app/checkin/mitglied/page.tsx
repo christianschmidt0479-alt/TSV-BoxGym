@@ -45,6 +45,17 @@ function getDayKey(dateString: string) {
   }
 }
 
+function parseTimeToDate(time: string, referenceDate: Date) {
+  const [hours, minutes] = time.split(":").map(Number)
+  const parsed = new Date(referenceDate)
+  parsed.setHours(hours, minutes, 0, 0)
+  return parsed
+}
+
+function isNowBetween(now: Date, start: Date, end: Date) {
+  return now.getTime() >= start.getTime() && now.getTime() < end.getTime()
+}
+
 export default function MemberCheckinPage() {
   const [now, setNow] = useState<Date | null>(null)
   const [dbLoading, setDbLoading] = useState(false)
@@ -63,6 +74,7 @@ export default function MemberCheckinPage() {
   const [rememberedCompetitionMember, setRememberedCompetitionMember] = useState(false)
   const [rememberedWeight, setRememberedWeight] = useState("")
   const [selectedSessionId, setSelectedSessionId] = useState<string>("")
+  const [showSessionSelect, setShowSessionSelect] = useState(false)
   const [requestedGroup, setRequestedGroup] = useState("")
 
   const liveDate = now ? todayStringFromDate(now) : todayString()
@@ -88,19 +100,54 @@ export default function MemberCheckinPage() {
     if (!requestedGroup) return todaysSessions
     return todaysSessions.filter((session) => session.group === requestedGroup)
   }, [requestedGroup, todaysSessions])
-  const selectedSession = displaySessions.find((session) => session.id === selectedSessionId) ?? displaySessions[0] ?? null
+
+  const activeSession = useMemo(() => {
+    if (!now) return null
+    return (
+      displaySessions.find((session) => {
+        const start = parseTimeToDate(session.start, now)
+        const end = parseTimeToDate(session.end, now)
+        return isNowBetween(now, start, end)
+      }) ?? null
+    )
+  }, [displaySessions, now])
+
+  const nextSession = useMemo(() => {
+    if (!now) return null
+    return (
+      displaySessions
+        .map((session) => ({
+          session,
+          startDate: parseTimeToDate(session.start, now),
+        }))
+        .filter(({ startDate }) => startDate.getTime() > now.getTime())
+        .sort((left, right) => left.startDate.getTime() - right.startDate.getTime())[0]?.session ?? null
+    )
+  }, [displaySessions, now])
+
+  const autoSession = activeSession ?? nextSession
+  const selectedSession =
+    displaySessions.find((session) => session.id === selectedSessionId) ?? autoSession ?? displaySessions[0] ?? null
 
   useEffect(() => {
     if (displaySessions.length === 0) {
       setSelectedSessionId("")
+      setShowSessionSelect(true)
       return
     }
 
     const exists = displaySessions.some((session) => session.id === selectedSessionId)
-    if (!exists) {
-      setSelectedSessionId(displaySessions[0].id)
+    if (exists) return
+
+    if (autoSession) {
+      setSelectedSessionId(autoSession.id)
+      setShowSessionSelect(false)
+      return
     }
-  }, [displaySessions, selectedSessionId])
+
+    setSelectedSessionId(displaySessions[0].id)
+    setShowSessionSelect(true)
+  }, [autoSession, displaySessions, selectedSessionId])
 
   const hasRememberedDevice = Boolean(rememberedToken && rememberedMemberId && rememberedFirstName && rememberedLastName)
 
@@ -325,7 +372,7 @@ export default function MemberCheckinPage() {
               <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
                 <CardContent className="p-5">
                   <div className="rounded-2xl bg-white/10 p-3 text-sm">
-                    <div className="text-zinc-300">Aktuelle Einheit</div>
+                    <div className="text-zinc-300">{activeSession ? "Aktive Einheit" : nextSession ? "Nächste Einheit" : "Aktuelle Einheit"}</div>
                     <div className="mt-1 font-semibold">{selectedSession?.group ?? "Keine Gruppe"}</div>
                     <div className="mt-1 text-zinc-300">
                       {selectedSession ? `${selectedSession.start} – ${selectedSession.end}` : "Heute keine Einheit"}
@@ -426,25 +473,44 @@ export default function MemberCheckinPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Trainingsgruppe</Label>
-                <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-                  <SelectTrigger className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {displaySessions.length === 0 ? (
-                      <SelectItem value="none" disabled>
-                        Keine Gruppen verfügbar
-                      </SelectItem>
-                    ) : (
-                      displaySessions.map((session) => (
-                        <SelectItem key={session.id} value={session.id}>
-                          {session.title}
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Trainingsgruppe</Label>
+                  {displaySessions.length > 0 && autoSession ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-auto rounded-xl px-2 py-1 text-xs text-[#154c83]"
+                      onClick={() => setShowSessionSelect((prev) => !prev)}
+                    >
+                      {showSessionSelect ? "Auswahl schließen" : "Einheit ändern"}
+                    </Button>
+                  ) : null}
+                </div>
+                {!showSessionSelect && selectedSession ? (
+                  <div className="rounded-2xl border border-[#d8e3ee] bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+                    <div className="font-semibold text-zinc-900">{selectedSession.group}</div>
+                    <div className="mt-1 text-zinc-500">{selectedSession.start} – {selectedSession.end}</div>
+                  </div>
+                ) : (
+                  <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+                    <SelectTrigger className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {displaySessions.length === 0 ? (
+                        <SelectItem value="none" disabled>
+                          Keine Gruppen verfügbar
                         </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                      ) : (
+                        displaySessions.map((session) => (
+                          <SelectItem key={session.id} value={session.id}>
+                            {session.title}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               {selectedSession ? (

@@ -134,7 +134,7 @@ export function FormInput({
       {label && (
         <Label htmlFor={name} className="text-sm font-medium text-zinc-700">
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="ml-1 text-red-500">*</span>}
         </Label>
       )}
 
@@ -148,6 +148,7 @@ export function FormInput({
           onBlur={handleBlur}
           placeholder={placeholder}
           disabled={disabled}
+          required={required}
           autoComplete={autoComplete}
           className={`
             rounded-2xl border-zinc-300 bg-white text-zinc-900
@@ -188,10 +189,7 @@ export function FormInput({
 
       {/* Error Message */}
       {hasError && validation?.error && (
-        <p className="text-sm text-red-600 flex items-start gap-1.5">
-          <span className="mt-0.5 flex-shrink-0">!</span>
-          <span>{validation.error}</span>
-        </p>
+        <p className="mt-1 text-sm text-red-500">{validation.error}</p>
       )}
     </div>
   )
