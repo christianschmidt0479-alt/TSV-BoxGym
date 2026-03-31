@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { ArrowRight, Lock, ShieldCheck, UserCircle2, UserRoundPlus, Users } from "lucide-react"
+import { ArrowRight, Info, Lock, ShieldCheck, UserRoundPlus, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -27,6 +27,13 @@ type HeroSession = {
   name: string
   start: string
   end: string
+}
+
+type HeroInfoCard = {
+  id: "coming" | "live" | "next" | "info"
+  label: string
+  value: string
+  tooltip: string
 }
 
 const fallbackSessions: HeroSession[] = [
@@ -100,6 +107,7 @@ function liveTimeString(date: Date | null) {
 export default function Home() {
   const [now, setNow] = useState<Date | null>(null)
   const [sessions, setSessions] = useState<HeroSession[]>([...fallbackSessions])
+  const [openInfoCard, setOpenInfoCard] = useState<HeroInfoCard["id"] | null>(null)
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || "dev"
 
   useEffect(() => {
@@ -152,32 +160,52 @@ export default function Home() {
 
   const navigationCards: NavigationCard[] = [
     {
-      href: "/checkin",
-      title: "Check-in",
-      description: "Mitglieder und Probetraining schnell und einfach öffnen.",
+      href: "/mein-bereich",
+      title: "Onlinebereich Boxen",
+      description: "Zugang fuer Mitglieder und Registrierung im Boxbereich.",
       icon: Users,
       accentClass: "bg-[#154c83] text-white",
     },
     {
-      href: "/registrieren",
-      title: "Registrieren",
-      description: "Neue Mitgliedschaft übersichtlich auf der eigenen Seite starten.",
+      href: "/mitglied-registrieren",
+      title: "TSV Mitglied werden",
+      description: "Mitglied im TSV Falkensee werden.",
       icon: UserRoundPlus,
       accentClass: "bg-[#154c83] text-white",
     },
     {
-      href: "/mein-bereich",
-      title: "Mein Bereich",
-      description: "Persönliche Daten und wichtige Informationen direkt aufrufen.",
-      icon: UserCircle2,
-      accentClass: "bg-white text-[#154c83] border border-[#d8e3ee]",
-    },
-    {
       href: "/trainer",
       title: "Trainer",
-      description: "Trainerzugang und Tagesübersicht auf einer separaten Seite.",
+      description: "Trainerzugang und Tagesuebersicht auf einer separaten Seite.",
       icon: Lock,
       accentClass: "bg-white text-[#154c83] border border-[#d8e3ee]",
+    },
+  ]
+
+  const heroCards: HeroInfoCard[] = [
+    {
+      id: "coming",
+      label: "Kommend",
+      value: formatSessionCompact(nextSession),
+      tooltip: "Naechste Einheit laut Tagesplan.",
+    },
+    {
+      id: "live",
+      label: "Live",
+      value: currentSession ? `laeuft · ${currentSession.name}` : "—",
+      tooltip: "Zeigt die aktuell laufende Einheit.",
+    },
+    {
+      id: "next",
+      label: "Naechster",
+      value: formatCheckinTime(nextCheckinTime),
+      tooltip: "Empfohlene Zeit kurz vor dem Trainingsstart.",
+    },
+    {
+      id: "info",
+      label: "Info",
+      value: "QR-Check-in",
+      tooltip: "Check-in nur vor Ort per QR-Code.",
     },
   ]
 
@@ -227,25 +255,28 @@ export default function Home() {
               </div>
 
               <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
-                <CardContent className="grid gap-2.5 p-3.5 sm:grid-cols-2 sm:p-4">
-                  <div className="flex min-h-[68px] flex-col rounded-2xl bg-white/10 p-2">
-                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">Kommend</div>
-                    <div className="mt-1 truncate text-sm font-semibold leading-tight">{formatSessionCompact(nextSession)}</div>
-                  </div>
-                  <div className="flex min-h-[68px] flex-col rounded-2xl bg-white/10 p-2">
-                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">Live</div>
-                    <div className="mt-1 truncate text-sm font-semibold leading-tight">
-                      {currentSession ? `läuft · ${currentSession.name}` : "kein Training"}
+                <CardContent className="grid gap-2.5 p-3 sm:grid-cols-2 sm:p-3.5">
+                  {heroCards.map((card) => (
+                    <div key={card.id} className="relative min-h-[64px] rounded-2xl bg-white/10 p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-[10px] uppercase tracking-wide text-zinc-300">{card.label}</div>
+                        <button
+                          type="button"
+                          aria-label={`${card.label} Info anzeigen`}
+                          onClick={() => setOpenInfoCard((current) => (current === card.id ? null : card.id))}
+                          className="rounded-full p-0.5 text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="mt-1 pr-5 text-sm font-semibold leading-tight">{card.value}</div>
+                      {openInfoCard === card.id ? (
+                        <div className="absolute right-2 top-7 z-10 max-w-[180px] rounded-xl border border-white/15 bg-[#0f2740]/95 px-2.5 py-2 text-[11px] leading-tight text-blue-50 shadow-lg">
+                          {card.tooltip}
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                  <div className="flex min-h-[68px] flex-col rounded-2xl bg-white/10 p-2">
-                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">Nächster</div>
-                    <div className="mt-1 truncate text-sm font-semibold leading-tight">{formatCheckinTime(nextCheckinTime)}</div>
-                  </div>
-                  <div className="flex min-h-[68px] flex-col rounded-2xl bg-white/10 p-2">
-                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">Info</div>
-                    <div className="mt-1 text-sm font-semibold leading-tight">nur per QR-Code im Gym</div>
-                  </div>
+                  ))}
                 </CardContent>
               </Card>
             </div>
