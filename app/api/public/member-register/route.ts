@@ -21,6 +21,28 @@ type MemberRegisterBody = {
   baseGroup?: string
 }
 
+function normalizeBirthDateInput(value?: string | null) {
+  const trimmed = (value ?? "").trim()
+  if (!trimmed) return ""
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!isoMatch) return ""
+
+  const [, year, month, day] = isoMatch
+  const date = new Date(`${year}-${month}-${day}T12:00:00`)
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() + 1 !== Number(month) ||
+    date.getDate() !== Number(day)
+  ) {
+    return ""
+  }
+
+  return `${year}-${month}-${day}`
+}
+
 function generateEmailVerificationToken() {
   return randomUUID()
 }
@@ -34,7 +56,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as MemberRegisterBody
     const firstName = body.firstName?.trim() ?? ""
     const lastName = body.lastName?.trim() ?? ""
-    const birthDate = body.birthDate ?? ""
+    const birthDate = normalizeBirthDateInput(body.birthDate)
     const gender = body.gender?.trim() ?? ""
     const pin = body.pin?.trim() ?? ""
     const email = body.email?.trim() ?? ""
@@ -55,7 +77,7 @@ export async function POST(request: Request) {
     }
 
     if (!birthDate) {
-      return new NextResponse("Bitte Geburtsdatum angeben.", { status: 400 })
+      return new NextResponse("Bitte ein gueltiges Geburtsdatum angeben.", { status: 400 })
     }
 
     if (!baseGroup) {

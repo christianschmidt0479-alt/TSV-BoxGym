@@ -16,6 +16,28 @@ import { groupOptions } from "@/lib/boxgymSessions"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { normalizeTrainingGroupOrFallback } from "@/lib/trainingGroups"
 
+function normalizeBirthDateInput(value?: string | null) {
+  const trimmed = (value ?? "").trim()
+  if (!trimmed) return ""
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!isoMatch) return ""
+
+  const [, year, month, day] = isoMatch
+  const date = new Date(`${year}-${month}-${day}T12:00:00`)
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() + 1 !== Number(month) ||
+    date.getDate() !== Number(day)
+  ) {
+    return ""
+  }
+
+  return `${year}-${month}-${day}`
+}
+
 function getStoredString(key: string) {
   if (typeof window === "undefined") return ""
   try {
@@ -95,6 +117,7 @@ export default function MitgliedRegistrierenPage() {
   async function handleMemberRegistration() {
     const firstName = registerFirstName.trim()
     const lastName = registerLastName.trim()
+    const birthDate = normalizeBirthDateInput(registerBirthDate)
     const pin = registerPin.trim()
 
     if (!firstName || !lastName) {
@@ -102,8 +125,8 @@ export default function MitgliedRegistrierenPage() {
       return
     }
 
-    if (!registerBirthDate) {
-      alert("Bitte Geburtsdatum angeben.")
+    if (!birthDate) {
+      alert("Bitte ein gueltiges Geburtsdatum angeben.")
       return
     }
 
@@ -134,13 +157,16 @@ export default function MitgliedRegistrierenPage() {
 
     try {
       setDbLoading(true)
+      if (birthDate !== registerBirthDate) {
+        setRegisterBirthDate(birthDate)
+      }
       const response = await fetch("/api/public/member-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           firstName,
           lastName,
-          birthDate: registerBirthDate,
+          birthDate,
           gender: registerGender,
           pin,
           email: registerEmail.trim(),
