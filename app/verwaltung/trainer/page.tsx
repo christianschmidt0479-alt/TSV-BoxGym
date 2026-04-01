@@ -8,16 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getAllMembers } from "@/lib/boxgymDb"
 import { buildPersonRoleProfiles, type RoleMemberRecord } from "@/lib/personRoles"
 import {
-  approveTrainerAccount,
-  getAllTrainerAccounts,
-  trainerLicenseOptions,
   type TrainerAccountRecord,
-  updateTrainerAccountRole,
 } from "@/lib/trainerDb"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { trainerLicenseOptions } from "@/lib/trainerLicense"
+import { compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 function getTrainerDisplayName(trainer: TrainerAccountRecord) {
@@ -43,11 +40,37 @@ export default function TrainerverwaltungPage() {
   async function loadTrainers() {
     setLoading(true)
     try {
-      const [trainerRows, memberRows] = await Promise.all([getAllTrainerAccounts(), getAllMembers()])
-      setTrainers(trainerRows)
-      setMembers((memberRows as RoleMemberRecord[]) ?? [])
+      const response = await fetch("/api/admin/person-roles", {
+        cache: "no-store",
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+
+      const payload = (await response.json()) as {
+        trainers: TrainerAccountRecord[]
+        members: RoleMemberRecord[]
+      }
+
+      setTrainers(payload.trainers ?? [])
+      setMembers(payload.members ?? [])
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function runTrainerAction(input:
+    | { action: "approve_trainer"; trainerId: string }
+    | { action: "set_trainer_role"; trainerId: string; role: "trainer" | "admin" }
+  ) {
+    const response = await fetch("/api/admin/person-roles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+
+    if (!response.ok) {
+      throw new Error(await response.text())
     }
   }
 
@@ -66,7 +89,6 @@ export default function TrainerverwaltungPage() {
   const roleProfiles = useMemo(() => buildPersonRoleProfiles(members, trainers), [members, trainers])
   const trainerCandidates = useMemo(() => {
     return members.filter((member) => {
-      if (member.base_group !== "Trainer") return false
       if (!member.email?.trim()) return false
 
       return !trainers.some(
@@ -74,6 +96,10 @@ export default function TrainerverwaltungPage() {
           trainer.linked_member_id === member.id ||
           trainer.email.trim().toLowerCase() === member.email!.trim().toLowerCase()
       )
+    }).sort((a, b) => {
+      const groupCompare = compareTrainingGroupOrder(a.base_group, b.base_group)
+      if (groupCompare !== 0) return groupCompare
+      return getMemberDisplayName(a).localeCompare(getMemberDisplayName(b), "de")
     })
   }, [members, trainers])
 
@@ -82,6 +108,11 @@ export default function TrainerverwaltungPage() {
     if (!profile) return []
 
     return profile.roles.filter((role) => role !== "trainer" && role !== "admin")
+  }
+
+  function getLinkedMemberGroup(trainer: TrainerAccountRecord) {
+    const profile = roleProfiles.find((entry) => entry.trainer?.id === trainer.id)
+    return normalizeTrainingGroup(profile?.member?.base_group) || null
   }
 
   if (!authResolved) {
@@ -151,7 +182,7 @@ export default function TrainerverwaltungPage() {
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Mitgliedsdaten werden geladen...</div>
           ) : trainerCandidates.length === 0 ? (
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">
-              Keine weiteren Mitglieder aus der Gruppe `Trainer` ohne Trainerkonto gefunden.
+              Keine weiteren Mitglieder mit E-Mail ohne verknüpftes Trainerkonto gefunden.
             </div>
           ) : (
             trainerCandidates.map((member) => (
@@ -160,9 +191,9 @@ export default function TrainerverwaltungPage() {
                   <div className="space-y-2 text-sm text-zinc-600">
                     <div className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
                     <div>E-Mail: {member.email || "—"}</div>
-                    <div>Stammgruppe: {member.base_group || "—"}</div>
+                    <div>Stammgruppe: {normalizeTrainingGroup(member.base_group) || "—"}</div>
                     <div className="text-xs text-zinc-500">
-                      Das Trainerkonto wird mit den vorhandenen Mitgliedsdaten vorbereitet. Die E-Mail muss danach noch bestaetigt werden und die Freigabe erfolgt separat.
+                      Das Trainerkonto wird mit den vorhandenen Mitgliedsdaten vorbereitet. Mitgliedsrolle und Trainingsgruppe bleiben dabei bestehen.
                     </div>
                   </div>
 
@@ -298,6 +329,7 @@ export default function TrainerverwaltungPage() {
                     </div>
                     <div>E-Mail: {trainer.email}</div>
                     <div>Lizenz: {trainer.trainer_license || "—"}</div>
+                    <div>Stammgruppe: {getLinkedMemberGroup(trainer) || "—"}</div>
                     <div>Registriert am: {new Date(trainer.created_at).toLocaleString("de-DE")}</div>
                     <div>
                       E-Mail-Bestätigung:{" "}
@@ -325,7 +357,10 @@ export default function TrainerverwaltungPage() {
                       }
 
                       try {
-                        await approveTrainerAccount(trainer.id)
+                        await runTrainerAction({
+                          action: "approve_trainer",
+                          trainerId: trainer.id,
+                        })
                         await fetch("/api/send-verification", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
@@ -334,7 +369,7 @@ export default function TrainerverwaltungPage() {
                             email: trainer.email,
                             name: getTrainerDisplayName(trainer),
                             kind: "trainer",
-                            group: "Trainer",
+                            group: getLinkedMemberGroup(trainer) || undefined,
                           }),
                         })
                         alert("Trainerzugang freigegeben.")
@@ -379,6 +414,7 @@ export default function TrainerverwaltungPage() {
                 </div>
                 <div className="mt-1">{trainer.email}</div>
                 <div className="mt-1">Lizenz: {trainer.trainer_license || "—"}</div>
+                <div className="mt-1">Stammgruppe: {getLinkedMemberGroup(trainer) || "—"}</div>
                 <div className="mt-1 text-xs text-red-700">
                   Freigegeben am: {trainer.approved_at ? new Date(trainer.approved_at).toLocaleString("de-DE") : "—"}
                 </div>
@@ -403,6 +439,7 @@ export default function TrainerverwaltungPage() {
                 <div className="font-semibold text-zinc-900">{getTrainerDisplayName(trainer)}</div>
                 <div className="mt-1">{trainer.email}</div>
                 <div className="mt-1">Lizenz: {trainer.trainer_license || "—"}</div>
+                <div className="mt-1">Stammgruppe: {getLinkedMemberGroup(trainer) || "—"}</div>
                 <div className="text-xs text-zinc-500">
                   Freigegeben am: {trainer.approved_at ? new Date(trainer.approved_at).toLocaleString("de-DE") : "—"}
                 </div>
@@ -422,7 +459,11 @@ export default function TrainerverwaltungPage() {
                     className="rounded-2xl"
                     onClick={async () => {
                       try {
-                        await updateTrainerAccountRole(trainer.id, "admin")
+                        await runTrainerAction({
+                          action: "set_trainer_role",
+                          trainerId: trainer.id,
+                          role: "admin",
+                        })
                         alert("Konto in die Admin-Liste verschoben.")
                         await loadTrainers()
                       } catch (error) {

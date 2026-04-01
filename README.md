@@ -1,4 +1,93 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TSV BoxGym
+
+## Configuration
+
+Copy `.env.example` into your local environment and fill in the required values.
+
+```bash
+cp .env.example .env.local
+```
+
+Important variables for production:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_APP_URL=https://tsvboxgym.de`
+- `APP_BASE_URL=https://tsvboxgym.de`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL=TSV BoxGym <noreply@tsvboxgym.de>`
+- `RESEND_REPLY_TO_EMAIL=info@tsvboxgym.de`
+- `ADMIN_NOTIFICATION_EMAIL=info@tsvboxgym.de`
+- `CRON_SECRET`
+- `ADMIN_LOGIN_PASSWORD`
+
+## Mail Domain
+
+Verification and registration mails are configured for `tsvboxgym.de`.
+
+Before production mail can work reliably, make sure of the following:
+
+- Add `tsvboxgym.de` as a sending domain in Resend.
+- Set the DNS records required by Resend for domain verification and DKIM/SPF.
+- Use a verified sender address such as `noreply@tsvboxgym.de`.
+- Prefer `RESEND_API_KEY` on the server and avoid relying on `NEXT_PUBLIC_RESEND_API_KEY` in production.
+- Keep `NEXT_PUBLIC_APP_URL` and `APP_BASE_URL` aligned with the real public domain so verification links point to the correct site.
+
+## Admin Sammelmail
+
+Admin notifications for new registrations are now queued and sent as a single digest mail on weekdays at `09:00` in `Europe/Berlin`.
+
+To enable this in production:
+
+- run the SQL in `supabase/admin_notification_queue.sql`
+- set `ADMIN_NOTIFICATION_EMAIL`
+- set `CRON_SECRET`
+- deploy `vercel.json` so Vercel calls `/api/admin-digest`
+
+The cron is scheduled for `07:00` and `08:00` UTC on weekdays, and the route itself only sends when local Berlin time is exactly `09:00`. This keeps the digest stable across winter and summer time.
+
+## Mail-Ausgang
+
+Wettkämpfer-Benachrichtigungen werden nicht mehr sofort verschickt. Sie landen zuerst im Mail-Ausgang und werden ebenfalls werktags um `09:00` über denselben Cron versendet.
+
+To enable this in production:
+
+- run the SQL in `supabase/outgoing_mail_queue.sql`
+- keep `CRON_SECRET` set
+
+## Trainer Accounts
+
+Trainer logins now use their own registration flow with:
+
+- registration via E-Mail and password
+- E-Mail verification
+- admin approval before access is granted
+
+Before this can work in Supabase, run the SQL in `supabase/trainer_accounts.sql` to create the `trainer_accounts` table and its indexes.
+
+## Competition Data
+
+The admin competition page uses additional member fields for:
+
+- `is_competition_member`
+- `competition_license_number`
+- `last_medical_exam_date`
+- `competition_fights`
+- `competition_wins`
+- `competition_losses`
+- `competition_draws`
+
+Before the page can persist these values in Supabase, run the SQL in `supabase/member_competition_fields.sql`.
+
+## Boxzwerge
+
+For `Boxzwerge`, the app now supports a special flow:
+
+- child lookup via first name, last name and birthdate instead of PIN
+- parent email and parent phone as required registration data
+- additional parent / emergency contact name
+
+Before this can be stored in Supabase, run the SQL in `supabase/member_boxzwerge_fields.sql`.
 
 ## Getting Started
 
@@ -17,20 +106,3 @@ bun dev
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

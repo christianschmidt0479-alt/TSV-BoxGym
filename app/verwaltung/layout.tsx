@@ -29,6 +29,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
   const operationsItems: NavItem[] = [
     { href: "/verwaltung/heute", label: "Heute" },
     { href: "/verwaltung/checkins", label: "Check-ins" },
+    { href: "/verwaltung/excel-abgleich", label: "Excel-Abgleich" },
     { href: "/verwaltung/gruppen", label: "Gruppen" },
     { href: "/verwaltung/wettkampf", label: "Wettkampf" },
     { href: "/verwaltung/qr-codes", label: "QR Codes" },
@@ -146,6 +147,12 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                   className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
                 >
                   Check-ins
+                </Link>
+                <Link
+                  href="/verwaltung/excel-abgleich"
+                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
+                >
+                  Excel-Abgleich
                 </Link>
                 <Link
                   href="/verwaltung/gruppen"

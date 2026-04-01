@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
 import { applyTrainerSessionCookie, clearTrainerSessionCookie, readTrainerSessionFromHeaders, getTrainerSessionMaxAgeMs } from "@/lib/authSession"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 
 export async function POST(request: Request) {
   if (!isAllowedOrigin(request)) {
     return new NextResponse("Forbidden", { status: 403 })
   }
 
-  const rateLimit = checkRateLimit(`trainer-session-refresh:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
+  const rateLimit = await checkRateLimitAsync(`trainer-session-refresh:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
   if (!rateLimit.ok) {
     return new NextResponse("Too many requests", { status: 429 })
   }

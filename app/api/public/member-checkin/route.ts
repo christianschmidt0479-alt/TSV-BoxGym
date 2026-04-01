@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
-import { createCheckin, findMemberByEmailAndPin, findMemberByFirstLastAndBirthdate } from "@/lib/boxgymDb"
-import { createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { createCheckin, findMemberByEmailAndPin } from "@/lib/boxgymDb"
+import { applyMemberDeviceCookie, clearMemberDeviceCookie, createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
 import { sessions } from "@/lib/boxgymSessions"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { supabase } from "@/lib/supabaseClient"
+import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
 type MemberCheckinBody = {
-  firstName?: string
-  lastName?: string
   email?: string
   pin?: string
-  birthDate?: string
   weight?: string
   sessionId?: string
   rememberDevice?: boolean
@@ -98,38 +96,31 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const rateLimit = checkRateLimit(`public-member-checkin:${getRequestIp(request)}`, 25, 10 * 60 * 1000)
+    const body = (await request.json()) as MemberCheckinBody
+    const email = body.email?.trim().toLowerCase() ?? ""
+    const pin = body.pin?.trim() ?? ""
+    const rateLimit = await checkRateLimitAsync(
+      `public-member-checkin:${getRequestIp(request)}:${email || "__email__"}`,
+      25,
+      10 * 60 * 1000
+    )
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
-    const body = (await request.json()) as MemberCheckinBody
-    const firstName = body.firstName?.trim() ?? ""
-    const lastName = body.lastName?.trim() ?? ""
-    const email = body.email?.trim().toLowerCase() ?? ""
-    const pin = body.pin?.trim() ?? ""
-    const birthDate = body.birthDate ?? ""
     const now = new Date()
     const liveDate = todayString(now)
     const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
     const currentMonthKey = getMonthKey(liveDate)
     const todaysSessions = sessions.filter((session) => session.dayKey === getDayKey(liveDate))
     const selectedSession = todaysSessions.find((session) => session.id === body.sessionId) ?? null
-    const isBoxzwergeCheckin = selectedSession?.group === "Boxzwerge"
+    const selectedGroup = normalizeTrainingGroup(selectedSession?.group)
 
-    if (!isBoxzwergeCheckin && (!email || !pin)) {
+    if (!email || !pin) {
       return new NextResponse("Bitte E-Mail und PIN eingeben.", { status: 400 })
     }
 
-    if (isBoxzwergeCheckin && (!firstName || !lastName)) {
-      return new NextResponse("Bitte Vorname und Nachname eingeben.", { status: 400 })
-    }
-
-    if (isBoxzwergeCheckin && !birthDate) {
-      return new NextResponse("Bitte das Geburtsdatum des Boxzwergs eingeben.", { status: 400 })
-    }
-
-    if (!isBoxzwergeCheckin && !isValidPin(pin)) {
+    if (!isValidPin(pin)) {
       return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
@@ -138,30 +129,14 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte eine Trainingsgruppe auswaehlen.", { status: 400 })
     }
 
-    const member = (isBoxzwergeCheckin
-      ? await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
-      : null) as MemberRecord | null
-
-    let resolvedMember = member
-    if (!isBoxzwergeCheckin) {
-      const memberMatch = await findMemberByEmailAndPin(email, pin)
-      if (memberMatch?.status === "missing_email") {
-        return new NextResponse("Für dieses Konto ist noch keine E-Mail-Adresse hinterlegt. Bitte Trainer oder Admin ansprechen.", { status: 409 })
-      }
-      resolvedMember = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
+    const memberMatch = await findMemberByEmailAndPin(email, pin)
+    if (memberMatch?.status === "missing_email") {
+      return new NextResponse("Für dieses Konto ist noch keine E-Mail-Adresse hinterlegt. Bitte Trainer oder Admin ansprechen.", { status: 409 })
     }
+    const resolvedMember = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
 
     if (!resolvedMember) {
-      return new NextResponse(
-        isBoxzwergeCheckin
-          ? "Boxzwerg nicht gefunden. Bitte Vorname, Nachname und Geburtsdatum pruefen."
-          : "Mitglied nicht gefunden oder PIN nicht korrekt.",
-        { status: 404 }
-      )
-    }
-
-    if (isBoxzwergeCheckin && resolvedMember.base_group !== "Boxzwerge") {
-      return new NextResponse("Dieses Kind ist nicht in der Gruppe Boxzwerge registriert.", { status: 400 })
+      return new NextResponse("Mitglied nicht gefunden oder PIN nicht korrekt.", { status: 404 })
     }
 
     if (resolvedMember.is_competition_member) {
@@ -194,7 +169,7 @@ export async function POST(request: Request) {
 
     await createCheckin({
       member_id: resolvedMember.id,
-      group_name: selectedSession.group,
+      group_name: selectedGroup || selectedSession.group,
       weight: resolvedMember.is_competition_member ? body.weight?.trim() : undefined,
       date: liveDate,
       time: timeString(now),
@@ -212,10 +187,9 @@ export async function POST(request: Request) {
         })
       : null
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       rememberedDevice: shouldRememberDevice,
-      rememberToken,
       rememberUntil: shouldRememberDevice ? Date.now() + getMemberDeviceSessionMaxAgeMs() : null,
       member: shouldRememberDevice
         ? {
@@ -226,6 +200,12 @@ export async function POST(request: Request) {
           }
         : null,
     })
+
+    if (shouldRememberDevice && rememberToken) {
+      return applyMemberDeviceCookie(response, rememberToken)
+    }
+
+    return clearMemberDeviceCookie(response)
   } catch (error) {
     console.error("public member checkin failed", error)
     return new NextResponse("Interner Fehler", { status: 500 })

@@ -1,5 +1,7 @@
 import { supabase } from "./supabaseClient"
+import { hashAuthSecret, isBcryptHash, verifyAuthSecret } from "./authSecret"
 import { verifyTrainerPinHash } from "./trainerPin"
+import { normalizeTrainingGroup } from "./trainingGroups"
 
 function isMissingColumnError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
@@ -16,6 +18,16 @@ function withoutOptionalMemberFields<T extends Record<string, unknown>>(payload:
   ) as Omit<T, "guardian_name" | "gender">
 }
 
+function withNormalizedBaseGroup<T extends { base_group?: string | null }>(row: T): T {
+  const normalized = normalizeTrainingGroup(row.base_group)
+  return normalized ? { ...row, base_group: normalized } : row
+}
+
+function withNormalizedGroupName<T extends { group_name?: string | null }>(row: T): T {
+  const normalized = normalizeTrainingGroup(row.group_name)
+  return normalized ? { ...row, group_name: normalized } : row
+}
+
 type MemberInput = {
   first_name: string
   last_name: string
@@ -29,6 +41,9 @@ type MemberInput = {
   is_approved?: boolean
   base_group?: string
 }
+
+const SAFE_MEMBER_LIST_SELECT =
+  "id, name, first_name, last_name, birthdate, email, phone, guardian_name, email_verified, email_verified_at, is_trial, is_approved, base_group, is_competition_member, has_competition_pass"
 
 export type MemberAuthResult =
   | {
@@ -71,6 +86,11 @@ export async function findTrainerByEmailAndPin(email: string, pin: string): Prom
   if (!trainer.email_verified || !trainer.is_approved) return null
 
   if (!(await verifyTrainerPinHash(pin, trainer.password_hash))) return null
+  if (!isBcryptHash(trainer.password_hash)) {
+    const nextHash = await hashAuthSecret(pin)
+    await supabase.from("trainer_accounts").update({ password_hash: nextHash }).eq("id", trainer.id)
+    trainer.password_hash = nextHash
+  }
 
   const resolvedTrainer = {
     ...trainer,
@@ -119,32 +139,43 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
     .from("members")
     .select("*")
     .eq("email", normalizedEmail)
-    .eq("member_pin", normalizedPin)
     .order("created_at", { ascending: false })
-    .limit(1)
+    .limit(10)
 
   if (error) throw error
 
-  const member = data?.[0] ?? null
-  if (member) {
-    return {
-      status: "success",
-      member,
+  for (const member of data ?? []) {
+    if (await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))) {
+      if (!isBcryptHash(String(member.member_pin ?? ""))) {
+        await setStoredMemberPin(member.id, normalizedPin)
+        member.member_pin = await hashMemberPinValue(normalizedPin)
+      }
+
+      return {
+        status: "success",
+        member,
+      }
     }
   }
 
   const { data: missingEmailRows, error: missingEmailError } = await supabase
     .from("members")
-    .select("id")
-    .eq("member_pin", normalizedPin)
+    .select("id, member_pin")
     .or("email.is.null,email.eq.")
-    .limit(1)
+    .order("created_at", { ascending: false })
+    .limit(20)
 
   if (missingEmailError) throw missingEmailError
 
-  if ((missingEmailRows?.length ?? 0) > 0) {
-    return {
-      status: "missing_email",
+  for (const row of missingEmailRows ?? []) {
+    if (await verifyMemberPinValue(normalizedPin, String(row.member_pin ?? ""))) {
+      if (!isBcryptHash(String(row.member_pin ?? ""))) {
+        await setStoredMemberPin(row.id, normalizedPin)
+      }
+
+      return {
+        status: "missing_email",
+      }
     }
   }
 
@@ -204,9 +235,9 @@ export async function createMember(input: MemberInput) {
     guardian_name: input.guardian_name || null,
     is_trial: input.is_trial,
     trial_count: input.is_trial ? 1 : 0,
-    member_pin: input.member_pin || null,
+    member_pin: input.member_pin ? await hashMemberPinValue(input.member_pin) : null,
     is_approved: input.is_approved ?? false,
-    base_group: input.base_group || null,
+    base_group: normalizeTrainingGroup(input.base_group) || null,
   }
 
   const primary = await supabase
@@ -255,27 +286,11 @@ export async function updateTrialMember(
 }
 
 export async function setMemberPin(memberId: string, pin: string) {
-  const { data, error } = await supabase
-    .from("members")
-    .update({ member_pin: pin })
-    .eq("id", memberId)
-    .select()
-    .single()
-
-  if (error) throw error
-  return data
+  return setStoredMemberPin(memberId, pin)
 }
 
 export async function resetMemberPin(memberId: string, newPin: string) {
-  const { data, error } = await supabase
-    .from("members")
-    .update({ member_pin: newPin })
-    .eq("id", memberId)
-    .select()
-    .single()
-
-  if (error) throw error
-  return data
+  return setStoredMemberPin(memberId, newPin)
 }
 
 export async function updateMemberProfile(
@@ -287,7 +302,7 @@ export async function updateMemberProfile(
     .update({
       email: input.email || null,
       phone: input.phone || null,
-      ...(input.member_pin ? { member_pin: input.member_pin } : {}),
+      ...(input.member_pin ? { member_pin: await hashMemberPinValue(input.member_pin) } : {}),
     })
     .eq("id", memberId)
     .select()
@@ -337,9 +352,14 @@ export async function updateMemberRegistrationData(
   memberId: string,
   input: Record<string, unknown> & { guardian_name?: string | null }
 ) {
+  const normalizedInput = { ...input }
+  if (typeof normalizedInput.member_pin === "string" && normalizedInput.member_pin.trim()) {
+    normalizedInput.member_pin = await hashMemberPinValue(normalizedInput.member_pin)
+  }
+
   const primary = await supabase
     .from("members")
-    .update(input)
+    .update(normalizedInput)
     .eq("id", memberId)
     .select()
     .single()
@@ -354,13 +374,33 @@ export async function updateMemberRegistrationData(
 
   const fallback = await supabase
     .from("members")
-    .update(withoutOptionalMemberFields(input))
+    .update(withoutOptionalMemberFields(normalizedInput))
     .eq("id", memberId)
     .select()
     .single()
 
   if (fallback.error) throw fallback.error
   return fallback.data
+}
+
+async function hashMemberPinValue(value: string) {
+  return hashAuthSecret(value)
+}
+
+async function verifyMemberPinValue(candidate: string, storedSecret: string) {
+  return verifyAuthSecret(candidate, storedSecret)
+}
+
+async function setStoredMemberPin(memberId: string, pin: string) {
+  const { data, error } = await supabase
+    .from("members")
+    .update({ member_pin: await hashMemberPinValue(pin) })
+    .eq("id", memberId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
 }
 
 export async function updateMemberCompetitionData(
@@ -446,7 +486,7 @@ export async function approveMember(memberId: string) {
 export async function changeMemberBaseGroup(memberId: string, baseGroup: string) {
   const { data, error } = await supabase
     .from("members")
-    .update({ base_group: baseGroup })
+    .update({ base_group: normalizeTrainingGroup(baseGroup) || null })
     .eq("id", memberId)
     .select()
     .single()
@@ -458,24 +498,24 @@ export async function changeMemberBaseGroup(memberId: string, baseGroup: string)
 export async function getPendingMembers() {
   const { data, error } = await supabase
     .from("members")
-    .select("*")
+    .select(SAFE_MEMBER_LIST_SELECT)
     .eq("is_trial", false)
     .eq("is_approved", false)
     .order("created_at", { ascending: false })
 
   if (error) throw error
-  return data || []
+  return (data || []).map((row) => withNormalizedBaseGroup(row))
 }
 
 export async function getAllMembers() {
   const { data, error } = await supabase
     .from("members")
-    .select("*")
+    .select(SAFE_MEMBER_LIST_SELECT)
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true })
 
   if (error) throw error
-  return data || []
+  return (data || []).map((row) => withNormalizedBaseGroup(row))
 }
 
 export async function createCheckin(input: {
@@ -497,7 +537,7 @@ export async function createCheckin(input: {
     .insert([
       {
         member_id: input.member_id,
-        group_name: input.group_name,
+        group_name: normalizeTrainingGroup(input.group_name) || input.group_name,
         weight: Number.isNaN(numericWeight) ? null : numericWeight,
         date: input.date,
         time: input.time,
@@ -535,7 +575,12 @@ export async function getTodayCheckins(date: string) {
     .order("created_at", { ascending: false })
 
   if (!primaryQuery.error) {
-    return primaryQuery.data || []
+    return (primaryQuery.data || []).map((row) =>
+      withNormalizedGroupName({
+        ...row,
+        members: row.members ? withNormalizedBaseGroup(row.members) : row.members,
+      })
+    )
   }
 
   if (!isMissingColumnError(primaryQuery.error)) {
@@ -563,7 +608,12 @@ export async function getTodayCheckins(date: string) {
     .order("created_at", { ascending: false })
 
   if (fallbackQuery.error) throw fallbackQuery.error
-  return fallbackQuery.data || []
+  return (fallbackQuery.data || []).map((row) =>
+    withNormalizedGroupName({
+      ...row,
+      members: row.members ? withNormalizedBaseGroup(row.members) : row.members,
+    })
+  )
 }
 export async function updateMemberName(
   memberId: string,

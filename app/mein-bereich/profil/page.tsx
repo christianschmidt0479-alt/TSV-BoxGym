@@ -145,7 +145,6 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [memberAreaEmail, setMemberAreaEmail] = useState("")
-  const [memberAreaPin, setMemberAreaPin] = useState("")
   const [memberAreaData, setMemberAreaData] = useState<MemberRecord | null>(null)
   const [profileEmail, setProfileEmail] = useState("")
   const [profilePhone, setProfilePhone] = useState("")
@@ -156,26 +155,19 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
 
   useEffect(() => {
     const email = getStoredString("tsv_member_area_email")
-    const pin = getStoredString("tsv_member_area_pin")
-
-    if (!email || !pin) {
+    if (!email) {
       router.replace("/mein-bereich")
       return
     }
 
     setMemberAreaEmail(email)
-    setMemberAreaPin(pin)
 
     ;(async () => {
       try {
         const response = await fetch("/api/public/member-area", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "member_login",
-            email,
-            pin,
-          }),
+          body: JSON.stringify({ action: "member_session" }),
         })
 
         if (!response.ok) {
@@ -250,7 +242,11 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                 className="rounded-2xl border-zinc-300"
                 onClick={() => {
                   localStorage.removeItem("tsv_member_area_email")
-                  localStorage.removeItem("tsv_member_area_pin")
+                  void fetch("/api/public/member-area", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "logout_member_session" }),
+                  })
                   router.replace("/mein-bereich")
                 }}
               >
@@ -363,7 +359,6 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                                 email: profileEmail.trim(),
                                 phone: profilePhone.trim(),
                                 loginEmail: memberAreaEmail.trim().toLowerCase(),
-                                pin: memberAreaPin.trim(),
                                 newPin: trimmedNewPin,
                               }),
                             })
@@ -378,8 +373,6 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                             setMemberAreaEmail(nextLoginEmail)
                             localStorage.setItem("tsv_member_area_email", JSON.stringify(nextLoginEmail))
                             if (trimmedNewPin) {
-                              setMemberAreaPin(trimmedNewPin)
-                              localStorage.setItem("tsv_member_area_pin", JSON.stringify(trimmedNewPin))
                               setNewMemberPin("")
                               setConfirmNewMemberPin("")
                             }

@@ -1,12 +1,15 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { createTrainerAccount, type TrainerLicense } from "@/lib/trainerDb"
-import { findMemberByEmail } from "@/lib/boxgymDb"
+import { validateEmail } from "@/lib/formValidation"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { trainerLicenseOptions } from "@/lib/trainerLicense"
 
 type AdminTrainerAccountBody = {
   firstName?: string
@@ -16,6 +19,10 @@ type AdminTrainerAccountBody = {
   trainerLicense?: TrainerLicense
   pin?: string
   linkedMemberId?: string
+}
+
+function getServerSupabase() {
+  return createServerSupabaseServiceClient()
 }
 
 export async function POST(request: Request) {
@@ -29,7 +36,7 @@ export async function POST(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`admin-trainer-account:${getRequestIp(request)}`, 30, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`admin-trainer-account:${getRequestIp(request)}`, 30, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
@@ -47,14 +54,53 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte alle Felder fuer das Trainerkonto ausfuellen.", { status: 400 })
     }
 
+    const emailValidation = validateEmail(email)
+    if (!emailValidation.valid) {
+      return new NextResponse(emailValidation.error || "Bitte eine gueltige E-Mail-Adresse eingeben.", { status: 400 })
+    }
+
     if (!isValidPin(pin)) {
       return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
-    const verificationToken = randomUUID()
-    const linkedMember = linkedMemberId ? null : await findMemberByEmail(email)
+    if (trainerLicense && !trainerLicenseOptions.includes(trainerLicense)) {
+      return new NextResponse("Ungueltige Trainerlizenz.", { status: 400 })
+    }
 
-    await createTrainerAccount({
+    const verificationToken = randomUUID()
+    const supabase = getServerSupabase()
+
+    let linkedMember: { id: string; email?: string | null } | null = null
+    if (linkedMemberId) {
+      const { data, error } = await supabase
+        .from("members")
+        .select("id, email")
+        .eq("id", linkedMemberId)
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) {
+        return new NextResponse("Verknuepftes Mitglied nicht gefunden.", { status: 404 })
+      }
+
+      linkedMember = data
+    } else {
+      const { data, error } = await supabase
+        .from("members")
+        .select("id, email")
+        .eq("email", email)
+        .order("created_at", { ascending: false })
+        .limit(1)
+
+      if (error) throw error
+      linkedMember = (data?.[0] as { id: string; email?: string | null } | undefined) ?? null
+    }
+
+    if (linkedMember?.email?.trim() && linkedMember.email.trim().toLowerCase() !== email) {
+      return new NextResponse("Mitgliedsverknuepfung passt nicht zur E-Mail-Adresse.", { status: 400 })
+    }
+
+    const trainerAccount = await createTrainerAccount({
       first_name: firstName,
       last_name: lastName,
       email,
@@ -62,7 +108,16 @@ export async function POST(request: Request) {
       trainer_license: trainerLicense,
       pin,
       email_verification_token: verificationToken,
-      linked_member_id: linkedMemberId ?? linkedMember?.id ?? null,
+      linked_member_id: linkedMember?.id ?? null,
+    })
+
+    await writeAdminAuditLog({
+      session,
+      action: "trainer_account_created",
+      targetType: "trainer",
+      targetId: trainerAccount.id,
+      targetName: `${firstName} ${lastName}`.trim(),
+      details: `E-Mail: ${email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${linkedMember?.id ? `, Mitglied verknuepft` : ""}`,
     })
 
     const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL

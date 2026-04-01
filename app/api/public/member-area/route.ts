@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import {
   findMemberByEmail,
@@ -13,13 +13,24 @@ import {
   getChildrenForParent,
   getParentAccountByEmail,
   getParentAccountByLogin,
+  hashParentAccessCode,
   isParentAccountSetupPending,
   type ParentAccountRow,
 } from "@/lib/parentAccountsDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import {
+  applyMemberAreaSessionCookie,
+  applyParentAreaSessionCookie,
+  clearMemberAreaSessionCookie,
+  clearParentAreaSessionCookie,
+  getPublicAreaSessionMaxAgeMs,
+  readMemberAreaSessionFromHeaders,
+  readParentAreaSessionFromHeaders,
+} from "@/lib/publicAreaSession"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { supabase } from "@/lib/supabaseClient"
+import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
 type CheckinRow = {
   id: string
@@ -64,6 +75,13 @@ type ParentChildRow = {
   members?: MemberRecord | MemberRecord[] | null
 }
 
+type SafeParentAccountRow = {
+  id: string
+  parent_name: string
+  email: string
+  phone?: string | null
+}
+
 type MemberAreaBody =
   | {
       action: "member_login"
@@ -71,14 +89,26 @@ type MemberAreaBody =
       pin?: string
     }
   | {
+      action: "member_session"
+    }
+  | {
+      action: "logout_member_session"
+    }
+  | {
       action: "trainer_linked_member"
+    }
+  | {
+      action: "parent_session"
+    }
+  | {
+      action: "logout_parent_session"
     }
   | {
       action: "parent_login"
       email?: string
       firstName?: string
       lastName?: string
-      accessCodeHash?: string
+      accessCode?: string
     }
   | {
       action: "verify_email"
@@ -144,7 +174,27 @@ function generateEmailVerificationToken() {
   return randomUUID()
 }
 
+function sanitizeMemberForClient(member: MemberRecord & Record<string, unknown>) {
+  const sanitized = { ...member }
+  delete sanitized.member_pin
+  delete sanitized.email_verification_token
+  return sanitized as MemberRecord
+}
+
+function toSafeParentAccount(parent: ParentAccountRow): SafeParentAccountRow {
+  return {
+    id: parent.id,
+    parent_name: parent.parent_name,
+    email: parent.email,
+    phone: parent.phone ?? null,
+  }
+}
+
 async function buildMemberSnapshot(member: MemberRecord) {
+  const normalizedMember = {
+    ...sanitizeMemberForClient(member as MemberRecord & Record<string, unknown>),
+    base_group: normalizeTrainingGroup(member.base_group) || member.base_group,
+  }
   const liveDate = new Date().toISOString().slice(0, 10)
   const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
   const currentMonthKey = getMonthKey(liveDate)
@@ -186,11 +236,11 @@ async function buildMemberSnapshot(member: MemberRecord) {
   let baseGroupMonthVisits = 0
   let baseGroupPosition: number | null = null
 
-  if (member.base_group) {
+  if (normalizedMember.base_group) {
     const { data: baseGroupRows } = await supabase
       .from("checkins")
       .select("member_id")
-      .eq("group_name", member.base_group)
+      .eq("group_name", normalizedMember.base_group)
       .eq("month_key", currentMonthKey)
 
     baseGroupMonthVisits = (baseGroupRows || []).filter((row) => row.member_id === member.id).length
@@ -206,7 +256,7 @@ async function buildMemberSnapshot(member: MemberRecord) {
   }
 
   return {
-    member,
+    member: normalizedMember,
     personalMonthVisits: monthRows?.length ?? 0,
     previousMonthVisits: previousMonthRows?.length ?? 0,
     personalYearVisits: yearRows?.length ?? 0,
@@ -216,6 +266,42 @@ async function buildMemberSnapshot(member: MemberRecord) {
     trainingStreak: calculateTrainingStreak((allRows as Array<{ date: string }>) ?? []),
     baseGroupMonthVisits,
     baseGroupPosition,
+  }
+}
+
+async function buildParentSnapshot(parent: ParentAccountRow) {
+  const childrenResponse = (await getChildrenForParent(parent.id)) as ParentChildRow[]
+  const children = childrenResponse
+    .map((row) => (Array.isArray(row.members) ? row.members[0] ?? null : row.members ?? null))
+    .filter((member): member is MemberRecord => Boolean(member))
+    .map((member) => sanitizeMemberForClient(member as MemberRecord & Record<string, unknown>))
+    .sort((a, b) => getMemberDisplayName(a).localeCompare(getMemberDisplayName(b)))
+
+  const childIds = children.map((child) => child.id)
+  const checkinsByMember: Record<string, CheckinRow[]> = {}
+
+  if (childIds.length > 0) {
+    const { data, error } = await supabase
+      .from("checkins")
+      .select("*")
+      .in("member_id", childIds)
+      .order("created_at", { ascending: false })
+
+    if (error) throw error
+
+    for (const row of ((data as CheckinRow[] | null) ?? [])) {
+      if (!checkinsByMember[row.member_id]) {
+        checkinsByMember[row.member_id] = []
+      }
+      checkinsByMember[row.member_id].push(row)
+    }
+  }
+
+  return {
+    parent: toSafeParentAccount(parent),
+    children,
+    checkinsByMember,
+    sessionUntil: Date.now() + getPublicAreaSessionMaxAgeMs(),
   }
 }
 
@@ -240,6 +326,14 @@ async function resolveTrainerLinkedMember(request: Request) {
 }
 
 async function resolveEditableMember(request: Request, body: { memberId?: string; loginEmail?: string; pin?: string }) {
+  const memberSession = await readMemberAreaSessionFromHeaders(request)
+  if (memberSession && body.memberId) {
+    const sessionMember = (await findMemberById(memberSession.memberId)) as MemberRecord | null
+    if (sessionMember && sessionMember.id === body.memberId) {
+      return sessionMember
+    }
+  }
+
   const sessionMember = await resolveTrainerLinkedMember(request)
   if (sessionMember && sessionMember.id === body.memberId) {
     return sessionMember
@@ -268,12 +362,23 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const rateLimit = checkRateLimit(`public-member-area:${getRequestIp(request)}`, 40, 10 * 60 * 1000)
+    const body = (await request.json()) as MemberAreaBody
+    const normalizedIdentifier =
+      body.action === "member_login"
+        ? body.email?.trim().toLowerCase() ?? ""
+        : body.action === "parent_login"
+          ? body.email?.trim().toLowerCase() ?? ""
+          : body.action === "update_profile" || body.action === "resend_verification"
+            ? body.memberId?.trim() || body.loginEmail?.trim().toLowerCase() || body.email?.trim().toLowerCase() || ""
+            : body.action
+    const rateLimit = await checkRateLimitAsync(
+      `public-member-area:${getRequestIp(request)}:${body.action}:${normalizedIdentifier || "__subject__"}`,
+      40,
+      10 * 60 * 1000
+    )
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
-
-    const body = (await request.json()) as MemberAreaBody
 
     if (body.action === "member_login") {
       const email = body.email?.trim().toLowerCase() ?? ""
@@ -297,7 +402,31 @@ export async function POST(request: Request) {
         return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 404 })
       }
 
+      const response = NextResponse.json(await buildMemberSnapshot(member))
+      return await applyMemberAreaSessionCookie(response, {
+        memberId: member.id,
+        email,
+      })
+    }
+
+    if (body.action === "member_session") {
+      const session = await readMemberAreaSessionFromHeaders(request)
+      if (!session) {
+        return new NextResponse("Unauthorized", { status: 401 })
+      }
+
+      const member = (await findMemberById(session.memberId)) as MemberRecord | null
+      if (!member) {
+        const response = new NextResponse("Unauthorized", { status: 401 })
+        return clearMemberAreaSessionCookie(response)
+      }
+
       return NextResponse.json(await buildMemberSnapshot(member))
+    }
+
+    if (body.action === "logout_member_session") {
+      const response = NextResponse.json({ ok: true })
+      return clearMemberAreaSessionCookie(response)
     }
 
     if (body.action === "trainer_linked_member") {
@@ -309,13 +438,33 @@ export async function POST(request: Request) {
       return NextResponse.json(await buildMemberSnapshot(member))
     }
 
+    if (body.action === "parent_session") {
+      const session = await readParentAreaSessionFromHeaders(request)
+      if (!session) {
+        return new NextResponse("Unauthorized", { status: 401 })
+      }
+
+      const parent = await getParentAccountByEmail(session.email)
+      if (!parent || parent.id !== session.parentAccountId) {
+        const response = new NextResponse("Unauthorized", { status: 401 })
+        return clearParentAreaSessionCookie(response)
+      }
+
+      return NextResponse.json(await buildParentSnapshot(parent))
+    }
+
+    if (body.action === "logout_parent_session") {
+      const response = NextResponse.json({ ok: true })
+      return clearParentAreaSessionCookie(response)
+    }
+
     if (body.action === "parent_login") {
       const email = body.email?.trim().toLowerCase() ?? ""
       const firstName = body.firstName?.trim() ?? ""
       const lastName = body.lastName?.trim() ?? ""
-      const accessCodeHash = body.accessCodeHash?.trim() ?? ""
+      const accessCode = body.accessCode?.trim() ?? ""
 
-      if (!email || !accessCodeHash) {
+      if (!email || !accessCode) {
         return new NextResponse("Bitte Eltern-E-Mail und Eltern-Zugangscode eingeben.", { status: 400 })
       }
 
@@ -331,7 +480,7 @@ export async function POST(request: Request) {
           .from("parent_accounts")
           .update({
             parent_name: `${firstName} ${lastName}`.trim(),
-            access_code_hash: accessCodeHash,
+            access_code_hash: await hashParentAccessCode(accessCode),
           })
           .eq("id", existingParent.id)
           .select("*")
@@ -340,43 +489,17 @@ export async function POST(request: Request) {
         if (parentUpdateError) throw parentUpdateError
         parent = activatedParent as ParentAccountRow
       } else {
-        parent = await getParentAccountByLogin(email, accessCodeHash)
+        parent = await getParentAccountByLogin(email, accessCode)
       }
 
       if (!parent) {
         return new NextResponse("Kein Elternkonto mit dieser Kombination gefunden.", { status: 404 })
       }
 
-      const childrenResponse = (await getChildrenForParent(parent.id)) as ParentChildRow[]
-      const children = childrenResponse
-        .map((row) => (Array.isArray(row.members) ? row.members[0] ?? null : row.members ?? null))
-        .filter((member): member is MemberRecord => Boolean(member))
-        .sort((a, b) => getMemberDisplayName(a).localeCompare(getMemberDisplayName(b)))
-
-      const childIds = children.map((child) => child.id)
-      const checkinsByMember: Record<string, CheckinRow[]> = {}
-
-      if (childIds.length > 0) {
-        const { data, error } = await supabase
-          .from("checkins")
-          .select("*")
-          .in("member_id", childIds)
-          .order("created_at", { ascending: false })
-
-        if (error) throw error
-
-        for (const row of ((data as CheckinRow[] | null) ?? [])) {
-          if (!checkinsByMember[row.member_id]) {
-            checkinsByMember[row.member_id] = []
-          }
-          checkinsByMember[row.member_id].push(row)
-        }
-      }
-
-      return NextResponse.json({
-        parent: parent as ParentAccountRow,
-        children,
-        checkinsByMember,
+      const response = NextResponse.json(await buildParentSnapshot(parent))
+      return await applyParentAreaSessionCookie(response, {
+        parentAccountId: parent.id,
+        email: parent.email,
       })
     }
 
@@ -427,7 +550,7 @@ export async function POST(request: Request) {
         member_pin: newPin || undefined,
       })
 
-      return NextResponse.json({ ok: true, member: updated })
+      return NextResponse.json({ ok: true, member: sanitizeMemberForClient(updated as MemberRecord & Record<string, unknown>) })
     }
 
     if (body.action === "resend_verification") {
@@ -459,13 +582,10 @@ export async function POST(request: Request) {
         email: targetEmail,
         name: getMemberDisplayName(member),
         link: verificationLink,
-        kind: member.base_group === "Boxzwerge" ? "boxzwerge" : "member",
+        kind: "member",
       })
 
-      return NextResponse.json({
-        ok: true,
-        emailVerificationToken: verificationToken,
-      })
+      return NextResponse.json({ ok: true })
     }
 
     return new NextResponse("Invalid action", { status: 400 })

@@ -12,9 +12,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { hashSecret } from "@/lib/clientCrypto"
 import { groupOptions } from "@/lib/boxgymSessions"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { normalizeTrainingGroupOrFallback } from "@/lib/trainingGroups"
 
 function getStoredString(key: string) {
   if (typeof window === "undefined") return ""
@@ -38,7 +38,6 @@ export default function MitgliedRegistrierenPage() {
   const [registerEmail, setRegisterEmail] = useState("")
   const [registerPhone, setRegisterPhone] = useState("")
   const [registerGuardianName, setRegisterGuardianName] = useState("")
-  const [registerParentAccessCode, setRegisterParentAccessCode] = useState("")
   const [registerBaseGroup, setRegisterBaseGroup] = useState(groupOptions[0] ?? "")
 
   useEffect(() => {
@@ -47,12 +46,10 @@ export default function MitgliedRegistrierenPage() {
     setRegisterLastName(getStoredString("tsv_register_last_name"))
     setRegisterBirthDate(getStoredString("tsv_register_birthdate"))
     setRegisterGender(getStoredString("tsv_register_gender"))
-    setRegisterPin(getStoredString("tsv_register_pin"))
     setRegisterEmail(getStoredString("tsv_register_email"))
     setRegisterPhone(getStoredString("tsv_register_phone"))
     setRegisterGuardianName(getStoredString("tsv_register_guardian_name"))
-    setRegisterParentAccessCode(getStoredString("tsv_register_parent_access_code"))
-    setRegisterBaseGroup(getStoredString("tsv_register_base_group") || (groupOptions[0] ?? ""))
+    setRegisterBaseGroup(normalizeTrainingGroupOrFallback(getStoredString("tsv_register_base_group"), groupOptions[0]))
   }, [])
 
   useEffect(() => {
@@ -77,11 +74,6 @@ export default function MitgliedRegistrierenPage() {
 
   useEffect(() => {
     if (!isClient) return
-    localStorage.setItem("tsv_register_pin", JSON.stringify(registerPin))
-  }, [isClient, registerPin])
-
-  useEffect(() => {
-    if (!isClient) return
     localStorage.setItem("tsv_register_email", JSON.stringify(registerEmail))
   }, [isClient, registerEmail])
 
@@ -97,11 +89,6 @@ export default function MitgliedRegistrierenPage() {
 
   useEffect(() => {
     if (!isClient) return
-    localStorage.setItem("tsv_register_parent_access_code", JSON.stringify(registerParentAccessCode))
-  }, [isClient, registerParentAccessCode])
-
-  useEffect(() => {
-    if (!isClient) return
     localStorage.setItem("tsv_register_base_group", JSON.stringify(registerBaseGroup))
   }, [isClient, registerBaseGroup])
 
@@ -109,9 +96,6 @@ export default function MitgliedRegistrierenPage() {
     const firstName = registerFirstName.trim()
     const lastName = registerLastName.trim()
     const pin = registerPin.trim()
-    const guardianName = registerGuardianName.trim()
-    const parentAccessCode = registerParentAccessCode.trim()
-    const isBoxzwergeRegistration = registerBaseGroup === "Boxzwerge"
 
     if (!firstName || !lastName) {
       alert("Bitte Vorname und Nachname eingeben.")
@@ -128,28 +112,18 @@ export default function MitgliedRegistrierenPage() {
       return
     }
 
-    if (!isBoxzwergeRegistration && !isValidPin(pin)) {
+    if (!isValidPin(pin)) {
       alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
     if (!registerEmail.trim()) {
-      alert(isBoxzwergeRegistration ? "Bitte Eltern-E-Mail angeben." : "Bitte E-Mail angeben.")
+      alert("Bitte E-Mail angeben.")
       return
     }
 
     if (!registerPhone.trim()) {
       alert("Bitte Telefonnummer eingeben.")
-      return
-    }
-
-    if (isBoxzwergeRegistration && !guardianName) {
-      alert("Bitte einen Elternteil oder Notfallkontakt angeben.")
-      return
-    }
-
-    if (isBoxzwergeRegistration && !isValidPin(parentAccessCode)) {
-      alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -171,8 +145,6 @@ export default function MitgliedRegistrierenPage() {
           pin,
           email: registerEmail.trim(),
           phone: registerPhone.trim(),
-          guardianName,
-          parentAccessCodeHash: isBoxzwergeRegistration ? await hashSecret(parentAccessCode) : undefined,
           baseGroup: registerBaseGroup,
         }),
       })
@@ -268,15 +240,6 @@ export default function MitgliedRegistrierenPage() {
             >
               <div className="text-sm text-zinc-500">Daten erfassen und Gruppe zuordnen.</div>
 
-              {registerBaseGroup === "Boxzwerge" ? (
-                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-                  <div className="flex items-center gap-2">
-                    <span>Registrierung über Elternkonto.</span>
-                    <InfoHint text="Boxzwerge werden durch die Eltern registriert. Ein Elternkonto kann später mehrere Kinder verwalten." />
-                  </div>
-                </div>
-              ) : null}
-
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Vorname <span className="ml-1 text-red-500">*</span></Label>
@@ -308,7 +271,10 @@ export default function MitgliedRegistrierenPage() {
 
               <div className="space-y-2">
                 <Label>Stammgruppe <span className="ml-1 text-red-500">*</span></Label>
-                <Select value={registerBaseGroup} onValueChange={setRegisterBaseGroup}>
+                <Select
+                  value={registerBaseGroup}
+                  onValueChange={(value) => setRegisterBaseGroup(normalizeTrainingGroupOrFallback(value, groupOptions[0]))}
+                >
                   <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
                     <SelectValue placeholder="Gruppe auswählen" />
                   </SelectTrigger>
@@ -322,63 +288,39 @@ export default function MitgliedRegistrierenPage() {
                 </Select>
               </div>
 
-              {registerBaseGroup === "Boxzwerge" ? (
-                <div className="space-y-2">
-                  <Label>Eltern-Zugangscode <span className="ml-1 text-red-500">*</span></Label>
-                  <PasswordInput
-                    value={registerParentAccessCode}
-                    onChange={(e) => setRegisterParentAccessCode(e.target.value)}
-                    placeholder="6 bis 16 Zeichen"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Zugangspin selbst wählen <span className="ml-1 text-red-500">*</span></Label>
-                  <PasswordInput
-                    value={registerPin}
-                    onChange={(e) => setRegisterPin(e.target.value)}
-                    placeholder="Eigenen Zugangspin wählen"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                  <p className="text-xs text-zinc-500">
-                    Diesen Zugangspin legst du bei der Registrierung selbst fest.
-                  </p>
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label>Zugangspin selbst wählen <span className="ml-1 text-red-500">*</span></Label>
+                <PasswordInput
+                  value={registerPin}
+                  onChange={(e) => setRegisterPin(e.target.value)}
+                  placeholder="Eigenen Zugangspin wählen"
+                  className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                />
+                <p className="text-xs text-zinc-500">
+                  Diesen Zugangspin legst du bei der Registrierung selbst fest.
+                </p>
+              </div>
 
               <div className="space-y-2">
-                <Label>{registerBaseGroup === "Boxzwerge" ? "Eltern-E-Mail *" : "E-Mail *"}</Label>
+                <Label>E-Mail *</Label>
                 <Input
                   type="email"
                   value={registerEmail}
                   onChange={(e) => setRegisterEmail(e.target.value)}
-                  placeholder={registerBaseGroup === "Boxzwerge" ? "E-Mail eines Elternteils" : "E-Mail"}
+                  placeholder="E-Mail"
                   className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>{registerBaseGroup === "Boxzwerge" ? "Eltern-Telefon / Notfallkontakt *" : "Telefon *"}</Label>
+                <Label>Telefon *</Label>
                 <Input
                   value={registerPhone}
                   onChange={(e) => setRegisterPhone(e.target.value)}
-                  placeholder={registerBaseGroup === "Boxzwerge" ? "z. B. +49 123 456789" : "z. B. +49 123 456789"}
+                  placeholder="z. B. +49 123 456789"
                   className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                 />
               </div>
-
-              {registerBaseGroup === "Boxzwerge" ? (
-                <div className="space-y-2">
-                  <Label>Elternteil / Notfallkontakt <span className="ml-1 text-red-500">*</span></Label>
-                  <Input
-                    value={registerGuardianName}
-                    onChange={(e) => setRegisterGuardianName(e.target.value)}
-                    placeholder="Name eines Elternteils"
-                    className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                  />
-                </div>
-              ) : null}
 
               <Button
                 type="submit"
@@ -389,9 +331,7 @@ export default function MitgliedRegistrierenPage() {
               </Button>
 
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                {registerBaseGroup === "Boxzwerge"
-                  ? "Bei Boxzwergen registrieren Eltern ihre Kinder. Eltern-E-Mail, Eltern-Telefon, Eltern-Zugangscode und ein Notfallkontakt sind Pflicht. Mit demselben Elternkonto können später 2 oder 3 Kinder verwaltet werden."
-                  : `Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Geschlecht, Telefonnummer und E-Mail sind Pflichtdaten. Der Zugangspin wird bei der Registrierung selbst gewählt. ${PIN_HINT}`}
+                {`Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Geschlecht, Telefonnummer und E-Mail sind Pflichtdaten. Der Zugangspin wird bei der Registrierung selbst gewählt. ${PIN_HINT}`}
               </div>
             </form>
           </CardContent>

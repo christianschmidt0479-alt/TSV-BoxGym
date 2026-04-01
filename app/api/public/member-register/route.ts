@@ -1,12 +1,12 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createMember, findMemberByFirstLastAndBirthdate, updateMemberRegistrationData } from "@/lib/boxgymDb"
 import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
-import { linkParentAccountToMember, upsertParentAccount } from "@/lib/parentAccountsDb"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
+import { parseTrainingGroup } from "@/lib/trainingGroups"
 
 type MemberRegisterBody = {
   firstName?: string
@@ -31,11 +31,6 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const rateLimit = checkRateLimit(`public-member-register:${getRequestIp(request)}`, 12, 10 * 60 * 1000)
-    if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
-    }
-
     const body = (await request.json()) as MemberRegisterBody
     const firstName = body.firstName?.trim() ?? ""
     const lastName = body.lastName?.trim() ?? ""
@@ -45,9 +40,15 @@ export async function POST(request: Request) {
     const email = body.email?.trim() ?? ""
     const phone = body.phone?.trim() ?? ""
     const guardianName = body.guardianName?.trim() ?? ""
-    const parentAccessCodeHash = body.parentAccessCodeHash?.trim() ?? ""
-    const baseGroup = body.baseGroup?.trim() ?? ""
-    const isBoxzwergeRegistration = baseGroup === "Boxzwerge"
+    const baseGroup = parseTrainingGroup(body.baseGroup)
+    const rateLimit = await checkRateLimitAsync(
+      `public-member-register:${getRequestIp(request)}:${email.toLowerCase() || "__email__"}`,
+      12,
+      10 * 60 * 1000
+    )
+    if (!rateLimit.ok) {
+      return new NextResponse("Too many requests", { status: 429 })
+    }
 
     if (!firstName || !lastName) {
       return new NextResponse("Bitte Vorname und Nachname eingeben.", { status: 400 })
@@ -57,28 +58,20 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte Geburtsdatum angeben.", { status: 400 })
     }
 
-    if (!isBoxzwergeRegistration && !isValidPin(pin)) {
-      return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
-    }
-
-    if (!email) {
-      return new NextResponse(isBoxzwergeRegistration ? "Bitte Eltern-E-Mail angeben." : "Bitte E-Mail angeben.", { status: 400 })
-    }
-
-    if (!phone) {
-      return new NextResponse("Telefonnummer ist erforderlich.", { status: 400 })
-    }
-
     if (!baseGroup) {
       return new NextResponse("Bitte Stammgruppe auswaehlen.", { status: 400 })
     }
 
-    if (isBoxzwergeRegistration && !guardianName) {
-      return new NextResponse("Bitte einen Elternteil oder Notfallkontakt angeben.", { status: 400 })
+    if (!isValidPin(pin)) {
+      return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
-    if (isBoxzwergeRegistration && !parentAccessCodeHash) {
-      return new NextResponse("Bitte einen Eltern-Zugangscode angeben.", { status: 400 })
+    if (!email) {
+      return new NextResponse("Bitte E-Mail angeben.", { status: 400 })
+    }
+
+    if (!phone) {
+      return new NextResponse("Telefonnummer ist erforderlich.", { status: 400 })
     }
 
     const emailToken = generateEmailVerificationToken()
@@ -86,7 +79,7 @@ export async function POST(request: Request) {
 
     const member = existing
       ? await updateMemberRegistrationData(existing.id, {
-          member_pin: isBoxzwergeRegistration ? null : pin,
+          member_pin: pin,
           gender: gender || null,
           email,
           phone,
@@ -105,31 +98,19 @@ export async function POST(request: Request) {
           phone,
           guardian_name: guardianName || undefined,
           is_trial: false,
-          member_pin: isBoxzwergeRegistration ? undefined : pin,
+          member_pin: pin,
           is_approved: false,
           base_group: baseGroup,
         })
 
-    const updatedMember =
-      existing
-        ? member
-        : await updateMemberRegistrationData(member.id, {
-            gender: gender || null,
-            email_verified: false,
-            email_verified_at: null,
-            email_verification_token: emailToken,
-            base_group: baseGroup,
-          })
-
-    if (isBoxzwergeRegistration) {
-      const parentAccount = await upsertParentAccount({
-        parent_name: guardianName,
-        email,
-        phone,
-        access_code_hash: parentAccessCodeHash,
+    if (!existing) {
+      await updateMemberRegistrationData(member.id, {
+        gender: gender || null,
+        email_verified: false,
+        email_verified_at: null,
+        email_verification_token: emailToken,
+        base_group: baseGroup,
       })
-
-      await linkParentAccountToMember(parentAccount.id, updatedMember.id)
     }
 
     const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
@@ -142,7 +123,7 @@ export async function POST(request: Request) {
         email,
         name: `${firstName} ${lastName}`.trim(),
         link: verificationLink,
-        kind: isBoxzwergeRegistration ? "boxzwerge" : "member",
+        kind: "member",
       })
     } catch (error) {
       verificationSent = false
@@ -151,7 +132,7 @@ export async function POST(request: Request) {
 
     try {
       await enqueueAdminNotification({
-        kind: isBoxzwergeRegistration ? "boxzwerge" : "member",
+        kind: "member",
         memberName: `${firstName} ${lastName}`.trim(),
         email,
         group: baseGroup,

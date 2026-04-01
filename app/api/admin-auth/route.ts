@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "crypto"
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 
 function getAdminLoginPassword() {
   return process.env.ADMIN_LOGIN_PASSWORD?.trim() || ""
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const rateLimit = checkRateLimit(`admin-auth:${getRequestIp(request)}`, 10, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`admin-auth:${getRequestIp(request)}`, 10, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { getRecommendedTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type PendingMemberRecord = {
@@ -32,13 +33,7 @@ type CheckinCountRow = {
   member_id: string
 }
 
-const groupOptions = [
-  "L-Gruppe",
-  "Basic ab 18 Jahre",
-  "Basic 10-14 Jahre",
-  "Basic 15-18 Jahre",
-  "Boxzwerge",
-]
+const groupOptions = [...TRAINING_GROUPS]
 
 function getMemberDisplayName(member?: Partial<PendingMemberRecord> | null) {
   const first = member?.first_name ?? ""
@@ -222,7 +217,9 @@ export default function FreigabenPage() {
             filteredPending.map((member) => {
               const used = usedByMember[member.id] ?? 0
               const remaining = Math.max(0, 6 - used)
-              const selectedGroup = groupDrafts[member.id] ?? member.base_group ?? groupOptions[0]
+              const selectedGroup =
+                groupDrafts[member.id] ??
+                normalizeTrainingGroupOrFallback(member.base_group, getRecommendedTrainingGroup(member.birthdate))
 
               return (
                 <div key={member.id} className="rounded-3xl border border-zinc-200 bg-white p-5">

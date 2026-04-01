@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { hashAuthSecret } from "@/lib/authSecret"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
+import { hashParentAccessCode } from "@/lib/parentAccountsDb"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
 type MemberProfileBody =
   | {
@@ -17,7 +20,7 @@ type MemberProfileBody =
         name: string
         email: string
         phone?: string
-        accessCodeHash?: string
+        accessCode?: string
       } | null
     }
   | {
@@ -42,6 +45,13 @@ function getMemberDisplayName(member: {
   return full || member.name || "—"
 }
 
+function sanitizeMemberForAdmin(member: Record<string, unknown>) {
+  const sanitized = { ...member }
+  delete sanitized.member_pin
+  delete sanitized.email_verification_token
+  return sanitized
+}
+
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
@@ -53,7 +63,7 @@ export async function POST(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`admin-member-profile:${getRequestIp(request)}`, 40, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`admin-member-profile:${getRequestIp(request)}`, 40, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
@@ -73,10 +83,10 @@ export async function POST(request: Request) {
           email: body.email?.trim() || null,
           phone: body.phone?.trim() || null,
           guardian_name: body.guardianName?.trim() || null,
-          member_pin: memberPin || undefined,
+          member_pin: memberPin ? await hashAuthSecret(memberPin) : undefined,
         })
         .eq("id", body.memberId)
-        .select("*")
+        .select("id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group")
         .single()
 
       if (memberError) throw memberError
@@ -96,11 +106,11 @@ export async function POST(request: Request) {
               parent_name: body.parent.name.trim(),
               email: body.parent.email.trim().toLowerCase(),
               phone: body.parent.phone?.trim() || null,
-              access_code_hash: body.parent.accessCodeHash || undefined,
+              access_code_hash: body.parent.accessCode?.trim() ? await hashParentAccessCode(body.parent.accessCode) : undefined,
             },
             { onConflict: "email" }
           )
-          .select("*")
+          .select("id, parent_name, email, phone")
           .single()
 
         if (parentError) throw parentError
@@ -131,10 +141,21 @@ export async function POST(request: Request) {
         targetType: "member",
         targetId: member.id,
         targetName: getMemberDisplayName(member),
-        details: "Kontaktdaten oder Elternkonto angepasst",
+        details: [
+          "Kontaktdaten oder Elternkonto angepasst",
+          memberPin ? "Mitglieds-PIN aktualisiert" : "",
+          body.parent?.accessCode?.trim() ? "Eltern-Zugangscode aktualisiert" : "",
+        ].filter(Boolean).join(", "),
       })
 
-      return NextResponse.json({ ok: true, member, parentLink })
+      return NextResponse.json({
+        ok: true,
+        member: {
+          ...sanitizeMemberForAdmin(member as Record<string, unknown>),
+          base_group: normalizeTrainingGroup(member.base_group) || member.base_group,
+        },
+        parentLink,
+      })
     }
 
     if (body.action === "unlink_parent") {

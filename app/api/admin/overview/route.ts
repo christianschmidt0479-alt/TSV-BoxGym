@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
 function getServerSupabase() {
   return createServerSupabaseServiceClient()
@@ -46,8 +47,14 @@ export async function GET(request: Request) {
     if (digestQueueResponse.error) throw digestQueueResponse.error
 
     return NextResponse.json({
-      memberRows: membersResponse.data ?? [],
-      todayCheckins: checkinsResponse.data ?? [],
+      memberRows: (membersResponse.data ?? []).map((row) => ({
+        ...row,
+        base_group: normalizeTrainingGroup(row.base_group) || row.base_group,
+      })),
+      todayCheckins: (checkinsResponse.data ?? []).map((row) => ({
+        ...row,
+        group_name: normalizeTrainingGroup(row.group_name) || row.group_name,
+      })),
       digestQueueRows: digestQueueResponse.data ?? [],
     })
   } catch (error) {

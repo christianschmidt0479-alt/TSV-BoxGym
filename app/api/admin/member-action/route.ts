@@ -1,12 +1,14 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { hashAuthSecret } from "@/lib/authSecret"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendAccessCodeChangedEmail, sendApprovalEmail, sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { parseTrainingGroup } from "@/lib/trainingGroups"
 
 type MemberActionBody =
   | {
@@ -23,6 +25,17 @@ type MemberActionBody =
       action: "change_group"
       memberId: string
       baseGroup: string
+    }
+  | {
+      action: "reset_pin"
+      memberId: string
+      newPin: string
+    }
+  | {
+      action: "update_name"
+      memberId: string
+      firstName: string
+      lastName: string
     }
   | {
       action: "set_competition"
@@ -69,6 +82,16 @@ function isMissingColumnError(error: { message?: string } | null) {
   )
 }
 
+const MEMBER_ADMIN_SELECT =
+  "id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group, needs_trainer_assist_checkin"
+
+function sanitizeMemberForAdmin(member: Record<string, unknown>) {
+  const sanitized = { ...member }
+  delete sanitized.member_pin
+  delete sanitized.email_verification_token
+  return sanitized
+}
+
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
@@ -80,7 +103,7 @@ export async function POST(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`admin-member-action:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`admin-member-action:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
@@ -89,33 +112,36 @@ export async function POST(request: Request) {
     const supabase = getServerSupabase()
 
     if (body.action === "approve") {
+      const approvedGroup = parseTrainingGroup(body.baseGroup)
+      if (!approvedGroup) {
+        return new NextResponse("Bitte eine gueltige Stammgruppe auswaehlen.", { status: 400 })
+      }
       const updatePayload: Record<string, unknown> = {
         is_approved: true,
-        base_group: body.baseGroup,
+        base_group: approvedGroup,
       }
 
       if (body.newPin?.trim()) {
         if (!isValidPin(body.newPin.trim())) {
           return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
         }
-        updatePayload.member_pin = body.newPin.trim()
+        updatePayload.member_pin = await hashAuthSecret(body.newPin.trim())
       }
 
       const { data, error } = await supabase
         .from("members")
         .update(updatePayload)
         .eq("id", body.memberId)
-        .select("*")
+        .select(MEMBER_ADMIN_SELECT)
         .single()
 
       if (error) throw error
 
-      const kind = data.base_group === "Boxzwerge" ? "boxzwerge" : "member"
       if (body.newPin?.trim() && data.email) {
         await sendAccessCodeChangedEmail({
           email: data.email,
           name: getMemberDisplayName(data),
-          kind,
+          kind: "member",
         })
       }
 
@@ -123,8 +149,8 @@ export async function POST(request: Request) {
         await sendApprovalEmail({
           email: data.email,
           name: getMemberDisplayName(data),
-          kind,
-          group: body.baseGroup,
+          kind: "member",
+          group: approvedGroup,
         })
       }
 
@@ -134,16 +160,16 @@ export async function POST(request: Request) {
         targetType: "member",
         targetId: data.id,
         targetName: getMemberDisplayName(data),
-        details: `Gruppe: ${body.baseGroup}`,
+        details: `Gruppe: ${approvedGroup}`,
       })
 
-      return NextResponse.json({ ok: true, member: data })
+      return NextResponse.json({ ok: true, member: { ...sanitizeMemberForAdmin(data as Record<string, unknown>), base_group: approvedGroup } })
     }
 
     if (body.action === "resend_verification") {
       const { data: member, error: memberError } = await supabase
         .from("members")
-        .select("*")
+        .select("id, name, first_name, last_name, email, email_verified, email_verification_token")
         .eq("id", body.memberId)
         .single()
 
@@ -173,13 +199,12 @@ export async function POST(request: Request) {
 
       const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
       const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`
-      const kind = member.base_group === "Boxzwerge" ? "boxzwerge" : "member"
 
       await sendVerificationEmail({
         email: member.email,
         name: getMemberDisplayName(member),
         link: verificationLink,
-        kind,
+        kind: "member",
       })
 
       await writeAdminAuditLog({
@@ -191,15 +216,19 @@ export async function POST(request: Request) {
         details: `Verification email resent to ${member.email}`,
       })
 
-      return NextResponse.json({ ok: true, emailVerificationToken: verificationToken })
+      return NextResponse.json({ ok: true })
     }
 
     if (body.action === "change_group") {
+      const nextGroup = parseTrainingGroup(body.baseGroup)
+      if (!nextGroup) {
+        return new NextResponse("Bitte eine gueltige Stammgruppe auswaehlen.", { status: 400 })
+      }
       const { data, error } = await supabase
         .from("members")
-        .update({ base_group: body.baseGroup })
+        .update({ base_group: nextGroup })
         .eq("id", body.memberId)
-        .select("*")
+        .select(MEMBER_ADMIN_SELECT)
         .single()
 
       if (error) throw error
@@ -209,9 +238,68 @@ export async function POST(request: Request) {
         targetType: "member",
         targetId: data.id,
         targetName: getMemberDisplayName(data),
-        details: `Neue Gruppe: ${body.baseGroup}`,
+        details: `Neue Gruppe: ${nextGroup}`,
       })
-      return NextResponse.json({ ok: true, member: data })
+      return NextResponse.json({ ok: true, member: { ...sanitizeMemberForAdmin(data as Record<string, unknown>), base_group: nextGroup } })
+    }
+
+    if (body.action === "reset_pin") {
+      const newPin = body.newPin.trim()
+      if (!isValidPin(newPin)) {
+        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+      }
+
+      const { data, error } = await supabase
+        .from("members")
+        .update({ member_pin: await hashAuthSecret(newPin) })
+        .eq("id", body.memberId)
+        .select(MEMBER_ADMIN_SELECT)
+        .single()
+
+      if (error) throw error
+
+      await writeAdminAuditLog({
+        session,
+        action: "member_pin_reset",
+        targetType: "member",
+        targetId: data.id,
+        targetName: getMemberDisplayName(data),
+        details: "PIN aktualisiert",
+      })
+
+      return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
+    }
+
+    if (body.action === "update_name") {
+      const firstName = body.firstName.trim()
+      const lastName = body.lastName.trim()
+      if (!firstName || !lastName) {
+        return new NextResponse("Vorname und Nachname duerfen nicht leer sein.", { status: 400 })
+      }
+
+      const { data, error } = await supabase
+        .from("members")
+        .update({
+          first_name: firstName,
+          last_name: lastName,
+          name: `${firstName} ${lastName}`.trim(),
+        })
+        .eq("id", body.memberId)
+        .select(MEMBER_ADMIN_SELECT)
+        .single()
+
+      if (error) throw error
+
+      await writeAdminAuditLog({
+        session,
+        action: "member_name_changed",
+        targetType: "member",
+        targetId: data.id,
+        targetName: getMemberDisplayName(data),
+        details: "Name aktualisiert",
+      })
+
+      return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
     }
 
     if (body.action === "set_competition") {
@@ -234,17 +322,20 @@ export async function POST(request: Request) {
         .from("members")
         .update(updatePayload)
         .eq("id", body.memberId)
-        .select("*")
+        .select(MEMBER_ADMIN_SELECT)
         .single()
 
       if (error && isMissingColumnError(error) && "competition_target_weight" in updatePayload) {
         delete updatePayload.competition_target_weight
-        const retry = await supabase.from("members").update(updatePayload).eq("id", body.memberId).select("*").single()
+        const retry = await supabase.from("members").update(updatePayload).eq("id", body.memberId).select(MEMBER_ADMIN_SELECT).single()
         data = retry.data
         error = retry.error
       }
 
       if (error) throw error
+      if (!data) {
+        throw new Error("Member update returned no data")
+      }
       await writeAdminAuditLog({
         session,
         action: "member_competition_changed",
@@ -253,7 +344,7 @@ export async function POST(request: Request) {
         targetName: getMemberDisplayName(data),
         details: body.isCompetitionMember ? "Wettkampfliste aktiv" : "Wettkampfliste inaktiv",
       })
-      return NextResponse.json({ ok: true, member: data })
+      return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
     }
 
     if (body.action === "set_trainer_assist") {
@@ -263,7 +354,7 @@ export async function POST(request: Request) {
           needs_trainer_assist_checkin: body.needsTrainerAssistCheckin,
         })
         .eq("id", body.memberId)
-        .select("*")
+        .select(MEMBER_ADMIN_SELECT)
         .single()
 
       if (error) throw error
@@ -275,7 +366,7 @@ export async function POST(request: Request) {
         targetName: getMemberDisplayName(data),
         details: body.needsTrainerAssistCheckin ? "Trainerhilfe aktiv" : "Trainerhilfe aus",
       })
-      return NextResponse.json({ ok: true, member: data })
+      return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
     }
 
     return new NextResponse("Invalid action", { status: 400 })

@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
 import { Input } from "@/components/ui/input"
-import { approveMember, getAllMembers } from "@/lib/boxgymDb"
 import {
   buildPersonRoleProfiles,
   getPersonRoleState,
@@ -15,12 +14,7 @@ import {
   type PersonRoleProfile,
   type RoleMemberRecord,
 } from "@/lib/personRoles"
-import {
-  approveTrainerAccount,
-  getAllTrainerAccounts,
-  type TrainerAccountRecord,
-  updateTrainerAccountRole,
-} from "@/lib/trainerDb"
+import { type TrainerAccountRecord } from "@/lib/trainerDb"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 function getRoleLabel(role: PersonRoleProfile["roles"][number]) {
@@ -80,15 +74,42 @@ export default function PersonenPage() {
   async function loadProfiles() {
     setLoading(true)
     try {
-      const [members, trainers] = await Promise.all([getAllMembers(), getAllTrainerAccounts()])
+      const response = await fetch("/api/admin/person-roles", {
+        cache: "no-store",
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+
+      const payload = (await response.json()) as {
+        members: RoleMemberRecord[]
+        trainers: TrainerAccountRecord[]
+      }
+
       setProfiles(
         buildPersonRoleProfiles(
-          (members as RoleMemberRecord[]) ?? [],
-          (trainers as TrainerAccountRecord[]) ?? []
+          payload.members ?? [],
+          payload.trainers ?? []
         )
       )
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function runRoleAction(input:
+    | { action: "approve_member"; memberId: string }
+    | { action: "approve_trainer"; trainerId: string }
+    | { action: "set_trainer_role"; trainerId: string; role: "trainer" | "admin" }
+  ) {
+    const response = await fetch("/api/admin/person-roles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+
+    if (!response.ok) {
+      throw new Error(await response.text())
     }
   }
 
@@ -107,12 +128,22 @@ export default function PersonenPage() {
 
     try {
       if (role === "mitglied" && profile.member?.id) {
-        await approveMember(profile.member.id)
+        await runRoleAction({
+          action: "approve_member",
+          memberId: profile.member.id,
+        })
       } else if ((role === "trainer" || role === "admin") && profile.trainer?.id) {
         if (role === "admin" && profile.trainer.role !== "admin") {
-          await updateTrainerAccountRole(profile.trainer.id, "admin")
+          await runRoleAction({
+            action: "set_trainer_role",
+            trainerId: profile.trainer.id,
+            role: "admin",
+          })
         }
-        await approveTrainerAccount(profile.trainer.id)
+        await runRoleAction({
+          action: "approve_trainer",
+          trainerId: profile.trainer.id,
+        })
       }
 
       await loadProfiles()

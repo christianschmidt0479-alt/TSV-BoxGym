@@ -1,3 +1,6 @@
+import type { NextResponse } from "next/server"
+
+export const MEMBER_DEVICE_COOKIE = "tsv_member_device"
 const MEMBER_DEVICE_MAX_AGE_DAYS = 90
 const MEMBER_DEVICE_MAX_AGE_SECONDS = MEMBER_DEVICE_MAX_AGE_DAYS * 24 * 60 * 60
 const encoder = new TextEncoder()
@@ -120,4 +123,42 @@ export async function verifyMemberDeviceToken(token: string | undefined | null) 
 
 export function getMemberDeviceSessionMaxAgeMs() {
   return MEMBER_DEVICE_MAX_AGE_SECONDS * 1000
+}
+
+function getCookieValueFromHeader(cookieHeader: string | null, name: string) {
+  if (!cookieHeader) return null
+  const cookies = cookieHeader.split(";").map((entry) => entry.trim())
+  for (const cookie of cookies) {
+    const [cookieName, ...rest] = cookie.split("=")
+    if (cookieName === name) {
+      return rest.join("=") || null
+    }
+  }
+  return null
+}
+
+export function applyMemberDeviceCookie(response: NextResponse, token: string) {
+  response.cookies.set(MEMBER_DEVICE_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: MEMBER_DEVICE_MAX_AGE_SECONDS,
+  })
+  return response
+}
+
+export function clearMemberDeviceCookie(response: NextResponse) {
+  response.cookies.set(MEMBER_DEVICE_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  })
+  return response
+}
+
+export function readMemberDeviceTokenFromHeaders(request: Request) {
+  return getCookieValueFromHeader(request.headers.get("cookie"), MEMBER_DEVICE_COOKIE)
 }

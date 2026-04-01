@@ -34,7 +34,7 @@ export async function GET(request: Request) {
         .order("created_at", { ascending: false }),
       supabase
         .from("trainer_accounts")
-        .select("*")
+        .select("id, first_name, last_name, email, phone, trainer_license, email_verified, is_approved, role, linked_member_id, created_at")
         .order("created_at", { ascending: false }),
       supabase
         .from("members")

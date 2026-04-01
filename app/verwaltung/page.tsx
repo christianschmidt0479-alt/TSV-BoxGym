@@ -197,6 +197,11 @@ export default function VerwaltungOverviewPage() {
           description: "Tageslisten und Verlauf prüfen.",
         },
         {
+          href: "/verwaltung/excel-abgleich",
+          title: "Excel-Abgleich",
+          description: "Gruppenlisten mit Mitgliederdaten abgleichen.",
+        },
+        {
           href: "/verwaltung/gruppen",
           title: "Gruppen",
           description: "Gruppen und Wochenbezug öffnen.",

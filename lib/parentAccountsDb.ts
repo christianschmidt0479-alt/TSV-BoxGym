@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient"
+import { hashAuthSecret, isBcryptHash, verifyAuthSecret } from "./authSecret"
 
 export const PARENT_SETUP_PENDING_HASH = "__parent_setup_pending__"
 
@@ -43,7 +44,7 @@ export async function getParentAccountByEmail(email: string) {
 
   const { data, error } = await supabase
     .from("parent_accounts")
-    .select("*")
+    .select("id, parent_name, email, phone, access_code_hash, created_at, updated_at")
     .eq("email", normalizedEmail)
     .maybeSingle()
 
@@ -68,16 +69,21 @@ export async function upsertParentAccount(input: {
   const existing = await getParentAccountByEmail(normalizedEmail)
 
   if (existing) {
+    const nextAccessCodeHash =
+      input.access_code_hash && !isBcryptHash(input.access_code_hash)
+        ? await hashParentAccessCode(input.access_code_hash)
+        : input.access_code_hash
+
     const { data, error } = await supabase
       .from("parent_accounts")
       .update({
         parent_name: input.parent_name.trim(),
         email: normalizedEmail,
         phone: input.phone?.trim() || null,
-        ...(input.access_code_hash ? { access_code_hash: input.access_code_hash } : {}),
+        ...(nextAccessCodeHash ? { access_code_hash: nextAccessCodeHash } : {}),
       })
       .eq("id", existing.id)
-      .select("*")
+      .select("id, parent_name, email, phone, access_code_hash, created_at, updated_at")
       .single()
 
     if (error) throw error
@@ -95,10 +101,10 @@ export async function upsertParentAccount(input: {
         parent_name: input.parent_name.trim(),
         email: normalizedEmail,
         phone: input.phone?.trim() || null,
-        access_code_hash: input.access_code_hash,
+        access_code_hash: await hashParentAccessCode(input.access_code_hash),
       },
     ])
-    .select("*")
+    .select("id, parent_name, email, phone, access_code_hash, created_at, updated_at")
     .single()
 
   if (error) {
@@ -188,10 +194,10 @@ export async function getParentAccountByLogin(email: string, accessCodeHash: str
 
   const { data, error } = await supabase
     .from("parent_accounts")
-    .select("*")
+    .select("id, parent_name, email, phone, access_code_hash, created_at, updated_at")
     .eq("email", normalizedEmail)
-    .eq("access_code_hash", accessCodeHash)
-    .maybeSingle()
+    .order("updated_at", { ascending: false })
+    .limit(5)
 
   if (error) {
     if (isMissingTableError(error)) {
@@ -201,11 +207,35 @@ export async function getParentAccountByLogin(email: string, accessCodeHash: str
     throw error
   }
 
-  return (data as ParentAccountRow | null) ?? null
+  const rows = (data as ParentAccountRow[] | null) ?? []
+  for (const row of rows) {
+    if (await verifyParentAccessCode(accessCodeHash, row.access_code_hash)) {
+      if (!isBcryptHash(row.access_code_hash)) {
+        const nextHash = await hashParentAccessCode(accessCodeHash)
+        await supabase.from("parent_accounts").update({ access_code_hash: nextHash }).eq("id", row.id)
+        return {
+          ...row,
+          access_code_hash: nextHash,
+        }
+      }
+
+      return row
+    }
+  }
+
+  return null
 }
 
 export function isParentAccountSetupPending(parent: Pick<ParentAccountRow, "access_code_hash"> | null | undefined) {
   return parent?.access_code_hash === PARENT_SETUP_PENDING_HASH
+}
+
+export async function hashParentAccessCode(value: string) {
+  return hashAuthSecret(value)
+}
+
+export async function verifyParentAccessCode(candidate: string, storedSecret: string) {
+  return verifyAuthSecret(candidate, storedSecret)
 }
 
 export async function getChildrenForParent(parentAccountId: string) {

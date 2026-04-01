@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimit, checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { getAppBaseUrl } from "@/lib/mailConfig"
 import { getManualParentMailDrafts, upsertManualParentMailDraft } from "@/lib/manualParentMailOutboxDb"
 import { getParentFamilyBody, getParentFamilyLink, getParentFamilyMailRows, getParentFamilySubject } from "@/lib/parentMailDrafts"
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`admin-parent-mail-outbox-post:${getRequestIp(request)}`, 20, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`admin-parent-mail-outbox-post:${getRequestIp(request)}`, 20, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
@@ -63,6 +64,13 @@ export async function POST(request: Request) {
       )
     )
 
+    await writeAdminAuditLog({
+      session,
+      action: "parent_mail_drafts_refreshed",
+      targetType: "parent_mail_outbox",
+      details: `${drafts.length} Entwuerfe aktualisiert`,
+    })
+
     return NextResponse.json({
       ok: true,
       queued: drafts.length,
@@ -70,6 +78,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("queue parent mails failed", error)
-    return new NextResponse(error instanceof Error ? error.message : "Internal server error", { status: 500 })
+    return new NextResponse("Internal server error", { status: 500 })
   }
 }

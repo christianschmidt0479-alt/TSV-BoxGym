@@ -13,7 +13,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { hashSecret } from "@/lib/clientCrypto"
 import { sessions } from "@/lib/boxgymSessions"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { readTrainerAccess } from "@/lib/trainerAccess"
@@ -279,11 +278,9 @@ export default function MemberAreaPage() {
   useEffect(() => {
     setIsClient(true)
     setMemberAreaEmail(getStoredString("tsv_member_area_email"))
-    setMemberAreaPin(getStoredString("tsv_member_area_pin"))
     setParentEmail(getStoredString("tsv_parent_area_email"))
     setParentFirstName(getStoredString("tsv_parent_area_first_name"))
     setParentLastName(getStoredString("tsv_parent_area_last_name"))
-    setParentAccessCode(getStoredString("tsv_parent_area_access_code"))
     const trainerAccess = readTrainerAccess()
     setTrainerHasRoleAccess(Boolean(trainerAccess.role))
     setTrainerHasAdminAccess(trainerAccess.accountRole === "admin")
@@ -348,11 +345,6 @@ export default function MemberAreaPage() {
 
   useEffect(() => {
     if (!isClient) return
-    localStorage.setItem("tsv_member_area_pin", JSON.stringify(memberAreaPin))
-  }, [memberAreaPin, isClient])
-
-  useEffect(() => {
-    if (!isClient) return
     localStorage.setItem("tsv_parent_area_email", JSON.stringify(parentEmail))
   }, [parentEmail, isClient])
 
@@ -365,11 +357,6 @@ export default function MemberAreaPage() {
     if (!isClient) return
     localStorage.setItem("tsv_parent_area_last_name", JSON.stringify(parentLastName))
   }, [parentLastName, isClient])
-
-  useEffect(() => {
-    if (!isClient) return
-    localStorage.setItem("tsv_parent_area_access_code", JSON.stringify(parentAccessCode))
-  }, [parentAccessCode, isClient])
 
   async function loadMemberArea() {
     const email = memberAreaEmail.trim().toLowerCase()
@@ -413,6 +400,27 @@ export default function MemberAreaPage() {
       setMemberAreaLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isClient || memberAreaUnlocked) return
+
+    ;(async () => {
+      try {
+        const response = await fetch("/api/public/member-area", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "member_session" }),
+        })
+
+        if (!response.ok) return
+
+        const snapshot = (await response.json()) as MemberAreaSnapshot
+        applyMemberSnapshot(snapshot)
+      } catch (error) {
+        console.error("Member session restore failed", error)
+      }
+    })()
+  }, [isClient, memberAreaUnlocked])
 
   useEffect(() => {
     if (!isClient || memberAreaUnlocked || !trainerHasRoleAccess) return
@@ -471,7 +479,7 @@ export default function MemberAreaPage() {
           email,
           firstName,
           lastName,
-          accessCodeHash: await hashSecret(accessCode),
+          accessCode,
         }),
       })
 
@@ -499,6 +507,35 @@ export default function MemberAreaPage() {
       setParentLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isClient || parentUnlocked) return
+
+    ;(async () => {
+      try {
+        const response = await fetch("/api/public/member-area", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "parent_session" }),
+        })
+
+        if (!response.ok) return
+
+        const result = (await response.json()) as {
+          parent: ParentAccountRow
+          children: MemberRecord[]
+          checkinsByMember: Record<string, CheckinRow[]>
+        }
+
+        setParentAccount(result.parent)
+        setParentChildren(result.children)
+        setParentCheckinsByMember(result.checkinsByMember)
+        setParentUnlocked(true)
+      } catch (error) {
+        console.error("Parent session restore failed", error)
+      }
+    })()
+  }, [isClient, parentUnlocked])
 
   const parentSummary = useMemo(() => {
     return {
@@ -616,6 +653,11 @@ export default function MemberAreaPage() {
                         variant="outline"
                         className="rounded-2xl"
                         onClick={() => {
+                          void fetch("/api/public/member-area", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "logout_member_session" }),
+                          })
                           setMemberAreaUnlocked(false)
                           setMemberAreaData(null)
                           setMemberAttendanceRows([])
@@ -840,12 +882,7 @@ export default function MemberAreaPage() {
                                   throw new Error(message || "E-Mail konnte nicht versendet werden.")
                                 }
 
-                                const result = (await response.json()) as { emailVerificationToken?: string }
-                                if (result.emailVerificationToken) {
-                                  setMemberAreaData((current) =>
-                                    current ? { ...current, email_verification_token: result.emailVerificationToken } : current
-                                  )
-                                }
+                                await response.json()
 
                                 alert("Bestätigungs-Mail wurde erneut versendet.")
                               } catch (error) {
@@ -1052,6 +1089,11 @@ export default function MemberAreaPage() {
                         variant="outline"
                         className="rounded-2xl"
                         onClick={() => {
+                          void fetch("/api/public/member-area", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "logout_parent_session" }),
+                          })
                           setParentUnlocked(false)
                           setParentAccount(null)
                           setParentChildren([])

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, createMember, findMemberByFirstLastAndBirthdate, updateMemberProfile, updateTrialMember } from "@/lib/boxgymDb"
 import { sessions } from "@/lib/boxgymSessions"
 import { supabase } from "@/lib/supabaseClient"
@@ -77,17 +77,21 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const rateLimit = checkRateLimit(`public-trial-checkin:${getRequestIp(request)}`, 25, 10 * 60 * 1000)
-    if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
-    }
-
     const body = (await request.json()) as TrialCheckinBody
     const firstName = body.firstName?.trim() ?? ""
     const lastName = body.lastName?.trim() ?? ""
     const birthDate = body.birthDate ?? ""
     const email = body.email?.trim() ?? ""
     const phone = body.phone?.trim() ?? ""
+    const rateLimit = await checkRateLimitAsync(
+      `public-trial-checkin:${getRequestIp(request)}:${email.toLowerCase() || "__email__"}`,
+      25,
+      10 * 60 * 1000
+    )
+    if (!rateLimit.ok) {
+      return new NextResponse("Too many requests", { status: 429 })
+    }
+
     const now = new Date()
     const liveDate = todayString(now)
     const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()

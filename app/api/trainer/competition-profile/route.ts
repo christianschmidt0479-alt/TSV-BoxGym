@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
@@ -19,6 +19,9 @@ type TrainerCompetitionProfileBody = {
 function getServerSupabase() {
   return createServerSupabaseServiceClient()
 }
+
+const TRAINER_COMPETITION_PROFILE_SELECT =
+  "id, name, first_name, last_name, birthdate, email, phone, base_group, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws"
 
 function getMemberDisplayName(member: {
   first_name?: string | null
@@ -49,12 +52,16 @@ export async function POST(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`trainer-competition-profile:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
+    const body = (await request.json()) as TrainerCompetitionProfileBody
+    const rateLimit = await checkRateLimitAsync(
+      `trainer-competition-profile:${getRequestIp(request)}:${body.memberId?.trim() || "__member__"}`,
+      60,
+      10 * 60 * 1000
+    )
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
-    const body = (await request.json()) as TrainerCompetitionProfileBody
     const supabase = getServerSupabase()
     const hasPass = !!body.hasCompetitionPass
 
@@ -77,17 +84,20 @@ export async function POST(request: Request) {
       .from("members")
       .update(updatePayload)
       .eq("id", body.memberId)
-      .select("*")
+      .select(TRAINER_COMPETITION_PROFILE_SELECT)
       .single()
 
     if (error && isMissingColumnError(error) && "competition_target_weight" in updatePayload) {
       delete updatePayload.competition_target_weight
-      const retry = await supabase.from("members").update(updatePayload).eq("id", body.memberId).select("*").single()
+      const retry = await supabase.from("members").update(updatePayload).eq("id", body.memberId).select(TRAINER_COMPETITION_PROFILE_SELECT).single()
       data = retry.data
       error = retry.error
     }
 
     if (error) throw error
+    if (!data) {
+      throw new Error("Member update returned no data")
+    }
 
     await writeAdminAuditLog({
       session,

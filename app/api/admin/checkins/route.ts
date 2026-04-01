@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimit, checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 function getServerSupabase() {
@@ -68,20 +69,40 @@ export async function DELETE(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`admin-checkins-delete:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
-    if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
-    }
-
     const body = (await request.json()) as { checkinId?: string }
     const checkinId = body.checkinId?.trim()
     if (!checkinId) {
       return new NextResponse("Missing checkin id", { status: 400 })
     }
 
+    const rateLimit = await checkRateLimitAsync(`admin-checkins-delete:${getRequestIp(request)}:${checkinId}`, 60, 10 * 60 * 1000)
+    if (!rateLimit.ok) {
+      return new NextResponse("Too many requests", { status: 429 })
+    }
+
     const supabase = getServerSupabase()
+    const { data: checkin, error: checkinError } = await supabase
+      .from("checkins")
+      .select("id, member_id, date, group_name")
+      .eq("id", checkinId)
+      .maybeSingle()
+
+    if (checkinError) throw checkinError
+    if (!checkin) {
+      return new NextResponse("Checkin not found", { status: 404 })
+    }
+
     const { error } = await supabase.from("checkins").delete().eq("id", checkinId)
     if (error) throw error
+
+    await writeAdminAuditLog({
+      session,
+      action: "checkin_deleted",
+      targetType: "checkin",
+      targetId: checkin.id,
+      targetName: checkin.member_id,
+      details: `Datum: ${checkin.date}, Gruppe: ${checkin.group_name}`,
+    })
 
     return NextResponse.json({ ok: true })
   } catch (error) {

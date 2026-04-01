@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { createCheckin } from "@/lib/boxgymDb"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type BoxzwergeMemberRow = {
@@ -140,6 +139,28 @@ export default function TrainerBoxzwergePage() {
     return filteredMembers.filter((member) => !presentIds.has(member.id))
   }, [filteredMembers, presentIds])
 
+  async function createBoxzwergeCheckin(memberId: string) {
+    const response = await fetch("/api/trainer/boxzwerge-checkin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        member_id: memberId,
+        group_name: "Boxzwerge",
+        date: today,
+        time: new Date().toLocaleTimeString("de-DE", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        year: new Date(`${today}T12:00:00`).getFullYear(),
+        month_key: today.slice(0, 7),
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
+  }
+
   if (!authResolved) {
     return <div className="text-sm text-zinc-500">Zugriff wird geprüft...</div>
   }
@@ -255,17 +276,7 @@ export default function TrainerBoxzwergePage() {
                   setSavingId("__bulk__")
 
                   for (const member of openFilteredMembers) {
-                    await createCheckin({
-                      member_id: member.id,
-                      group_name: "Boxzwerge",
-                      date: today,
-                      time: new Date().toLocaleTimeString("de-DE", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }),
-                      year: new Date(`${today}T12:00:00`).getFullYear(),
-                      month_key: today.slice(0, 7),
-                    })
+                    await createBoxzwergeCheckin(member.id)
                   }
 
                   await loadData()
@@ -341,17 +352,7 @@ export default function TrainerBoxzwergePage() {
                         onClick={async () => {
                           try {
                             setSavingId(member.id)
-                            await createCheckin({
-                              member_id: member.id,
-                              group_name: "Boxzwerge",
-                              date: today,
-                              time: new Date().toLocaleTimeString("de-DE", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              }),
-                              year: new Date(`${today}T12:00:00`).getFullYear(),
-                              month_key: today.slice(0, 7),
-                            })
+                            await createBoxzwergeCheckin(member.id)
                             await loadData()
                           } catch (error) {
                             console.error(error)

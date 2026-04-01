@@ -12,7 +12,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ChevronDown, ChevronUp } from "lucide-react"
-import { hashSecret } from "@/lib/clientCrypto"
+import { compareTrainingGroupOrder, normalizeTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -53,6 +53,14 @@ type ParentLinkSummary = {
   phone?: string | null
 }
 
+type TrainerLinkSummary = {
+  id: string
+  linked_member_id?: string | null
+  email?: string | null
+  role?: "trainer" | "admin" | null
+  is_approved?: boolean | null
+}
+
 type MemberStatusFilter =
   | "alle"
   | "probemitglied"
@@ -60,14 +68,7 @@ type MemberStatusFilter =
   | "registriert"
   | "freigegeben"
 
-const memberGroupOptions = [
-  "Boxzwerge",
-  "Grundgruppe 10 bis 14 Jahre",
-  "Grundgruppe ab 15 Jahren",
-  "L-Gruppe",
-  "Basic ab 18 Jahre",
-  "Trainer",
-]
+const memberGroupOptions = [...TRAINING_GROUPS]
 
 function getMemberDisplayName(member?: Partial<MemberRecord> | null) {
   const first = member?.first_name ?? ""
@@ -163,13 +164,19 @@ export default function MitgliederverwaltungPage() {
   const [editParentAccessCode, setEditParentAccessCode] = useState("")
   const [editMemberAccessCode, setEditMemberAccessCode] = useState("")
   const [parentLinksByMember, setParentLinksByMember] = useState<Record<string, ParentLinkSummary>>({})
+  const [trainerLinksByMember, setTrainerLinksByMember] = useState<Record<string, TrainerLinkSummary>>({})
 
   useEffect(() => {
     if (typeof window === "undefined") return
 
-    const nextGroup = new URLSearchParams(window.location.search).get("gruppe")
+    const searchParams = new URLSearchParams(window.location.search)
+    const nextGroup = searchParams.get("gruppe")
+    const nextMemberId = searchParams.get("memberId")
     if (nextGroup?.trim()) {
       setGroupFilter(nextGroup)
+    }
+    if (nextMemberId?.trim()) {
+      setEditingMemberId(nextMemberId)
     }
   }, [])
 
@@ -197,6 +204,7 @@ export default function MitgliederverwaltungPage() {
         const payload = (await response.json()) as {
           members: MemberRecord[]
           checkinRows: CheckinSummaryRow[]
+          trainerLinks: TrainerLinkSummary[]
           parentLinks: Array<{
             member_id: string
             parent_account_id: string
@@ -217,6 +225,24 @@ export default function MitgliederverwaltungPage() {
           }
         }
         setParentLinksByMember(nextLinks)
+
+        const nextTrainerLinks: Record<string, TrainerLinkSummary> = {}
+        const normalizedMembers = payload.members ?? []
+        for (const trainer of payload.trainerLinks ?? []) {
+          const linkedMemberId = trainer.linked_member_id?.trim() ?? ""
+          if (linkedMemberId) {
+            nextTrainerLinks[linkedMemberId] = trainer
+            continue
+          }
+
+          const trainerEmail = trainer.email?.trim().toLowerCase() ?? ""
+          if (!trainerEmail) continue
+          const matchedMember = normalizedMembers.find((member) => (member.email ?? "").trim().toLowerCase() === trainerEmail)
+          if (matchedMember) {
+            nextTrainerLinks[matchedMember.id] = trainer
+          }
+        }
+        setTrainerLinksByMember(nextTrainerLinks)
 
         const checkinRows = payload.checkinRows ?? []
         const nextVisits: Record<string, number> = {}
@@ -241,9 +267,10 @@ export default function MitgliederverwaltungPage() {
   }, [authResolved, trainerRole])
 
   const groupOptions = useMemo(() => {
-    return Array.from(new Set(members.map((member) => member.base_group).filter(Boolean) as string[])).sort((a, b) =>
-      a.localeCompare(b)
+    const usedGroups = new Set(
+      members.map((member) => normalizeTrainingGroup(member.base_group)).filter(Boolean)
     )
+    return TRAINING_GROUPS.filter((group) => usedGroups.has(group)).sort(compareTrainingGroupOrder)
   }, [members])
 
   const filteredMembers = useMemo(() => {
@@ -265,7 +292,7 @@ export default function MitgliederverwaltungPage() {
 
     rows.sort((a, b) => {
       if (sortBy === "gruppe") {
-        return (a.base_group ?? "").localeCompare(b.base_group ?? "")
+        return compareTrainingGroupOrder(a.base_group, b.base_group)
       }
 
       if (sortBy === "checkins") {
@@ -389,6 +416,13 @@ export default function MitgliederverwaltungPage() {
     setEditParentAccessCode("")
     setEditMemberAccessCode("")
   }
+
+  useEffect(() => {
+    if (!editingMemberId || !members.length) return
+    const member = members.find((entry) => entry.id === editingMemberId)
+    if (!member) return
+    openMemberEditor(member)
+  }, [editingMemberId, members])
 
   function toggleMemberEditor(member: MemberRecord) {
     if (editingMemberId === member.id) {
@@ -616,6 +650,7 @@ export default function MitgliederverwaltungPage() {
                   const isBoxzwergeWarning = member.base_group === "Boxzwerge" && (age ?? -1) >= 10
                   const isBoxzwerge = isBoxzwergeMember(member)
                   const parentLink = parentLinksByMember[member.id] ?? null
+                  const trainerLink = trainerLinksByMember[member.id] ?? null
                   const isExpanded = editingMemberId === member.id
 
                   return (
@@ -652,9 +687,13 @@ export default function MitgliederverwaltungPage() {
                         <TableCell>{member.base_group || "—"}</TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1">
-                            {member.base_group === "Trainer" ? <Badge variant="outline">Trainer</Badge> : null}
+                            {trainerLink ? (
+                              <Badge variant="outline">
+                                {trainerLink.role === "admin" ? "Admin + Trainer" : "Trainer"}
+                              </Badge>
+                            ) : null}
                             {member.is_competition_member ? <Badge variant="outline">Wettkämpfer</Badge> : null}
-                            {member.base_group !== "Trainer" && !member.is_competition_member ? "—" : null}
+                            {!trainerLink && !member.is_competition_member ? "—" : null}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -703,6 +742,11 @@ export default function MitgliederverwaltungPage() {
                                 <div className="mt-1">
                                   {editingMemberIsBoxzwerge ? "Kind" : "Geburtsdatum"}: {editingMember.birthdate || "—"} · Stammgruppe: {editingMember.base_group || "—"}
                                 </div>
+                                {trainerLinksByMember[editingMember.id] ? (
+                                  <div className="mt-1 text-xs text-zinc-500">
+                                    Rolle: {trainerLinksByMember[editingMember.id].role === "admin" ? "Admin + Trainer" : "Trainer"} · Trainingsgruppe bleibt parallel aktiv
+                                  </div>
+                                ) : null}
                                 {editingMemberIsBoxzwerge ? <div className="mt-1 text-xs text-zinc-500">Name und Geburtsdatum gehören zum Kind. E-Mail und Telefon unten gehören zu den Eltern.</div> : null}
                               </div>
 
@@ -710,7 +754,7 @@ export default function MitgliederverwaltungPage() {
                                 <div className="space-y-2">
                                   <Label>Stammgruppe</Label>
                                   <Select
-                                    value={editingMember.base_group || "Basic ab 18 Jahre"}
+                                    value={normalizeTrainingGroupOrFallback(editingMember.base_group)}
                                     onValueChange={async (nextGroup) => {
                                       try {
                                         setSavingMemberId(editingMember.id)
@@ -753,53 +797,11 @@ export default function MitgliederverwaltungPage() {
                                 <div className="space-y-2 md:col-span-1 xl:col-span-3">
                                   <Label>Rollen</Label>
                                   <div className="flex flex-wrap gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
-                                    <label className="flex items-center gap-2 text-sm text-zinc-700">
-                                      <input
-                                        type="checkbox"
-                                        checked={editingMember.base_group === "Trainer"}
-                                        disabled={savingMemberId === editingMember.id}
-                                        onChange={async (event) => {
-                                          try {
-                                            setSavingMemberId(editingMember.id)
-                                            const shouldBecomeTrainer = event.target.checked
-                                            const nextGroup =
-                                              shouldBecomeTrainer
-                                                ? "Trainer"
-                                                : editingMember.base_group === "Trainer"
-                                                  ? "Basic ab 18 Jahre"
-                                                  : (editingMember.base_group ?? "Basic ab 18 Jahre")
-
-                                            if (!shouldBecomeTrainer && editingMember.base_group === "Trainer") {
-                                              const confirmed = window.confirm(
-                                                `${getMemberDisplayName(editingMember)} aus der Trainerrolle nehmen? Die Stammgruppe wird dabei auf "Basic ab 18 Jahre" gesetzt und kann danach angepasst werden.`
-                                              )
-                                              if (!confirmed) return
-                                            }
-
-                                            const response = await fetch("/api/admin/member-action", {
-                                              method: "POST",
-                                              headers: { "Content-Type": "application/json" },
-                                              body: JSON.stringify({
-                                                action: "change_group",
-                                                memberId: editingMember.id,
-                                                baseGroup: nextGroup,
-                                              }),
-                                            })
-                                            if (!response.ok) throw new Error(await response.text())
-                                            const payload = (await response.json()) as { member: MemberRecord }
-                                            const updated = payload.member
-                                            setMembers((current) =>
-                                              current.map((row) => (row.id === editingMember.id ? { ...row, base_group: updated.base_group } : row))
-                                            )
-                                          } catch (error) {
-                                            alert(getErrorMessage(error, "Die Trainerrolle konnte nicht gespeichert werden."))
-                                          } finally {
-                                            setSavingMemberId(null)
-                                          }
-                                        }}
-                                      />
-                                      <span>Trainer</span>
-                                    </label>
+                                    <div className="text-sm text-zinc-700">
+                                      {trainerLinksByMember[editingMember.id]
+                                        ? "Trainerrolle wird separat über Trainerkonto/Rollenverwaltung geführt."
+                                        : "Keine Trainerrolle verknüpft."}
+                                    </div>
 
                                     <label className="flex items-center gap-2 text-sm text-zinc-700">
                                       <input
@@ -905,8 +907,8 @@ export default function MitgliederverwaltungPage() {
                                                 name: editParentName.trim(),
                                                 email: editParentEmail.trim(),
                                                 phone: editParentPhone.trim(),
-                                                accessCodeHash: editParentAccessCode.trim()
-                                                  ? await hashSecret(editParentAccessCode.trim())
+                                                accessCode: editParentAccessCode.trim()
+                                                  ? editParentAccessCode.trim()
                                                   : undefined,
                                               }
                                             : null,

@@ -1,15 +1,8 @@
 import { supabase } from "./supabaseClient"
+import { trainerLicenseOptions, type TrainerLicense } from "./trainerLicense"
 import { hashTrainerPin } from "./trainerPin"
-
-export const trainerLicenseOptions = [
-  "Keine DOSB-Lizenz",
-  "Übungsleiter DOSB C",
-  "Trainer DOSB Boxen C",
-  "Trainer DOSB Boxen B",
-  "Trainer DOSB Boxen A",
-] as const
-
-export type TrainerLicense = (typeof trainerLicenseOptions)[number]
+export { trainerLicenseOptions }
+export type { TrainerLicense }
 
 type SupabaseErrorLike = {
   code?: string
@@ -18,6 +11,8 @@ type SupabaseErrorLike = {
 }
 
 const OPTIONAL_TRAINER_ACCOUNT_COLUMNS = ["linked_member_id", "phone", "trainer_license", "role"] as const
+const TRAINER_ACCOUNT_SAFE_SELECT =
+  "id, first_name, last_name, email, phone, trainer_license, email_verified, email_verified_at, is_approved, approved_at, role, linked_member_id, created_at"
 
 export class TrainerAccountEmailConflictError extends Error {
   constructor(public email: string) {
@@ -193,7 +188,7 @@ export async function verifyTrainerEmail(token: string) {
 export async function getAllTrainerAccounts() {
   const { data, error } = await supabase
     .from("trainer_accounts")
-    .select("*")
+    .select(TRAINER_ACCOUNT_SAFE_SELECT)
     .order("created_at", { ascending: false })
 
   if (error) throw error
@@ -208,7 +203,7 @@ export async function approveTrainerAccount(id: string) {
       approved_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .select("*")
+    .select(TRAINER_ACCOUNT_SAFE_SELECT)
     .single()
 
   if (error) throw error
@@ -220,7 +215,7 @@ export async function updateTrainerAccountRole(id: string, role: "trainer" | "ad
     .from("trainer_accounts")
     .update({ role })
     .eq("id", id)
-    .select("*")
+    .select(TRAINER_ACCOUNT_SAFE_SELECT)
     .single()
 
   if (error) throw error
@@ -232,7 +227,7 @@ export async function linkTrainerAccountToMember(id: string, memberId: string | 
     .from("trainer_accounts")
     .update({ linked_member_id: memberId })
     .eq("id", id)
-    .select("*")
+    .select(TRAINER_ACCOUNT_SAFE_SELECT)
     .single()
 
   if (error) throw error
@@ -244,7 +239,7 @@ export async function updateTrainerAccountPin(id: string, pin: string) {
     .from("trainer_accounts")
     .update({ password_hash: await hashTrainerPin(pin) })
     .eq("id", id)
-    .select("*")
+    .select(TRAINER_ACCOUNT_SAFE_SELECT)
     .single()
 
   if (error) throw error

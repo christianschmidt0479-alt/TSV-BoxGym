@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 function getServerSupabase() {
   return createServerSupabaseServiceClient()
 }
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 export async function GET(request: Request) {
   try {
@@ -18,13 +20,13 @@ export async function GET(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`trainer-boxzwerge:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`trainer-boxzwerge:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
     const today = new URL(request.url).searchParams.get("today")?.trim()
-    if (!today) {
+    if (!today || !DATE_PATTERN.test(today)) {
       return new NextResponse("Missing today", { status: 400 })
     }
 

@@ -7,11 +7,9 @@ import { ArrowLeft, Smartphone, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { InfoHint } from "@/components/ui/info-hint"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
-import { clearRememberedMemberDevice, persistRememberedMemberDevice, readRememberedMemberDevice } from "@/lib/memberDeviceAccess"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { sessions } from "@/lib/boxgymSessions"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
@@ -61,13 +59,9 @@ export default function MemberCheckinPage() {
   const [dbLoading, setDbLoading] = useState(false)
   const [fastCheckinLoading, setFastCheckinLoading] = useState(false)
   const [memberEmail, setMemberEmail] = useState("")
-  const [memberFirstName, setMemberFirstName] = useState("")
-  const [memberLastName, setMemberLastName] = useState("")
   const [memberPin, setMemberPin] = useState("")
-  const [memberBirthDate, setMemberBirthDate] = useState("")
   const [memberWeight, setMemberWeight] = useState("")
   const [rememberDevice, setRememberDevice] = useState(true)
-  const [rememberedToken, setRememberedToken] = useState("")
   const [rememberedMemberId, setRememberedMemberId] = useState("")
   const [rememberedFirstName, setRememberedFirstName] = useState("")
   const [rememberedLastName, setRememberedLastName] = useState("")
@@ -81,14 +75,34 @@ export default function MemberCheckinPage() {
   useEffect(() => {
     setNow(new Date())
     window.localStorage.setItem(QR_ACCESS_STORAGE_KEY, String(Date.now() + QR_ACCESS_MINUTES * 60 * 1000))
-    const remembered = readRememberedMemberDevice()
-    setRememberedToken(remembered.token)
-    setRememberedMemberId(remembered.memberId)
-    setRememberedFirstName(remembered.firstName)
-    setRememberedLastName(remembered.lastName)
-    setRememberedCompetitionMember(remembered.isCompetitionMember)
     const params = new URLSearchParams(window.location.search)
     setRequestedGroup(params.get("group")?.trim() ?? "")
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/public/member-fast-checkin", { method: "GET" })
+        if (!response.ok) return
+
+        const result = (await response.json()) as {
+          remembered?: boolean
+          member?: {
+            id: string
+            firstName: string
+            lastName: string
+            isCompetitionMember: boolean
+          }
+        }
+
+        if (!result.remembered || !result.member) return
+
+        setRememberedMemberId(result.member.id)
+        setRememberedFirstName(result.member.firstName)
+        setRememberedLastName(result.member.lastName)
+        setRememberedCompetitionMember(result.member.isCompetitionMember)
+      } catch (error) {
+        console.error("remembered device restore failed", error)
+      }
+    })()
   }, [])
 
   const todaysSessions = useMemo(() => {
@@ -149,11 +163,9 @@ export default function MemberCheckinPage() {
     setShowSessionSelect(true)
   }, [autoSession, displaySessions, selectedSessionId])
 
-  const hasRememberedDevice = Boolean(rememberedToken && rememberedMemberId && rememberedFirstName && rememberedLastName)
+  const hasRememberedDevice = Boolean(rememberedMemberId && rememberedFirstName && rememberedLastName)
 
   function updateRememberedDevice(payload: {
-    token: string
-    rememberUntil: number
     member: {
       id: string
       firstName: string
@@ -161,15 +173,6 @@ export default function MemberCheckinPage() {
       isCompetitionMember: boolean
     }
   }) {
-    persistRememberedMemberDevice({
-      token: payload.token,
-      rememberUntil: payload.rememberUntil,
-      memberId: payload.member.id,
-      firstName: payload.member.firstName,
-      lastName: payload.member.lastName,
-      isCompetitionMember: payload.member.isCompetitionMember,
-    })
-    setRememberedToken(payload.token)
     setRememberedMemberId(payload.member.id)
     setRememberedFirstName(payload.member.firstName)
     setRememberedLastName(payload.member.lastName)
@@ -177,8 +180,7 @@ export default function MemberCheckinPage() {
   }
 
   function forgetRememberedDevice() {
-    clearRememberedMemberDevice()
-    setRememberedToken("")
+    void fetch("/api/public/member-fast-checkin", { method: "DELETE" })
     setRememberedMemberId("")
     setRememberedFirstName("")
     setRememberedLastName("")
@@ -188,27 +190,14 @@ export default function MemberCheckinPage() {
 
   async function handleMemberCheckin() {
     const email = memberEmail.trim().toLowerCase()
-    const firstName = memberFirstName.trim()
-    const lastName = memberLastName.trim()
     const pin = memberPin.trim()
-    const isBoxzwergeCheckin = selectedSession?.group === "Boxzwerge"
 
-    if (!isBoxzwergeCheckin && (!email || !pin)) {
+    if (!email || !pin) {
       alert("Bitte E-Mail und PIN eingeben.")
       return
     }
 
-    if (isBoxzwergeCheckin && (!firstName || !lastName)) {
-      alert("Bitte Vorname und Nachname eingeben.")
-      return
-    }
-
-    if (isBoxzwergeCheckin && !memberBirthDate) {
-      alert("Bitte das Geburtsdatum des Boxzwergs eingeben.")
-      return
-    }
-
-    if (!isBoxzwergeCheckin && !isValidPin(pin)) {
+    if (!isValidPin(pin)) {
       alert(PIN_REQUIREMENTS_MESSAGE)
       return
     }
@@ -225,10 +214,7 @@ export default function MemberCheckinPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          firstName,
-          lastName,
           pin,
-          birthDate: memberBirthDate,
           weight: memberWeight.trim(),
           sessionId: selectedSession.id,
           rememberDevice,
@@ -242,7 +228,6 @@ export default function MemberCheckinPage() {
       }
 
       const result = (await response.json()) as {
-        rememberToken?: string | null
         rememberUntil?: number | null
         member?: {
           id: string
@@ -252,20 +237,15 @@ export default function MemberCheckinPage() {
         } | null
       }
 
-      if (rememberDevice && result.rememberToken && result.rememberUntil && result.member) {
+      if (rememberDevice && result.rememberUntil && result.member) {
         updateRememberedDevice({
-          token: result.rememberToken,
-          rememberUntil: result.rememberUntil,
           member: result.member,
         })
       }
 
       alert("Check-in erfolgreich gespeichert.")
       setMemberEmail("")
-      setMemberFirstName("")
-      setMemberLastName("")
       setMemberPin("")
-      setMemberBirthDate("")
       setMemberWeight("")
     } catch (error) {
       console.error(error)
@@ -292,7 +272,6 @@ export default function MemberCheckinPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: rememberedToken,
           sessionId: selectedSession.id,
           weight: rememberedWeight.trim(),
         }),
@@ -308,7 +287,6 @@ export default function MemberCheckinPage() {
       }
 
       const result = (await response.json()) as {
-        rememberToken: string
         rememberUntil: number
         member: {
           id: string
@@ -319,8 +297,6 @@ export default function MemberCheckinPage() {
       }
 
       updateRememberedDevice({
-        token: result.rememberToken,
-        rememberUntil: result.rememberUntil,
         member: result.member,
       })
       setRememberedWeight("")
@@ -442,34 +418,17 @@ export default function MemberCheckinPage() {
                 void handleMemberCheckin()
               }}
             >
-              {selectedSession?.group === "Boxzwerge" ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Vorname</Label>
-                    <Input value={memberFirstName} onChange={(e) => setMemberFirstName(e.target.value)} placeholder="Vorname" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nachname</Label>
-                    <Input value={memberLastName} onChange={(e) => setMemberLastName(e.target.value)} placeholder="Nachname" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>E-Mail</Label>
-                  <Input type="email" value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)} placeholder="name@tsv-falkensee.de" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label>E-Mail</Label>
+                <Input type="email" value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)} placeholder="name@tsv-falkensee.de" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+              </div>
 
               <div className="space-y-2">
-                <Label>{selectedSession?.group === "Boxzwerge" ? "Geburtsdatum des Boxzwergs" : "PIN"}</Label>
-                {selectedSession?.group === "Boxzwerge" ? (
-                  <Input type="date" value={memberBirthDate} onChange={(e) => setMemberBirthDate(e.target.value)} className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                ) : (
-                  <>
-                    <PasswordInput value={memberPin} onChange={(e) => setMemberPin(e.target.value)} placeholder="6 bis 16 Zeichen" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                    <div className="text-xs text-zinc-500">{PIN_HINT}</div>
-                  </>
-                )}
+                <Label>PIN</Label>
+                <>
+                  <PasswordInput value={memberPin} onChange={(e) => setMemberPin(e.target.value)} placeholder="6 bis 16 Zeichen" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                  <div className="text-xs text-zinc-500">{PIN_HINT}</div>
+                </>
               </div>
 
               <div className="space-y-2">
@@ -519,16 +478,6 @@ export default function MemberCheckinPage() {
                   <Input value={memberWeight} onChange={(e) => setMemberWeight(e.target.value)} placeholder="z. B. 72,4" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                 </div>
               ) : null}
-
-              {selectedSession?.group === "Boxzwerge" ? (
-                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-                  <div className="flex items-center gap-2">
-                    <span>Boxzwerge ohne Zugangscode.</span>
-                    <InfoHint text="Für Boxzwerge läuft der Check-in ohne Zugangscode über Vorname, Nachname und Geburtsdatum." />
-                  </div>
-                </div>
-              ) : null}
-
 
               <label className="flex items-start gap-3 rounded-2xl border border-[#d8e3ee] bg-zinc-50 p-3 text-sm text-zinc-700">
                 <input

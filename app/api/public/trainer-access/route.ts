@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import {
   createTrainerAccount,
   findTrainerByEmail,
@@ -57,12 +57,19 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const rateLimit = checkRateLimit(`public-trainer-access:${getRequestIp(request)}`, 12, 10 * 60 * 1000)
+    const body = (await request.json()) as TrainerAccessBody
+    const normalizedEmail =
+      body.action === "register" || body.action === "update_pin"
+        ? body.email?.trim().toLowerCase() ?? ""
+        : ""
+    const rateLimit = await checkRateLimitAsync(
+      `public-trainer-access:${getRequestIp(request)}:${body.action}:${normalizedEmail || "__subject__"}`,
+      12,
+      10 * 60 * 1000
+    )
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
-
-    const body = (await request.json()) as TrainerAccessBody
 
     if (body.action === "verify_email") {
       const token = body.token?.trim() ?? ""
