@@ -178,7 +178,7 @@ export default function Home() {
     {
       href: "/trainer",
       title: "Trainerzugang",
-      description: "Trainerzugang und Tagesuebersicht auf einer separaten Seite.",
+      description: "Nur fuer Trainer",
       icon: Lock,
       accentClass: "bg-white text-[#154c83] border border-[#d8e3ee]",
     },
@@ -288,7 +288,7 @@ export default function Home() {
                       </div>
                       <div className="flex min-w-0 flex-col justify-center self-center">
                         <div className="text-base font-semibold text-zinc-900 sm:text-lg">{card.title}</div>
-                        <div className="mt-1 text-sm leading-5 text-zinc-500">{card.description}</div>
+                        <div className="mt-1 break-words text-xs leading-4 text-zinc-500">{card.description}</div>
                       </div>
                     </div>
                     <ArrowRight className="h-5 w-5 shrink-0 self-center text-zinc-400" />

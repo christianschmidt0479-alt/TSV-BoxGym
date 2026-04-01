@@ -32,7 +32,7 @@ function parseTimeToDate(time: string, referenceDate: Date) {
   return parsed
 }
 
-function getRelevantSession(referenceDate: Date, dailySessions: (typeof sessions)[number][]) {
+function getActiveCheckinSession(referenceDate: Date, dailySessions: (typeof sessions)[number][]) {
   const sessionWithTimes = dailySessions
     .map((session) => {
       const startDate = parseTimeToDate(session.start, referenceDate)
@@ -44,18 +44,14 @@ function getRelevantSession(referenceDate: Date, dailySessions: (typeof sessions
     })
     .sort((left, right) => left.windowStart.getTime() - right.windowStart.getTime())
 
-  return (
-    sessionWithTimes.find(({ windowStart, windowEnd }) => referenceDate.getTime() >= windowStart.getTime() && referenceDate.getTime() <= windowEnd.getTime()) ??
-    sessionWithTimes.find(({ windowStart }) => windowStart.getTime() > referenceDate.getTime()) ??
-    null
-  )
+  return sessionWithTimes.find(({ windowStart, windowEnd }) => referenceDate.getTime() >= windowStart.getTime() && referenceDate.getTime() <= windowEnd.getTime()) ?? null
 }
 
 function checkinWindowLabel(referenceDate: Date, dailySessions: (typeof sessions)[number][]) {
-  const relevantSession = getRelevantSession(referenceDate, dailySessions)
-  if (!relevantSession) return "Heute keine passende Einheit"
+  const activeSession = getActiveCheckinSession(referenceDate, dailySessions)
+  if (!activeSession) return "Aktuell kein Check-in möglich"
 
-  return `${timeLabel(relevantSession.windowStart)} - ${timeLabel(relevantSession.windowEnd)}`
+  return `${timeLabel(activeSession.windowStart)} - ${timeLabel(activeSession.windowEnd)}`
 }
 
 function getDayKey(date: Date) {
@@ -94,7 +90,9 @@ export default function CheckinLandingPage() {
     const dayKey = getDayKey(currentDate)
     return sessions.filter((session) => session.dayKey === dayKey)
   }, [currentDate])
+  const activeCheckinSession = useMemo(() => getActiveCheckinSession(currentDate, todaysSessions), [currentDate, todaysSessions])
   const possibleCheckinWindow = useMemo(() => checkinWindowLabel(currentDate, todaysSessions), [currentDate, todaysSessions])
+  const checkinEnabled = Boolean(activeCheckinSession)
 
   return (
     <div className="min-h-screen bg-zinc-50 px-4 py-2 text-zinc-900 md:px-6 md:py-8">
@@ -154,41 +152,79 @@ export default function CheckinLandingPage() {
         </div>
 
         <div className="grid gap-4">
-          <Button
-            asChild
-            variant="outline"
-            className="h-auto min-h-24 justify-start rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 text-left shadow-sm hover:border-[#154c83] hover:bg-[linear-gradient(180deg,#ffffff_0%,#f2f7fb_100%)] sm:px-6"
-          >
-            <Link href="/checkin/mitglied">
+          {checkinEnabled ? (
+            <Button
+              asChild
+              variant="outline"
+              className="h-auto min-h-24 justify-start rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 text-left shadow-sm hover:border-[#154c83] hover:bg-[linear-gradient(180deg,#ffffff_0%,#f2f7fb_100%)] sm:px-6"
+            >
+              <Link href="/checkin/mitglied">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-2xl bg-[#154c83] p-3 text-white shadow-sm">
+                    <Users className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-lg font-semibold text-zinc-900">Mitglieder-Check-in</div>
+                    <div className="mt-1 text-sm leading-6 text-zinc-500">Vorhandene Mitglieder direkt für die aktuelle Einheit einchecken.</div>
+                  </div>
+                </div>
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              disabled
+              className="h-auto min-h-24 justify-start rounded-[24px] border border-[#d8e3ee] bg-zinc-100 px-4 py-4 text-left shadow-sm opacity-100 sm:px-6"
+            >
               <div className="flex items-center gap-4">
-                <div className="rounded-2xl bg-[#154c83] p-3 text-white shadow-sm">
+                <div className="rounded-2xl bg-zinc-300 p-3 text-white shadow-sm">
                   <Users className="h-6 w-6" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-lg font-semibold text-zinc-900">Mitglieder-Check-in</div>
-                  <div className="mt-1 text-sm leading-6 text-zinc-500">Vorhandene Mitglieder direkt für eine heutige Einheit einchecken.</div>
+                  <div className="text-lg font-semibold text-zinc-700">Mitglieder-Check-in</div>
+                  <div className="mt-1 text-sm leading-6 text-zinc-500">Aktuell kein Check-in möglich.</div>
                 </div>
               </div>
-            </Link>
-          </Button>
+            </Button>
+          )}
 
-          <Button
-            asChild
-            variant="outline"
-            className="h-auto min-h-24 justify-start rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 text-left shadow-sm hover:border-[#154c83] hover:bg-[linear-gradient(180deg,#ffffff_0%,#f2f7fb_100%)] sm:px-6"
-          >
-            <Link href="/checkin/probetraining">
+          {checkinEnabled ? (
+            <Button
+              asChild
+              variant="outline"
+              className="h-auto min-h-24 justify-start rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 text-left shadow-sm hover:border-[#154c83] hover:bg-[linear-gradient(180deg,#ffffff_0%,#f2f7fb_100%)] sm:px-6"
+            >
+              <Link href="/checkin/probetraining">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-2xl bg-[#154c83] p-3 text-white shadow-sm">
+                    <UserPlus className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-lg font-semibold text-zinc-900">Probetraining</div>
+                    <div className="mt-1 text-sm leading-6 text-zinc-500">Neue Gäste für die aktuelle Einheit anmelden.</div>
+                  </div>
+                </div>
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              disabled
+              className="h-auto min-h-24 justify-start rounded-[24px] border border-[#d8e3ee] bg-zinc-100 px-4 py-4 text-left shadow-sm opacity-100 sm:px-6"
+            >
               <div className="flex items-center gap-4">
-                <div className="rounded-2xl bg-[#154c83] p-3 text-white shadow-sm">
+                <div className="rounded-2xl bg-zinc-300 p-3 text-white shadow-sm">
                   <UserPlus className="h-6 w-6" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-lg font-semibold text-zinc-900">Probetraining</div>
-                  <div className="mt-1 text-sm leading-6 text-zinc-500">Neue Gäste für eine heutige Einheit anmelden.</div>
+                  <div className="text-lg font-semibold text-zinc-700">Probetraining</div>
+                  <div className="mt-1 text-sm leading-6 text-zinc-500">Aktuell kein Check-in möglich.</div>
                 </div>
               </div>
-            </Link>
-          </Button>
+            </Button>
+          )}
         </div>
 
         <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
