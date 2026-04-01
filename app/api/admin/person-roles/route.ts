@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
+import { isInternalTrainerTestEmail } from "@/lib/trainerAdmin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
@@ -17,13 +18,18 @@ type PersonRolesActionBody =
   | {
       action: "set_trainer_role"
       trainerId: string
-      role: "admin"
+      role: "trainer" | "admin"
     }
 
 const MEMBER_ROLE_SELECT =
   "id, name, first_name, last_name, email, base_group, is_approved, is_competition_member"
-const TRAINER_ROLE_SELECT =
-  "id, first_name, last_name, email, trainer_license, email_verified, email_verified_at, is_approved, approved_at, role, linked_member_id, created_at"
+const TRAINER_ROLE_BASE_SELECT =
+  "id, first_name, last_name, email, email_verified, email_verified_at, is_approved, approved_at, created_at"
+const TRAINER_ROLE_OPTIONAL_COLUMNS = ["phone", "trainer_license", "role", "linked_member_id", "trainer_license_renewals"] as const
+
+function jsonError(message: string, status: number, details?: string) {
+  return NextResponse.json({ ok: false, error: message, ...(details ? { details } : {}) }, { status })
+}
 
 function getServerSupabase() {
   return createServerSupabaseServiceClient()
@@ -31,12 +37,12 @@ function getServerSupabase() {
 
 async function requireAdminSession(request: Request) {
   if (!isAllowedOrigin(request)) {
-    return new NextResponse("Forbidden", { status: 403 })
+    return jsonError("Forbidden", 403)
   }
 
   const session = await readTrainerSessionFromHeaders(request)
   if (!session || session.accountRole !== "admin") {
-    return new NextResponse("Unauthorized", { status: 401 })
+    return jsonError("Unauthorized", 401)
   }
 
   return null
@@ -56,6 +62,69 @@ function getDisplayName(input?: {
   return full || input?.name || "—"
 }
 
+function isMissingColumnError(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  return (
+    (message.includes("column") && message.includes("does not exist")) ||
+    (message.includes("could not find") && message.includes("column")) ||
+    message.includes("schema cache")
+  )
+}
+
+function findMissingColumn(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  // try simple match first
+  const simple = TRAINER_ROLE_OPTIONAL_COLUMNS.find((column) => message.includes(column))
+  if (simple) return simple
+
+  // more robust checks: message may include table-qualified names or different phrasing
+  const details = `${error?.message ?? ""} ${(error as any)?.details ?? ""}`.toLowerCase()
+  for (const column of TRAINER_ROLE_OPTIONAL_COLUMNS) {
+    if (details.includes(`.${column}`) || details.includes(` ${column}`) || details.includes(`${column} `)) return column
+  }
+
+  return null
+}
+
+async function loadTrainerRowsWithFallback(supabase: ReturnType<typeof getServerSupabase>) {
+  const optionalColumns = [...TRAINER_ROLE_OPTIONAL_COLUMNS] as string[]
+
+  while (true) {
+    const select = [TRAINER_ROLE_BASE_SELECT, ...optionalColumns].join(", ")
+    const response = await supabase
+      .from("trainer_accounts")
+      .select(select)
+      .order("created_at", { ascending: false })
+
+    if (!response.error) {
+      const rows = (response.data ?? []) as unknown as Array<Record<string, unknown>>
+      return {
+        data: rows
+          .map((row) => ({
+            ...row,
+            email: "email" in row ? (typeof row.email === "string" ? row.email : null) : null,
+            phone: "phone" in row ? row.phone ?? null : null,
+            trainer_license: "trainer_license" in row ? row.trainer_license ?? null : null,
+            linked_member_id: "linked_member_id" in row ? row.linked_member_id ?? null : null,
+            trainer_license_renewals: Array.isArray(row.trainer_license_renewals)
+              ? row.trainer_license_renewals.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+              : [],
+            role: row.role === "admin" ? "admin" : "trainer",
+          }))
+          .filter((row) => !isInternalTrainerTestEmail((row as any).email ?? null)),
+        error: null,
+      }
+    }
+
+    const missingColumn = isMissingColumnError(response.error) ? findMissingColumn(response.error) : null
+    if (!missingColumn) throw response.error
+
+    const nextIndex = optionalColumns.indexOf(missingColumn)
+    if (nextIndex === -1) throw response.error
+    optionalColumns.splice(nextIndex, 1)
+  }
+}
+
 export async function GET(request: Request) {
   try {
     const authError = await requireAdminSession(request)
@@ -63,7 +132,7 @@ export async function GET(request: Request) {
 
     const rateLimit = await checkRateLimitAsync(`admin-person-roles:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
+      return jsonError("Too many requests", 429)
     }
 
     const supabase = getServerSupabase()
@@ -73,25 +142,22 @@ export async function GET(request: Request) {
         .select(MEMBER_ROLE_SELECT)
         .order("last_name", { ascending: true })
         .order("first_name", { ascending: true }),
-      supabase
-        .from("trainer_accounts")
-        .select(TRAINER_ROLE_SELECT)
-        .order("created_at", { ascending: false }),
+      loadTrainerRowsWithFallback(supabase),
     ])
 
     if (membersResponse.error) throw membersResponse.error
     if (trainersResponse.error) throw trainersResponse.error
 
     return NextResponse.json({
-      members: (membersResponse.data ?? []).map((row) => ({
+      members: (Array.isArray(membersResponse.data) ? membersResponse.data : []).map((row) => ({
         ...row,
         base_group: normalizeTrainingGroup(row.base_group) || row.base_group,
       })),
-      trainers: trainersResponse.data ?? [],
+      trainers: Array.isArray(trainersResponse.data) ? trainersResponse.data : [],
     })
   } catch (error) {
     console.error("admin person roles get failed", error)
-    return new NextResponse("Internal server error", { status: 500 })
+    return jsonError("Internal server error", 500)
   }
 }
 
@@ -101,21 +167,29 @@ export async function POST(request: Request) {
     if (authError) return authError
     const session = await readTrainerSessionFromHeaders(request)
     if (!session || session.accountRole !== "admin") {
-      return new NextResponse("Unauthorized", { status: 401 })
+      return jsonError("Unauthorized", 401)
     }
 
     const rateLimit = await checkRateLimitAsync(`admin-person-roles-action:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
+      return jsonError("Too many requests", 429)
     }
 
-    const body = (await request.json()) as PersonRolesActionBody
+    let body: PersonRolesActionBody | null = null
+    try {
+      body = (await request.json()) as PersonRolesActionBody
+    } catch {
+      body = null
+    }
+    if (!body || typeof body !== "object" || !("action" in body) || typeof body.action !== "string") {
+      return jsonError("Invalid request body", 400)
+    }
     const supabase = getServerSupabase()
 
     if (body.action === "approve_member") {
       const memberId = parseRecordId(body.memberId)
       if (!memberId) {
-        return new NextResponse("Missing member id", { status: 400 })
+        return jsonError("Missing member id", 400)
       }
 
       const { data, error } = await supabase
@@ -127,7 +201,7 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!data) {
-        return new NextResponse("Member not found", { status: 404 })
+        return jsonError("Member not found", 404)
       }
 
       await writeAdminAuditLog({
@@ -145,7 +219,7 @@ export async function POST(request: Request) {
     if (body.action === "approve_trainer") {
       const trainerId = parseRecordId(body.trainerId)
       if (!trainerId) {
-        return new NextResponse("Missing trainer id", { status: 400 })
+        return jsonError("Missing trainer id", 400)
       }
 
       const { data, error } = await supabase
@@ -160,7 +234,7 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!data) {
-        return new NextResponse("Trainer not found", { status: 404 })
+        return jsonError("Trainer not found", 404)
       }
 
       await writeAdminAuditLog({
@@ -177,8 +251,8 @@ export async function POST(request: Request) {
 
     if (body.action === "set_trainer_role") {
       const trainerId = parseRecordId(body.trainerId)
-      if (!trainerId || body.role !== "admin") {
-        return new NextResponse("Invalid trainer role payload", { status: 400 })
+      if (!trainerId || (body.role !== "admin" && body.role !== "trainer")) {
+        return jsonError("Invalid trainer role payload", 400)
       }
 
       const { data, error } = await supabase
@@ -190,24 +264,24 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!data) {
-        return new NextResponse("Trainer not found", { status: 404 })
+        return jsonError("Trainer not found", 404)
       }
 
       await writeAdminAuditLog({
         session,
-        action: "trainer_promoted_to_admin",
+        action: body.role === "admin" ? "trainer_promoted_to_admin" : "trainer_role_reset",
         targetType: "trainer",
         targetId: data.id,
         targetName: getDisplayName(data),
-        details: `E-Mail: ${data.email}`,
+        details: `E-Mail: ${data.email}, Rolle: ${body.role}`,
       })
 
       return NextResponse.json({ ok: true })
     }
 
-    return new NextResponse("Unsupported action", { status: 400 })
+    return jsonError("Unsupported action", 400)
   } catch (error) {
     console.error("admin person roles action failed", error)
-    return new NextResponse("Internal server error", { status: 500 })
+    return jsonError("Internal server error", 500)
   }
 }

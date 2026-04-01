@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient"
 import { trainerLicenseOptions, type TrainerLicense } from "./trainerLicense"
 import { hashTrainerPin } from "./trainerPin"
+import { isInternalTrainerTestEmail } from "./trainerAdmin"
 export { trainerLicenseOptions }
 export type { TrainerLicense }
 
@@ -10,9 +11,20 @@ type SupabaseErrorLike = {
   details?: string | null
 }
 
-const OPTIONAL_TRAINER_ACCOUNT_COLUMNS = ["linked_member_id", "phone", "trainer_license", "role"] as const
+const OPTIONAL_TRAINER_ACCOUNT_COLUMNS = [
+  "linked_member_id",
+  "phone",
+  "trainer_license",
+  "role",
+  "trainer_license_renewals",
+  "lizenzart",
+  "lizenznummer",
+  "lizenz_gueltig_bis",
+  "lizenz_verband",
+  "bemerkung",
+] as const
 const TRAINER_ACCOUNT_SAFE_SELECT =
-  "id, first_name, last_name, email, phone, trainer_license, email_verified, email_verified_at, is_approved, approved_at, role, linked_member_id, created_at"
+  "id, first_name, last_name, email, phone, trainer_license, trainer_license_renewals, lizenzart, lizenznummer, lizenz_gueltig_bis, lizenz_verband, bemerkung, email_verified, email_verified_at, is_approved, approved_at, role, linked_member_id, created_at"
 
 export class TrainerAccountEmailConflictError extends Error {
   constructor(public email: string) {
@@ -53,6 +65,12 @@ export type TrainerAccountRecord = {
   email: string
   phone?: string | null
   trainer_license?: TrainerLicense | null
+  trainer_license_renewals?: string[] | null
+  lizenzart?: string | null
+  lizenznummer?: string | null
+  lizenz_gueltig_bis?: string | null
+  lizenz_verband?: string | null
+  bemerkung?: string | null
   password_hash: string
   email_verified: boolean
   email_verified_at: string | null
@@ -192,7 +210,8 @@ export async function getAllTrainerAccounts() {
     .order("created_at", { ascending: false })
 
   if (error) throw error
-  return (data as TrainerAccountRecord[] | null) ?? []
+  const rows = (data as TrainerAccountRecord[] | null) ?? []
+  return rows.filter((r) => !isInternalTrainerTestEmail(r.email))
 }
 
 export async function approveTrainerAccount(id: string) {

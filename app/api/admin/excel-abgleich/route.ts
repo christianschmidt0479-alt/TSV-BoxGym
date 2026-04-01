@@ -43,6 +43,23 @@ type ResultRow = {
   note: string
 }
 
+type ExcelFieldKey = "firstName" | "lastName" | "birthdate" | "email" | "phone"
+
+type HeaderDetection = {
+  headerRowIndex: number
+  columns: Partial<Record<ExcelFieldKey, number>>
+}
+
+const HEADER_SCAN_LIMIT = 10
+
+const HEADER_ALIASES: Record<ExcelFieldKey, string[]> = {
+  firstName: ["vorname", "firstname", "first", "namevorname", "rufname", "name"],
+  lastName: ["nachname", "lastname", "last", "namenachname", "surname", "familienname"],
+  birthdate: ["birthdate", "geburtsdatum", "dob", "geburtstag", "gebdatum"],
+  email: ["email", "mail", "emailadresse", "e-mail"],
+  phone: ["phone", "telefon", "mobil", "mobile", "handy", "telefonnummer"],
+}
+
 function getServerSupabase() {
   return createServerSupabaseServiceClient()
 }
@@ -63,6 +80,13 @@ function normalizePhone(value: string | null | undefined) {
 
 function normalizeHeader(value: string | null | undefined) {
   return normalizeText(value).replace(/[^a-z0-9]+/g, "")
+}
+
+function getCellText(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10)
+  }
+  return String(value ?? "").trim()
 }
 
 function toIsoDate(value: unknown) {
@@ -102,15 +126,76 @@ function toIsoDate(value: unknown) {
   return text
 }
 
-function getStringValue(row: Record<string, unknown>, aliases: string[]) {
-  const entries = Object.entries(row)
-  for (const alias of aliases) {
-    const found = entries.find(([key]) => normalizeHeader(key) === alias)
-    if (!found) continue
-    const [, value] = found
-    return String(value ?? "").trim()
+function getRowValue(cells: unknown[], index?: number) {
+  if (index === undefined) return ""
+  return getCellText(cells[index])
+}
+
+function scoreHeaderRow(cells: unknown[]): HeaderDetection | null {
+  const columns: Partial<Record<ExcelFieldKey, number>> = {}
+  let score = 0
+
+  cells.forEach((cell, index) => {
+    const normalized = normalizeHeader(getCellText(cell))
+    if (!normalized) return
+
+    ;(Object.keys(HEADER_ALIASES) as ExcelFieldKey[]).forEach((field) => {
+      if (columns[field] !== undefined) return
+      if (!HEADER_ALIASES[field].includes(normalized)) return
+      columns[field] = index
+      score += field === "firstName" || field === "lastName" ? 3 : 1
+    })
+  })
+
+  const hasNameData = columns.firstName !== undefined || columns.lastName !== undefined
+  if (!hasNameData) return null
+
+  if (columns.firstName !== undefined && columns.lastName !== undefined) {
+    score += 4
   }
-  return ""
+
+  if (columns.birthdate !== undefined) {
+    score += 2
+  }
+
+  if (score < 6) return null
+
+  return {
+    headerRowIndex: -1,
+    columns,
+  }
+}
+
+function findHeaderRow(rows: unknown[][]): HeaderDetection | null {
+  let bestMatch: HeaderDetection | null = null
+  let bestScore = -1
+
+  for (let index = 0; index < Math.min(rows.length, HEADER_SCAN_LIMIT); index += 1) {
+    const cells = rows[index] ?? []
+    const filledCells = cells.filter((cell) => normalizeText(getCellText(cell)) !== "")
+    if (filledCells.length === 0) continue
+
+    const candidate = scoreHeaderRow(cells)
+    if (!candidate) continue
+
+    let score = 0
+    if (candidate.columns.firstName !== undefined) score += 3
+    if (candidate.columns.lastName !== undefined) score += 3
+    if (candidate.columns.birthdate !== undefined) score += 2
+    if (candidate.columns.email !== undefined) score += 1
+    if (candidate.columns.phone !== undefined) score += 1
+    if (candidate.columns.firstName !== undefined && candidate.columns.lastName !== undefined) score += 4
+
+    if (score > bestScore) {
+      bestScore = score
+      bestMatch = {
+        headerRowIndex: index,
+        columns: candidate.columns,
+      }
+    }
+  }
+
+  return bestMatch
 }
 
 function parseExcelRows(buffer: Buffer) {
@@ -119,30 +204,60 @@ function parseExcelRows(buffer: Buffer) {
     cellDates: true,
     dense: true,
   })
-  const firstSheetName = workbook.SheetNames[0]
-  if (!firstSheetName) {
+
+  if (workbook.SheetNames.length === 0) {
     throw new Error("Die Excel-Datei enthält kein Tabellenblatt.")
   }
 
-  const worksheet = workbook.Sheets[firstSheetName]
-  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
-    defval: "",
-    raw: true,
-    dateNF: "yyyy-mm-dd",
-  })
+  let headerFoundInAnySheet = false
+  let firstHeaderSheetName: string | null = null
 
-  return rawRows
-    .map<ExcelRow>((row, index) => ({
-      index,
-      firstName: getStringValue(row, ["firstname", "vorname", "first", "namevorname"]),
-      lastName: getStringValue(row, ["lastname", "nachname", "last", "namenachname", "surname"]),
-      birthdate: toIsoDate(
-        Object.entries(row).find(([key]) => ["birthdate", "geburtsdatum", "dob", "geburtstag"].includes(normalizeHeader(key)))?.[1] ?? ""
-      ),
-      email: getStringValue(row, ["email", "mail", "emailadresse", "e-mail"]),
-      phone: getStringValue(row, ["phone", "telefon", "mobil", "mobile", "handy", "telefonnummer"]),
-    }))
-    .filter((row) => row.firstName || row.lastName || row.birthdate || row.email || row.phone)
+  for (const sheetName of workbook.SheetNames) {
+    const worksheet = workbook.Sheets[sheetName]
+    if (!worksheet) continue
+
+    const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+      header: 1,
+      defval: "",
+      raw: true,
+      dateNF: "yyyy-mm-dd",
+      blankrows: false,
+    })
+
+    const header = findHeaderRow(sheetRows)
+    if (!header) continue
+
+    headerFoundInAnySheet = true
+    if (!firstHeaderSheetName) {
+      firstHeaderSheetName = sheetName
+    }
+
+    const dataRows = sheetRows
+      .slice(header.headerRowIndex + 1)
+      .map<ExcelRow>((cells, index) => ({
+        index: header.headerRowIndex + index + 1,
+        firstName: getRowValue(cells, header.columns.firstName),
+        lastName: getRowValue(cells, header.columns.lastName),
+        birthdate: toIsoDate(getRowValue(cells, header.columns.birthdate)),
+        email: getRowValue(cells, header.columns.email),
+        phone: getRowValue(cells, header.columns.phone),
+      }))
+      .filter((row) => row.firstName || row.lastName)
+
+    if (dataRows.length > 0) {
+      return dataRows
+    }
+  }
+
+  if (headerFoundInAnySheet) {
+    throw new Error(
+      `In "${firstHeaderSheetName ?? "dem Tabellenblatt"}" wurde eine Kopfzeile erkannt, aber keine Personenzeilen mit Vor- oder Nachnamen gefunden.`
+    )
+  }
+
+  throw new Error(
+    "Keine passende Kopfzeile erkannt. Erwartet werden zum Beispiel Vorname/Name/Rufname, Nachname/Familienname, Geburtsdatum, E-Mail oder Telefon in den ersten Zeilen."
+  )
 }
 
 function buildPrimaryKey(firstName: string, lastName: string, birthdate: string) {

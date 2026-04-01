@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -57,6 +58,22 @@ function getMemberDisplayName(member?: Partial<MemberRecord> | null) {
   const last = member?.last_name ?? ""
   const full = `${first} ${last}`.trim()
   return full || member?.name || "—"
+}
+
+async function readResponseError(response: Response, fallback: string) {
+  const text = await response.text()
+  if (!text.trim()) return fallback
+
+  try {
+    const parsed = JSON.parse(text) as { error?: string; details?: string }
+    return parsed.details || parsed.error || text
+  } catch {
+    return text
+  }
+}
+
+function isBoxzwergeMember(member?: Pick<MemberRecord, "base_group"> | null) {
+  return normalizeTrainingGroup(member?.base_group) === "Boxzwerge"
 }
 
 function formatGermanDate(date: Date) {
@@ -176,7 +193,7 @@ export default function WettkampfPage() {
       if (response.status === 401) {
         clearTrainerAccess()
       }
-      throw new Error(await response.text())
+      throw new Error(await readResponseError(response, "Wettkampfdaten konnten nicht gespeichert werden."))
     }
 
     return (await response.json()) as { ok: true; member: MemberRecord }
@@ -194,7 +211,7 @@ export default function WettkampfPage() {
           clearTrainerAccess()
           throw new Error("Admin-Sitzung abgelaufen. Bitte neu anmelden.")
         }
-        throw new Error(await response.text())
+        throw new Error(await readResponseError(response, "Wettkampfdaten konnten nicht geladen werden."))
       }
 
       const payload = (await response.json()) as {
@@ -202,11 +219,12 @@ export default function WettkampfPage() {
         weightRows: CheckinWeightRow[]
       }
 
-      const nextMembers = payload.members ?? []
+      const nextMembers = Array.isArray(payload.members) ? payload.members : []
       setMembers(nextMembers)
 
       const nextWeights: Record<string, CheckinWeightRow> = {}
-      for (const row of (payload.weightRows ?? [])) {
+      for (const row of (Array.isArray(payload.weightRows) ? payload.weightRows : [])) {
+        if (!row?.member_id) continue
         if (!nextWeights[row.member_id]) {
           nextWeights[row.member_id] = row
         }
@@ -245,17 +263,21 @@ export default function WettkampfPage() {
     void loadData()
   }, [authResolved, trainerRole])
 
+  const eligibleMembers = useMemo(
+    () => members.filter((member) => !member.is_trial).filter((member) => !isBoxzwergeMember(member)),
+    [members]
+  )
+
   const groupOptions = useMemo(() => {
-    return Array.from(new Set(members.map((member) => member.base_group).filter(Boolean) as string[])).sort((a, b) =>
+    return Array.from(new Set(eligibleMembers.map((member) => member.base_group).filter(Boolean) as string[])).sort((a, b) =>
       a.localeCompare(b)
     )
-  }, [members])
+  }, [eligibleMembers])
 
   const filteredMembers = useMemo(() => {
     const trimmedSearch = search.trim().toLowerCase()
 
-    return members
-      .filter((member) => !member.is_trial)
+    return eligibleMembers
       .filter((member) => {
         const draft = drafts[member.id]
         const matchesSearch =
@@ -272,7 +294,7 @@ export default function WettkampfPage() {
         return matchesSearch && matchesGroup && matchesStatus
       })
       .sort((a, b) => getMemberDisplayName(a).localeCompare(getMemberDisplayName(b)))
-  }, [drafts, groupFilter, members, search, statusFilter])
+  }, [drafts, eligibleMembers, groupFilter, search, statusFilter])
 
   const competitionMembers = useMemo(
     () => filteredMembers.filter((member) => drafts[member.id]?.selected),
@@ -281,8 +303,7 @@ export default function WettkampfPage() {
 
   const candidateMembers = useMemo(
     () =>
-      members
-        .filter((member) => !member.is_trial)
+      eligibleMembers
         .filter((member) => !!member.is_approved)
         .filter((member) => !drafts[member.id]?.selected)
         .filter((member) => {
@@ -296,16 +317,16 @@ export default function WettkampfPage() {
           return matchesSearch && matchesGroup && matchesStatus
         })
         .sort((a, b) => getMemberDisplayName(a).localeCompare(getMemberDisplayName(b))),
-    [drafts, groupFilter, members, search, statusFilter]
+    [drafts, eligibleMembers, groupFilter, search, statusFilter]
   )
 
   const summary = useMemo(() => {
-    const selectedCount = Object.values(drafts).filter((draft) => draft.selected).length
-    const missingMedical = members.filter((member) => {
+    const selectedCount = eligibleMembers.filter((member) => drafts[member.id]?.selected).length
+    const missingMedical = eligibleMembers.filter((member) => {
       const draft = drafts[member.id]
       return draft?.selected && !draft.medical
     }).length
-    const missingLicense = members.filter((member) => {
+    const missingLicense = eligibleMembers.filter((member) => {
       const draft = drafts[member.id]
       return draft?.selected && !draft.license.trim()
     }).length
@@ -314,13 +335,13 @@ export default function WettkampfPage() {
       selectedCount,
       missingMedical,
       missingLicense,
-      performanceGroupCount: members.filter((member) => member.base_group === "L-Gruppe").length,
-      totalFights: members.reduce((sum, member) => {
+      performanceGroupCount: eligibleMembers.filter((member) => member.base_group === "L-Gruppe").length,
+      totalFights: eligibleMembers.reduce((sum, member) => {
         const draft = drafts[member.id]
         return draft?.selected ? sum + Number(draft.fights || 0) : sum
       }, 0),
     }
-  }, [drafts, members])
+  }, [drafts, eligibleMembers])
 
   const hasActiveFilters =
     search.trim() !== "" || groupFilter !== "alle" || statusFilter !== "alle"
@@ -445,7 +466,7 @@ export default function WettkampfPage() {
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-zinc-100 p-3 text-sm text-zinc-700">
             <div>
               Sichtbar: <span className="font-semibold text-zinc-900">{filteredMembers.length}</span> von{" "}
-              <span className="font-semibold text-zinc-900">{members.filter((member) => !member.is_trial).length}</span> Mitgliedern
+              <span className="font-semibold text-zinc-900">{eligibleMembers.length}</span> Mitgliedern
               {groupFilter !== "alle" ? <span className="ml-2 text-zinc-500">· Gruppe: {groupFilter}</span> : null}
               {statusFilter !== "alle" ? <span className="ml-2 text-zinc-500">· Status: {statusFilter}</span> : null}
             </div>
@@ -469,7 +490,7 @@ export default function WettkampfPage() {
 
       <Card className="rounded-[24px] border-0 shadow-sm">
         <CardHeader>
-          <CardTitle>Wettkämpfer pflegen</CardTitle>
+          <CardTitle>Wettkämpferliste</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
@@ -592,13 +613,6 @@ export default function WettkampfPage() {
                             [member.id]: {
                               ...draft,
                               hasPass: !draft.hasPass,
-                              selected: !draft.hasPass ? false : draft.selected,
-                              license: !draft.hasPass ? "" : draft.license,
-                              medical: !draft.hasPass ? "" : draft.medical,
-                              fights: !draft.hasPass ? "0" : draft.fights,
-                              wins: !draft.hasPass ? "0" : draft.wins,
-                              losses: !draft.hasPass ? "0" : draft.losses,
-                              draws: !draft.hasPass ? "0" : draft.draws,
                             },
                           }))
                         }
@@ -774,70 +788,80 @@ export default function WettkampfPage() {
 
       <Card className="rounded-[24px] border-0 shadow-sm">
         <CardHeader>
-          <CardTitle>Mitglieder zur Wettkampfliste delegieren</CardTitle>
+          <CardTitle>Wettkämpfer delegieren</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">Nur Mitglieder ohne aktive WK-Liste.</div>
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+            Nur freigegebene Mitglieder ohne aktive Wettkämpferliste. Boxzwerge sind hier ausgeschlossen.
+          </div>
 
           {loading ? (
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Kandidaten werden geladen...</div>
           ) : candidateMembers.length === 0 ? (
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Keine weiteren passenden Mitglieder zum Markieren gefunden.</div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
               {candidateMembers.map((member) => (
-                <div key={`candidate-${member.id}`} className="rounded-3xl border border-zinc-200 bg-white p-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-2 text-sm text-zinc-600">
-                      <div className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
-                      <div>Stammgruppe: {member.base_group || "—"}</div>
-                      <div>E-Mail: {member.email || "—"}</div>
-                      <div>Telefon: {member.phone || "—"}</div>
+                <div key={`candidate-${member.id}`} className="rounded-3xl border border-zinc-200 bg-white p-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.5fr_1.2fr]">
+                      <div className="space-y-2 text-sm text-zinc-600">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Mitglied</div>
+                        <div className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
+                        <div>Stammgruppe: {member.base_group || "—"}</div>
+                      </div>
+                      <div className="space-y-2 text-sm text-zinc-600">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Kontakt</div>
+                        <div>E-Mail: {member.email || "—"}</div>
+                        <div>Telefon: {member.phone || "—"}</div>
+                      </div>
                     </div>
 
-                    <Button
-                      type="button"
-                      className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
-                      disabled={savingId === member.id}
-                      onClick={async () => {
-                        try {
-                          setSavingId(member.id)
-                          const draft = drafts[member.id] ?? {
-                            hasPass: !!member.has_competition_pass,
-                            selected: false,
-                            license: "",
-                            medical: "",
-                            fights: "0",
-                            wins: "0",
-                            losses: "0",
-                            draws: "0",
+                    <div className="flex justify-start">
+                      <Button
+                        type="button"
+                        className="min-w-[260px] rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                        disabled={savingId === member.id}
+                        onClick={async () => {
+                          try {
+                            setSavingId(member.id)
+                            const draft = drafts[member.id] ?? {
+                              hasPass: !!member.has_competition_pass,
+                              selected: false,
+                              license: "",
+                              medical: "",
+                              fights: "0",
+                              wins: "0",
+                              losses: "0",
+                              draws: "0",
+                            }
+
+                            await saveCompetitionDraft(member.id, { ...draft, selected: true })
+
+                            if (member.email) {
+                              await fetch("/api/send-verification", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  purpose: "competition_assigned",
+                                  email: member.email,
+                                  name: getMemberDisplayName(member),
+                                }),
+                              })
+                            }
+
+                            await loadData()
+                          } catch (error) {
+                            console.error(error)
+                            alert("Das Mitglied konnte nicht zur Wettkampfliste markiert werden.")
+                          } finally {
+                            setSavingId("")
                           }
-
-                          await saveCompetitionDraft(member.id, { ...draft, selected: true })
-
-                          if (member.email) {
-                            await fetch("/api/send-verification", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                purpose: "competition_assigned",
-                                email: member.email,
-                                name: getMemberDisplayName(member),
-                              }),
-                            })
-                          }
-
-                          await loadData()
-                        } catch (error) {
-                          console.error(error)
-                          alert("Das Mitglied konnte nicht zur Wettkampfliste markiert werden.")
-                        } finally {
-                          setSavingId("")
-                        }
-                      }}
-                    >
-                      {savingId === member.id ? "Delegiert..." : "Als Wettkämpfer delegieren"}
-                    </Button>
+                        }}
+                      >
+                        {savingId === member.id ? "Delegiert..." : "Als Wettkämpfer delegieren"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}

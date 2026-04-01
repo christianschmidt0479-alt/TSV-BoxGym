@@ -18,7 +18,7 @@ import { compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainin
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 function getTrainerDisplayName(trainer: TrainerAccountRecord) {
-  return `${trainer.first_name} ${trainer.last_name}`.trim()
+  return `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim() || trainer.email || "—"
 }
 
 function getMemberDisplayName(member?: Partial<RoleMemberRecord> | null) {
@@ -28,9 +28,22 @@ function getMemberDisplayName(member?: Partial<RoleMemberRecord> | null) {
   return full || member?.name || "—"
 }
 
+async function readResponseError(response: Response, fallback: string) {
+  const text = await response.text()
+  if (!text.trim()) return fallback
+
+  try {
+    const parsed = JSON.parse(text) as { error?: string; details?: string }
+    return parsed.details || parsed.error || text
+  } catch {
+    return text
+  }
+}
+
 export default function TrainerverwaltungPage() {
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
   const [trainers, setTrainers] = useState<TrainerAccountRecord[]>([])
   const [members, setMembers] = useState<RoleMemberRecord[]>([])
   const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({})
@@ -40,11 +53,12 @@ export default function TrainerverwaltungPage() {
   async function loadTrainers() {
     setLoading(true)
     try {
+      setLoadError("")
       const response = await fetch("/api/admin/person-roles", {
         cache: "no-store",
       })
       if (!response.ok) {
-        throw new Error(await response.text())
+        throw new Error(await readResponseError(response, "Trainerdaten konnten nicht geladen werden."))
       }
 
       const payload = (await response.json()) as {
@@ -52,8 +66,20 @@ export default function TrainerverwaltungPage() {
         members: RoleMemberRecord[]
       }
 
-      setTrainers(payload.trainers ?? [])
-      setMembers(payload.members ?? [])
+      setTrainers(
+        Array.isArray(payload.trainers)
+          ? payload.trainers.map((trainer) => ({
+              ...trainer,
+              role: trainer.role === "admin" ? "admin" : "trainer",
+            }))
+          : []
+      )
+      setMembers(Array.isArray(payload.members) ? payload.members : [])
+    } catch (error) {
+      console.error(error)
+      setTrainers([])
+      setMembers([])
+      setLoadError(error instanceof Error ? error.message : "Trainerdaten konnten nicht geladen werden.")
     } finally {
       setLoading(false)
     }
@@ -70,7 +96,7 @@ export default function TrainerverwaltungPage() {
     })
 
     if (!response.ok) {
-      throw new Error(await response.text())
+      throw new Error(await readResponseError(response, "Traineraktion konnte nicht gespeichert werden."))
     }
   }
 
@@ -87,21 +113,18 @@ export default function TrainerverwaltungPage() {
   const pending = useMemo(() => trainers.filter((trainer) => trainer.role !== "admin" && !trainer.is_approved), [trainers])
   const approved = useMemo(() => trainers.filter((trainer) => trainer.role !== "admin" && trainer.is_approved), [trainers])
   const roleProfiles = useMemo(() => buildPersonRoleProfiles(members, trainers), [members, trainers])
-  const trainerCandidates = useMemo(() => {
-    return members.filter((member) => {
-      if (!member.email?.trim()) return false
+  // Kein Mitglieder-Suchfeld/Anlegen mehr auf dieser Seite
 
-      return !trainers.some(
-        (trainer) =>
-          trainer.linked_member_id === member.id ||
-          trainer.email.trim().toLowerCase() === member.email!.trim().toLowerCase()
-      )
-    }).sort((a, b) => {
-      const groupCompare = compareTrainingGroupOrder(a.base_group, b.base_group)
-      if (groupCompare !== 0) return groupCompare
-      return getMemberDisplayName(a).localeCompare(getMemberDisplayName(b), "de")
-    })
-  }, [members, trainers])
+  function getLicenseStatus(trainer: any) {
+    const d = trainer?.lizenz_gueltig_bis
+    if (!d) return { key: "keine", label: "keine Angabe", color: "bg-zinc-100 text-zinc-700" }
+    const date = new Date(d + "T00:00:00Z")
+    const today = new Date()
+    const diff = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    if (diff < 0) return { key: "abgelaufen", label: "abgelaufen", color: "bg-red-100 text-red-800" }
+    if (diff <= 30) return { key: "bald", label: "läuft bald ab", color: "bg-amber-100 text-amber-800" }
+    return { key: "gueltig", label: "gültig", color: "bg-green-100 text-green-800" }
+  }
 
   function getRoleSummary(trainer: TrainerAccountRecord) {
     const profile = roleProfiles.find((entry) => entry.trainer?.id === trainer.id)
@@ -141,9 +164,14 @@ export default function TrainerverwaltungPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Trainerverwaltung</h1>
         </div>
-        <Button asChild variant="outline" className="rounded-2xl">
-          <Link href="/verwaltung">Zurück zur Übersicht</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" className="rounded-2xl">
+            <Link href="/verwaltung">Zurück zur Übersicht</Link>
+          </Button>
+          <Button asChild className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]">
+            <Link href="/verwaltung/trainer/anlegen">Trainer aus Mitgliedsdaten anlegen</Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -175,120 +203,54 @@ export default function TrainerverwaltungPage() {
 
       <Card className="rounded-[24px] border-0 shadow-sm">
         <CardHeader>
-          <CardTitle>Trainer aus Mitgliederdaten anlegen</CardTitle>
+          <CardTitle>Trainer-Lizenzen</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {loading ? (
-            <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Mitgliedsdaten werden geladen...</div>
-          ) : trainerCandidates.length === 0 ? (
-            <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">
-              Keine weiteren Mitglieder mit E-Mail ohne verknüpftes Trainerkonto gefunden.
-            </div>
-          ) : (
-            trainerCandidates.map((member) => (
-              <div key={member.id} className="rounded-3xl border border-zinc-200 bg-white p-5">
-                <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr_1fr_auto] xl:items-end">
-                  <div className="space-y-2 text-sm text-zinc-600">
-                    <div className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
-                    <div>E-Mail: {member.email || "—"}</div>
-                    <div>Stammgruppe: {normalizeTrainingGroup(member.base_group) || "—"}</div>
-                    <div className="text-xs text-zinc-500">
-                      Das Trainerkonto wird mit den vorhandenen Mitgliedsdaten vorbereitet. Mitgliedsrolle und Trainingsgruppe bleiben dabei bestehen.
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Lizenz</Label>
-                    <Select
-                      value={licenseDrafts[member.id] ?? trainerLicenseOptions[0]}
-                      onValueChange={(value) =>
-                        setLicenseDrafts((current) => ({ ...current, [member.id]: value }))
-                      }
-                    >
-                      <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
-                        <SelectValue placeholder="Lizenz auswählen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {trainerLicenseOptions.map((license) => (
-                          <SelectItem key={license} value={license}>
-                            {license}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Start-PIN</Label>
-                    <PasswordInput
-                      value={pinDrafts[member.id] ?? ""}
-                      onChange={(event) =>
-                        setPinDrafts((current) => ({ ...current, [member.id]: event.target.value }))
-                      }
-                      placeholder="6 bis 16 Zeichen"
-                      className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                    />
-                    <div className="text-xs text-zinc-500">{PIN_HINT}</div>
-                  </div>
-
-                  <Button
-                    type="button"
-                    className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
-                    disabled={creatingMemberId === member.id}
-                    onClick={async () => {
-                      const pin = (pinDrafts[member.id] ?? "").trim()
-                      const license = licenseDrafts[member.id] ?? trainerLicenseOptions[0]
-
-                      if (!member.email?.trim()) {
-                        alert("Fuer dieses Mitglied ist keine E-Mail hinterlegt.")
-                        return
-                      }
-
-                      if (!isValidPin(pin)) {
-                        alert(PIN_REQUIREMENTS_MESSAGE)
-                        return
-                      }
-
-                      try {
-                        setCreatingMemberId(member.id)
-                        const response = await fetch("/api/admin/trainer-account", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            firstName: member.first_name || "",
-                            lastName: member.last_name || "",
-                            email: member.email,
-                            trainerLicense: license as (typeof trainerLicenseOptions)[number],
-                            pin,
-                            linkedMemberId: member.id,
-                          }),
-                        })
-
-                        if (!response.ok) {
-                          const message = await response.text()
-                          throw new Error(message || "Trainerkonto konnte nicht angelegt werden.")
-                        }
-
-                        setPinDrafts((current) => ({ ...current, [member.id]: "" }))
-                        alert("Trainerkonto angelegt. Die Bestaetigungs-Mail wurde versendet.")
-                        await loadTrainers()
-                      } catch (error) {
-                        console.error(error)
-                        const message = error instanceof Error ? error.message : "Trainerkonto konnte nicht angelegt werden."
-                        alert(message)
-                      } finally {
-                        setCreatingMemberId(null)
-                      }
-                    }}
-                  >
-                    {creatingMemberId === member.id ? "Legt an..." : "Trainerkonto anlegen"}
-                  </Button>
-                </div>
-              </div>
-            ))
-          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-zinc-600">
+                  <th className="p-3">Name</th>
+                  <th className="p-3">Lizenzart</th>
+                  <th className="p-3">Liz.-Nr.</th>
+                  <th className="p-3">gültig bis</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={6} className="p-3 text-zinc-500">Lädt...</td></tr>
+                ) : trainers.length === 0 ? (
+                  <tr><td colSpan={6} className="p-3 text-zinc-500">Keine Trainer vorhanden.</td></tr>
+                ) : (
+                  trainers.map((trainer) => {
+                    const status = getLicenseStatus(trainer)
+                    return (
+                      <tr key={trainer.id} className="border-t border-zinc-100 bg-white">
+                        <td className="p-3 font-medium text-zinc-900">{getTrainerDisplayName(trainer)}</td>
+                        <td className="p-3">{trainer.lizenzart || trainer.trainer_license || '—'}</td>
+                        <td className="p-3">{trainer.lizenznummer || '—'}</td>
+                        <td className="p-3">{trainer.lizenz_gueltig_bis ? new Date(trainer.lizenz_gueltig_bis).toLocaleDateString('de-DE') : '—'}</td>
+                        <td className="p-3">
+                          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${status.color}`}>{status.label}</span>
+                        </td>
+                        <td className="p-3">
+                          <Button asChild variant="outline" className="rounded-2xl">
+                            <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Bearbeiten</Link>
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Create-from-members moved to its own subpage. Use the button above to navigate. */}
 
       <Card className="rounded-[24px] border-0 shadow-sm">
         <CardHeader>
@@ -382,6 +344,9 @@ export default function TrainerverwaltungPage() {
                   >
                     Freigeben
                   </Button>
+                  <Button asChild variant="outline" className="rounded-2xl">
+                    <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
+                  </Button>
                 </div>
               </div>
             ))
@@ -417,6 +382,11 @@ export default function TrainerverwaltungPage() {
                 <div className="mt-1">Stammgruppe: {getLinkedMemberGroup(trainer) || "—"}</div>
                 <div className="mt-1 text-xs text-red-700">
                   Freigegeben am: {trainer.approved_at ? new Date(trainer.approved_at).toLocaleString("de-DE") : "—"}
+                </div>
+                <div className="mt-3">
+                  <Button asChild variant="outline" className="rounded-2xl">
+                    <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
+                  </Button>
                 </div>
               </div>
             ))
@@ -473,6 +443,9 @@ export default function TrainerverwaltungPage() {
                     }}
                   >
                     In Admin-Liste verschieben
+                  </Button>
+                  <Button asChild variant="outline" className="rounded-2xl ml-2">
+                    <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
                   </Button>
                 </div>
               </div>

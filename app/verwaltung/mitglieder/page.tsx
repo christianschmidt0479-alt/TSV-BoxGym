@@ -12,7 +12,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ChevronDown, ChevronUp } from "lucide-react"
-import { compareTrainingGroupOrder, normalizeTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
+import { compareTrainingGroupOrder, normalizeTrainingGroup, normalizeTrainingGroupOrFallback } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -68,7 +68,7 @@ type MemberStatusFilter =
   | "registriert"
   | "freigegeben"
 
-const memberGroupOptions = [...TRAINING_GROUPS]
+const memberGroupOptions = ["Basic 10 - 14 Jahre", "Basic 15 - 18 Jahre", "Basic Ü18", "L-Gruppe", "Boxzwerge"] as const
 
 function getMemberDisplayName(member?: Partial<MemberRecord> | null) {
   const first = member?.first_name ?? ""
@@ -130,6 +130,7 @@ function getAgeInYears(birthdate?: string) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message
+  if (typeof error === "string" && error.trim()) return error
   if (typeof error === "object" && error !== null && "message" in error) {
     const message = (error as { message?: unknown }).message
     if (typeof message === "string" && message.trim()) return message
@@ -137,8 +138,39 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+async function readResponseError(response: Response, fallback: string) {
+  const text = await response.text()
+  if (!text.trim()) return fallback
+
+  try {
+    const parsed = JSON.parse(text) as { error?: string; details?: string }
+    return parsed.details || parsed.error || text
+  } catch {
+    return text
+  }
+}
+
 function isBoxzwergeMember(member?: Pick<MemberRecord, "base_group"> | null) {
-  return member?.base_group === "Boxzwerge"
+  return normalizeTrainingGroup(member?.base_group) === "Boxzwerge"
+}
+
+function compareMemberGroupNames(left: string, right: string) {
+  const normalizedLeft = normalizeTrainingGroup(left)
+  const normalizedRight = normalizeTrainingGroup(right)
+
+  if (normalizedLeft && normalizedRight) {
+    return compareTrainingGroupOrder(normalizedLeft, normalizedRight)
+  }
+
+  if (normalizedLeft) return -1
+  if (normalizedRight) return 1
+  return left.localeCompare(right, "de")
+}
+
+function getMemberGroupValue(group?: string | null) {
+  const trimmedGroup = group?.trim() ?? ""
+  if (!trimmedGroup) return ""
+  return normalizeTrainingGroup(trimmedGroup) || trimmedGroup
 }
 
 export default function MitgliederverwaltungPage() {
@@ -198,7 +230,7 @@ export default function MitgliederverwaltungPage() {
             clearTrainerAccess()
             throw new Error("Admin-Sitzung abgelaufen. Bitte neu anmelden.")
           }
-          throw new Error(await response.text())
+          throw new Error(await readResponseError(response, "Mitglieder konnten nicht geladen werden."))
         }
 
         const payload = (await response.json()) as {
@@ -212,23 +244,29 @@ export default function MitgliederverwaltungPage() {
           }>
         }
 
-        setMembers(payload.members ?? [])
+        const normalizedMembers = Array.isArray(payload.members)
+          ? payload.members.map((member) => ({
+              ...member,
+              base_group: getMemberGroupValue(member.base_group) || null,
+            }))
+          : []
+
+        setMembers(normalizedMembers)
 
         const nextLinks: Record<string, ParentLinkSummary> = {}
-        for (const row of payload.parentLinks ?? []) {
-          if (!row.parent_accounts) continue
+        for (const row of Array.isArray(payload.parentLinks) ? payload.parentLinks : []) {
+          if (!row?.member_id || !row.parent_accounts) continue
           nextLinks[row.member_id] = {
             parent_account_id: row.parent_account_id,
-            parent_name: row.parent_accounts.parent_name,
-            email: row.parent_accounts.email,
-            phone: row.parent_accounts.phone,
+            parent_name: row.parent_accounts.parent_name ?? "—",
+            email: row.parent_accounts.email ?? "",
+            phone: row.parent_accounts.phone ?? null,
           }
         }
         setParentLinksByMember(nextLinks)
 
         const nextTrainerLinks: Record<string, TrainerLinkSummary> = {}
-        const normalizedMembers = payload.members ?? []
-        for (const trainer of payload.trainerLinks ?? []) {
+        for (const trainer of Array.isArray(payload.trainerLinks) ? payload.trainerLinks : []) {
           const linkedMemberId = trainer.linked_member_id?.trim() ?? ""
           if (linkedMemberId) {
             nextTrainerLinks[linkedMemberId] = trainer
@@ -244,13 +282,14 @@ export default function MitgliederverwaltungPage() {
         }
         setTrainerLinksByMember(nextTrainerLinks)
 
-        const checkinRows = payload.checkinRows ?? []
+        const checkinRows = Array.isArray(payload.checkinRows) ? payload.checkinRows : []
         const nextVisits: Record<string, number> = {}
         const nextLastActivity: Record<string, string> = {}
 
         for (const row of checkinRows) {
+          if (!row?.member_id) continue
           nextVisits[row.member_id] = (nextVisits[row.member_id] ?? 0) + 1
-          if (!nextLastActivity[row.member_id]) {
+          if (!nextLastActivity[row.member_id] && row.created_at) {
             nextLastActivity[row.member_id] = row.created_at
           }
         }
@@ -267,10 +306,13 @@ export default function MitgliederverwaltungPage() {
   }, [authResolved, trainerRole])
 
   const groupOptions = useMemo(() => {
-    const usedGroups = new Set(
-      members.map((member) => normalizeTrainingGroup(member.base_group)).filter(Boolean)
-    )
-    return TRAINING_GROUPS.filter((group) => usedGroups.has(group)).sort(compareTrainingGroupOrder)
+    return Array.from(
+      new Set(
+        members
+          .map((member) => getMemberGroupValue(member.base_group))
+          .filter((group): group is string => !!group)
+      )
+    ).sort(compareMemberGroupNames)
   }, [members])
 
   const filteredMembers = useMemo(() => {
@@ -285,14 +327,14 @@ export default function MitgliederverwaltungPage() {
         (member.guardian_name ?? "").toLowerCase().includes(trimmedSearch)
 
       const matchesStatus = statusFilter === "alle" || status === statusFilter
-      const matchesGroup = groupFilter === "alle" || (member.base_group ?? "ohne-gruppe") === groupFilter
+      const matchesGroup = groupFilter === "alle" || getMemberGroupValue(member.base_group) === groupFilter
 
       return matchesSearch && matchesStatus && matchesGroup
     })
 
     rows.sort((a, b) => {
       if (sortBy === "gruppe") {
-        return compareTrainingGroupOrder(a.base_group, b.base_group)
+        return compareTrainingGroupOrder(getMemberGroupValue(a.base_group), getMemberGroupValue(b.base_group))
       }
 
       if (sortBy === "checkins") {

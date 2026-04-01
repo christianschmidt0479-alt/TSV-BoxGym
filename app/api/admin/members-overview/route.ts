@@ -8,28 +8,111 @@ function getServerSupabase() {
   return createServerSupabaseServiceClient()
 }
 
-const MEMBER_OVERVIEW_SELECT =
-  "id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group, needs_trainer_assist_checkin"
+const MEMBER_OVERVIEW_BASE_SELECT =
+  "id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group"
+const MEMBER_OVERVIEW_OPTIONAL_COLUMNS = ["competition_target_weight", "needs_trainer_assist_checkin"] as const
+const TRAINER_LINK_OPTIONAL_COLUMNS = ["linked_member_id", "role"] as const
+const TRAINER_LINK_BASE_SELECT = "id, email, is_approved"
+
+function jsonError(message: string, status: number, details?: string) {
+  return NextResponse.json({ ok: false, error: message, ...(details ? { details } : {}) }, { status })
+}
+
+function isMissingColumnError(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  return (
+    (message.includes("column") && message.includes("does not exist")) ||
+    (message.includes("could not find") && message.includes("column")) ||
+    message.includes("schema cache")
+  )
+}
+
+function findMissingColumn<TColumn extends readonly string[]>(error: { message?: string } | null, columns: TColumn) {
+  const message = error?.message?.toLowerCase() ?? ""
+  return columns.find((column) => message.includes(column)) ?? null
+}
+
+async function loadMembersWithFallback(supabase: ReturnType<typeof getServerSupabase>) {
+  const optionalColumns = [...MEMBER_OVERVIEW_OPTIONAL_COLUMNS] as string[]
+
+  while (true) {
+    const select = [MEMBER_OVERVIEW_BASE_SELECT, ...optionalColumns].join(", ")
+    const response = await supabase.from("members").select(select).order("last_name", { ascending: true }).order("first_name", { ascending: true })
+
+    if (!response.error) {
+      const rows = (response.data ?? []) as unknown as Array<Record<string, unknown>>
+      return {
+        data: rows.map((row) => ({
+          ...row,
+          competition_target_weight: "competition_target_weight" in row ? row.competition_target_weight ?? null : null,
+          needs_trainer_assist_checkin: "needs_trainer_assist_checkin" in row ? row.needs_trainer_assist_checkin ?? false : false,
+        })),
+        error: null,
+      }
+    }
+
+    const missingColumn = isMissingColumnError(response.error)
+      ? findMissingColumn(response.error, MEMBER_OVERVIEW_OPTIONAL_COLUMNS)
+      : null
+
+    if (!missingColumn) throw response.error
+
+    const nextIndex = optionalColumns.indexOf(missingColumn)
+    if (nextIndex === -1) throw response.error
+    optionalColumns.splice(nextIndex, 1)
+  }
+}
+
+async function loadTrainerLinksWithFallback(supabase: ReturnType<typeof getServerSupabase>) {
+  const optionalColumns = [...TRAINER_LINK_OPTIONAL_COLUMNS] as string[]
+
+  while (true) {
+    const select = [TRAINER_LINK_BASE_SELECT, ...optionalColumns].join(", ")
+    const response = await supabase.from("trainer_accounts").select(select)
+
+    if (!response.error) {
+      const rows = (response.data ?? []) as unknown as Array<Record<string, unknown>>
+      return {
+        data: rows.map((row) => ({
+          ...row,
+          linked_member_id: "linked_member_id" in row ? row.linked_member_id ?? null : null,
+          role: row.role === "admin" ? "admin" : "trainer",
+        })),
+        error: null,
+      }
+    }
+
+    const missingColumn = isMissingColumnError(response.error)
+      ? findMissingColumn(response.error, TRAINER_LINK_OPTIONAL_COLUMNS)
+      : null
+
+    if (!missingColumn) throw response.error
+
+    const nextIndex = optionalColumns.indexOf(missingColumn)
+    if (nextIndex === -1) throw response.error
+    optionalColumns.splice(nextIndex, 1)
+  }
+}
 
 export async function GET(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
-      return new NextResponse("Forbidden", { status: 403 })
+      return jsonError("Forbidden", 403)
     }
 
     const session = await readTrainerSessionFromHeaders(request)
     if (!session || session.accountRole !== "admin") {
-      return new NextResponse("Unauthorized", { status: 401 })
+      return jsonError("Unauthorized", 401)
     }
 
     const rateLimit = checkRateLimit(`admin-members-overview:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
+      return jsonError("Too many requests", 429)
     }
 
     const supabase = getServerSupabase()
     const [membersResponse, checkinsResponse, parentLinksResponse, trainersResponse] = await Promise.all([
-      supabase.from("members").select(MEMBER_OVERVIEW_SELECT).order("last_name", { ascending: true }).order("first_name", { ascending: true }),
+      loadMembersWithFallback(supabase),
       supabase.from("checkins").select("member_id, created_at, date").order("created_at", { ascending: false }),
       supabase.from("parent_child_links").select(`
         member_id,
@@ -41,7 +124,7 @@ export async function GET(request: Request) {
           phone
         )
       `),
-      supabase.from("trainer_accounts").select("id, linked_member_id, email, role, is_approved"),
+      loadTrainerLinksWithFallback(supabase),
     ])
 
     if (membersResponse.error) throw membersResponse.error
@@ -49,24 +132,30 @@ export async function GET(request: Request) {
     if (parentLinksResponse.error) throw parentLinksResponse.error
     if (trainersResponse.error) throw trainersResponse.error
 
-    const parentLinks = ((parentLinksResponse.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    const parentLinkRows = Array.isArray(parentLinksResponse.data) ? (parentLinksResponse.data as Array<Record<string, unknown>>) : []
+    const parentLinks = parentLinkRows.map((row) => ({
       ...row,
       parent_accounts: Array.isArray(row.parent_accounts)
         ? row.parent_accounts[0] ?? null
         : row.parent_accounts ?? null,
     }))
 
+    const memberRows = (membersResponse.data ?? []) as Array<Record<string, unknown>>
+
     return NextResponse.json({
-      members: (membersResponse.data ?? []).map((row) => ({
-        ...row,
-        base_group: normalizeTrainingGroup(row.base_group) || row.base_group,
-      })),
-      checkinRows: checkinsResponse.data ?? [],
+      members: memberRows.map((row) => {
+        const baseGroup = typeof row.base_group === "string" ? row.base_group : null
+        return {
+          ...row,
+          base_group: normalizeTrainingGroup(baseGroup) || baseGroup,
+        }
+      }),
+      checkinRows: Array.isArray(checkinsResponse.data) ? checkinsResponse.data : [],
       parentLinks,
-      trainerLinks: trainersResponse.data ?? [],
+      trainerLinks: Array.isArray(trainersResponse.data) ? trainersResponse.data : [],
     })
   } catch (error) {
     console.error("admin members overview failed", error)
-    return new NextResponse("Internal server error", { status: 500 })
+    return jsonError("Internal server error", 500)
   }
 }

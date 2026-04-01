@@ -1,4 +1,5 @@
 import type { TrainerAccountRecord } from "@/lib/trainerDb"
+import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
 export type RoleMemberRecord = {
   id: string
@@ -38,6 +39,10 @@ function getDisplayName(input?: {
   return full || input?.name || "—"
 }
 
+function isCompetitionMember(member?: RoleMemberRecord | null) {
+  return !!member?.is_competition_member && normalizeTrainingGroup(member.base_group) !== "Boxzwerge"
+}
+
 export function buildPersonRoleProfiles(
   members: RoleMemberRecord[],
   trainers: TrainerAccountRecord[]
@@ -70,7 +75,7 @@ export function buildPersonRoleProfiles(
   for (const member of members) {
     const key = `member:${member.id}`
     const roles: PersonRole[] = ["mitglied"]
-    if (member.is_competition_member) roles.push("wettkaempfer")
+    if (isCompetitionMember(member)) roles.push("wettkaempfer")
 
     ensureProfile(key, {
       displayName: getDisplayName(member),
@@ -109,9 +114,10 @@ export function buildPersonRoleProfiles(
     const nextRoles = new Set<PersonRole>(profile.roles)
     if (matchedMember) {
       nextRoles.add("mitglied")
-      if (matchedMember.is_competition_member) nextRoles.add("wettkaempfer")
+      if (isCompetitionMember(matchedMember)) nextRoles.add("wettkaempfer")
     }
-    nextRoles.add(trainer.role === "admin" ? "admin" : "trainer")
+    nextRoles.add("trainer")
+    if (trainer.role === "admin") nextRoles.add("admin")
     profile.roles = Array.from(nextRoles)
     profile.matchedBy = explicitMember ? "linked_member_id" : matchedMember ? "email" : "single"
   }
@@ -128,6 +134,6 @@ export function getPersonRoleState(profile: PersonRoleProfile, role: PersonRole)
     case "admin":
       return profile.trainer?.role === "admin" && profile.trainer?.is_approved ? "bestaetigt" : "offen"
     case "wettkaempfer":
-      return profile.member?.is_competition_member ? "bestaetigt" : "offen"
+      return isCompetitionMember(profile.member) ? "bestaetigt" : "offen"
   }
 }

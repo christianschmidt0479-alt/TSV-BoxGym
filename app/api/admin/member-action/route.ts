@@ -8,7 +8,7 @@ import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendAccessCodeChangedEmail, sendApprovalEmail, sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { parseTrainingGroup } from "@/lib/trainingGroups"
+import { normalizeTrainingGroup, parseTrainingGroup } from "@/lib/trainingGroups"
 
 type MemberActionBody =
   | {
@@ -82,8 +82,16 @@ function isMissingColumnError(error: { message?: string } | null) {
   )
 }
 
-const MEMBER_ADMIN_SELECT =
-  "id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group, needs_trainer_assist_checkin"
+const MEMBER_ADMIN_BASE_SELECT =
+  "id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group"
+const MEMBER_ADMIN_OPTIONAL_COLUMNS = ["competition_target_weight", "needs_trainer_assist_checkin"] as const
+type MemberAdminRow = Record<string, unknown> & {
+  id: string
+  email?: string | null
+  first_name?: string | null
+  last_name?: string | null
+  name?: string | null
+}
 
 function sanitizeMemberForAdmin(member: Record<string, unknown>) {
   const sanitized = { ...member }
@@ -92,29 +100,86 @@ function sanitizeMemberForAdmin(member: Record<string, unknown>) {
   return sanitized
 }
 
+function jsonError(message: string, status: number, details?: string) {
+  return NextResponse.json({ ok: false, error: message, ...(details ? { details } : {}) }, { status })
+}
+
+function findMissingMemberColumn(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  return MEMBER_ADMIN_OPTIONAL_COLUMNS.find((column) => message.includes(column)) ?? null
+}
+
+function normalizeMemberRow(row: Record<string, unknown>) {
+  return ({
+    ...row,
+    competition_target_weight: "competition_target_weight" in row ? row.competition_target_weight ?? null : null,
+    needs_trainer_assist_checkin: "needs_trainer_assist_checkin" in row ? row.needs_trainer_assist_checkin ?? false : false,
+  } as unknown) as MemberAdminRow
+}
+
+async function updateMemberWithFallback(
+  supabase: ReturnType<typeof getServerSupabase>,
+  memberId: string,
+  updatePayload: Record<string, unknown>
+) {
+  const optionalColumns = [...MEMBER_ADMIN_OPTIONAL_COLUMNS] as string[]
+
+  while (true) {
+    const select = [MEMBER_ADMIN_BASE_SELECT, ...optionalColumns].join(", ")
+    const response = await supabase.from("members").update(updatePayload).eq("id", memberId).select(select).maybeSingle()
+
+    if (!response.error) {
+      const row = response.data ? normalizeMemberRow(response.data as unknown as Record<string, unknown>) : null
+      return { data: row, error: null }
+    }
+
+    const missingColumn = isMissingColumnError(response.error) ? findMissingMemberColumn(response.error) : null
+    if (!missingColumn) {
+      return { data: null, error: response.error }
+    }
+
+    const nextIndex = optionalColumns.indexOf(missingColumn)
+    if (nextIndex === -1) {
+      return { data: null, error: response.error }
+    }
+    optionalColumns.splice(nextIndex, 1)
+  }
+}
+
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
-      return new NextResponse("Forbidden", { status: 403 })
+      return jsonError("Forbidden", 403)
     }
 
     const session = await readTrainerSessionFromHeaders(request)
     if (!session || session.accountRole !== "admin") {
-      return new NextResponse("Unauthorized", { status: 401 })
+      return jsonError("Unauthorized", 401)
     }
 
     const rateLimit = await checkRateLimitAsync(`admin-member-action:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
+      return jsonError("Too many requests", 429)
     }
 
-    const body = (await request.json()) as MemberActionBody
+    let body: MemberActionBody | null = null
+    try {
+      body = (await request.json()) as MemberActionBody
+    } catch {
+      body = null
+    }
+    if (!body || typeof body !== "object" || !("action" in body) || typeof body.action !== "string") {
+      return jsonError("Invalid request body", 400)
+    }
     const supabase = getServerSupabase()
 
     if (body.action === "approve") {
+      if (typeof body.memberId !== "string" || typeof body.baseGroup !== "string") {
+        return jsonError("Invalid approve payload", 400)
+      }
       const approvedGroup = parseTrainingGroup(body.baseGroup)
       if (!approvedGroup) {
-        return new NextResponse("Bitte eine gueltige Stammgruppe auswaehlen.", { status: 400 })
+        return jsonError("Bitte eine gueltige Stammgruppe auswaehlen.", 400)
       }
       const updatePayload: Record<string, unknown> = {
         is_approved: true,
@@ -128,14 +193,10 @@ export async function POST(request: Request) {
         updatePayload.member_pin = await hashAuthSecret(body.newPin.trim())
       }
 
-      const { data, error } = await supabase
-        .from("members")
-        .update(updatePayload)
-        .eq("id", body.memberId)
-        .select(MEMBER_ADMIN_SELECT)
-        .single()
+      const { data, error } = await updateMemberWithFallback(supabase, body.memberId, updatePayload)
 
       if (error) throw error
+      if (!data) return jsonError("Mitglied nicht gefunden", 404)
 
       if (body.newPin?.trim() && data.email) {
         await sendAccessCodeChangedEmail({
@@ -167,6 +228,9 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "resend_verification") {
+      if (typeof body.memberId !== "string") {
+        return jsonError("Invalid resend verification payload", 400)
+      }
       const { data: member, error: memberError } = await supabase
         .from("members")
         .select("id, name, first_name, last_name, email, email_verified, email_verification_token")
@@ -175,15 +239,15 @@ export async function POST(request: Request) {
 
       if (memberError) throw memberError
       if (!member) {
-        return new NextResponse("Mitglied nicht gefunden", { status: 404 })
+        return jsonError("Mitglied nicht gefunden", 404)
       }
 
       if (!member.email) {
-        return new NextResponse("Mitglied hat keine E-Mail-Adresse", { status: 400 })
+        return jsonError("Mitglied hat keine E-Mail-Adresse", 400)
       }
 
       if (member.email_verified) {
-        return new NextResponse("E-Mail wurde bereits bestätigt", { status: 400 })
+        return jsonError("E-Mail wurde bereits bestätigt", 400)
       }
 
       const verificationToken = member.email_verification_token || generateEmailVerificationToken()
@@ -220,18 +284,17 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "change_group") {
+      if (typeof body.memberId !== "string" || typeof body.baseGroup !== "string") {
+        return jsonError("Invalid change group payload", 400)
+      }
       const nextGroup = parseTrainingGroup(body.baseGroup)
       if (!nextGroup) {
-        return new NextResponse("Bitte eine gueltige Stammgruppe auswaehlen.", { status: 400 })
+        return jsonError("Bitte eine gueltige Stammgruppe auswaehlen.", 400)
       }
-      const { data, error } = await supabase
-        .from("members")
-        .update({ base_group: nextGroup })
-        .eq("id", body.memberId)
-        .select(MEMBER_ADMIN_SELECT)
-        .single()
+      const { data, error } = await updateMemberWithFallback(supabase, body.memberId, { base_group: nextGroup })
 
       if (error) throw error
+      if (!data) return jsonError("Mitglied nicht gefunden", 404)
       await writeAdminAuditLog({
         session,
         action: "member_group_changed",
@@ -244,19 +307,20 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "reset_pin") {
+      if (typeof body.memberId !== "string" || typeof body.newPin !== "string") {
+        return jsonError("Invalid reset pin payload", 400)
+      }
       const newPin = body.newPin.trim()
       if (!isValidPin(newPin)) {
-        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+        return jsonError(PIN_REQUIREMENTS_MESSAGE, 400)
       }
 
-      const { data, error } = await supabase
-        .from("members")
-        .update({ member_pin: await hashAuthSecret(newPin) })
-        .eq("id", body.memberId)
-        .select(MEMBER_ADMIN_SELECT)
-        .single()
+      const { data, error } = await updateMemberWithFallback(supabase, body.memberId, {
+        member_pin: await hashAuthSecret(newPin),
+      })
 
       if (error) throw error
+      if (!data) return jsonError("Mitglied nicht gefunden", 404)
 
       await writeAdminAuditLog({
         session,
@@ -271,24 +335,23 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "update_name") {
+      if (typeof body.memberId !== "string" || typeof body.firstName !== "string" || typeof body.lastName !== "string") {
+        return jsonError("Invalid update name payload", 400)
+      }
       const firstName = body.firstName.trim()
       const lastName = body.lastName.trim()
       if (!firstName || !lastName) {
-        return new NextResponse("Vorname und Nachname duerfen nicht leer sein.", { status: 400 })
+        return jsonError("Vorname und Nachname duerfen nicht leer sein.", 400)
       }
 
-      const { data, error } = await supabase
-        .from("members")
-        .update({
-          first_name: firstName,
-          last_name: lastName,
-          name: `${firstName} ${lastName}`.trim(),
-        })
-        .eq("id", body.memberId)
-        .select(MEMBER_ADMIN_SELECT)
-        .single()
+      const { data, error } = await updateMemberWithFallback(supabase, body.memberId, {
+        first_name: firstName,
+        last_name: lastName,
+        name: `${firstName} ${lastName}`.trim(),
+      })
 
       if (error) throw error
+      if (!data) return jsonError("Mitglied nicht gefunden", 404)
 
       await writeAdminAuditLog({
         session,
@@ -303,8 +366,25 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "set_competition") {
+      if (typeof body.memberId !== "string" || typeof body.isCompetitionMember !== "boolean") {
+        return jsonError("Invalid competition payload", 400)
+      }
+      const { data: currentMember, error: currentMemberError } = await supabase
+        .from("members")
+        .select("id, base_group")
+        .eq("id", body.memberId)
+        .maybeSingle()
+
+      if (currentMemberError) throw currentMemberError
+      if (!currentMember) {
+        return jsonError("Mitglied nicht gefunden", 404)
+      }
+
+      const nextIsCompetitionMember =
+        normalizeTrainingGroup(currentMember.base_group) === "Boxzwerge" ? false : body.isCompetitionMember
+
       const updatePayload: Record<string, unknown> = {
-        is_competition_member: body.isCompetitionMember,
+        is_competition_member: nextIsCompetitionMember,
         has_competition_pass: body.hasCompetitionPass ?? false,
         competition_license_number: body.competitionLicenseNumber?.trim() || null,
         last_medical_exam_date: body.lastMedicalExamDate || null,
@@ -318,46 +398,31 @@ export async function POST(request: Request) {
         updatePayload.competition_target_weight = body.competitionTargetWeight
       }
 
-      let { data, error } = await supabase
-        .from("members")
-        .update(updatePayload)
-        .eq("id", body.memberId)
-        .select(MEMBER_ADMIN_SELECT)
-        .single()
-
-      if (error && isMissingColumnError(error) && "competition_target_weight" in updatePayload) {
-        delete updatePayload.competition_target_weight
-        const retry = await supabase.from("members").update(updatePayload).eq("id", body.memberId).select(MEMBER_ADMIN_SELECT).single()
-        data = retry.data
-        error = retry.error
-      }
+      const { data, error } = await updateMemberWithFallback(supabase, body.memberId, updatePayload)
 
       if (error) throw error
-      if (!data) {
-        throw new Error("Member update returned no data")
-      }
+      if (!data) return jsonError("Mitglied nicht gefunden", 404)
       await writeAdminAuditLog({
         session,
         action: "member_competition_changed",
         targetType: "member",
         targetId: data.id,
         targetName: getMemberDisplayName(data),
-        details: body.isCompetitionMember ? "Wettkampfliste aktiv" : "Wettkampfliste inaktiv",
+        details: nextIsCompetitionMember ? "Wettkampfliste aktiv" : "Wettkampfliste inaktiv",
       })
       return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
     }
 
     if (body.action === "set_trainer_assist") {
-      const { data, error } = await supabase
-        .from("members")
-        .update({
-          needs_trainer_assist_checkin: body.needsTrainerAssistCheckin,
-        })
-        .eq("id", body.memberId)
-        .select(MEMBER_ADMIN_SELECT)
-        .single()
+      if (typeof body.memberId !== "string" || typeof body.needsTrainerAssistCheckin !== "boolean") {
+        return jsonError("Invalid trainer assist payload", 400)
+      }
+      const { data, error } = await updateMemberWithFallback(supabase, body.memberId, {
+        needs_trainer_assist_checkin: body.needsTrainerAssistCheckin,
+      })
 
       if (error) throw error
+      if (!data) return jsonError("Mitglied nicht gefunden", 404)
       await writeAdminAuditLog({
         session,
         action: "member_trainer_assist_changed",
@@ -369,9 +434,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
     }
 
-    return new NextResponse("Invalid action", { status: 400 })
+    return jsonError("Invalid action", 400)
   } catch (error) {
     console.error("admin member action failed", error)
-    return new NextResponse("Internal server error", { status: 500 })
+    return jsonError("Internal server error", 500)
   }
 }
