@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { ArrowRight, Info, Lock, ShieldCheck, UserRoundPlus, Users } from "lucide-react"
+import { ArrowRight, Lock, ShieldCheck, UserRoundPlus, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -30,10 +30,9 @@ type HeroSession = {
 }
 
 type HeroInfoCard = {
-  id: "coming" | "live" | "next" | "info"
+  id: "coming" | "live" | "next"
   label: string
   value: string
-  tooltip: string
 }
 
 const fallbackSessions: HeroSession[] = [
@@ -60,6 +59,11 @@ function formatSessionCompact(session: HeroSession | null) {
 function formatCheckinTime(date: Date | null) {
   if (!date) return "—"
   return date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+}
+
+function formatCheckinRange(checkinTime: Date | null, session: HeroSession | null) {
+  if (!checkinTime || !session) return "—"
+  return `${formatCheckinTime(checkinTime)} - ${session.end}`
 }
 
 function getCurrentSession(referenceDate: Date, sessions: HeroSession[]) {
@@ -107,7 +111,6 @@ function liveTimeString(date: Date | null) {
 export default function Home() {
   const [now, setNow] = useState<Date | null>(null)
   const [sessions, setSessions] = useState<HeroSession[]>([...fallbackSessions])
-  const [openInfoCard, setOpenInfoCard] = useState<HeroInfoCard["id"] | null>(null)
 
   useEffect(() => {
     const updateNow = () => setNow(new Date())
@@ -161,22 +164,29 @@ export default function Home() {
     {
       href: "/mein-bereich",
       title: "Onlinebereich Boxen",
-      description: "Zugang fuer Mitglieder und Registrierung im Boxbereich.",
+      description: "Zugang nur fuer Boxmitglieder",
       icon: Users,
       accentClass: "bg-[#154c83] text-white",
     },
     {
       href: "/mitglied-registrieren",
-      title: "TSV Mitglied werden",
-      description: "Mitglied im TSV Falkensee werden.",
+      title: "Registrierung Onlinebereich Boxen",
+      description: "Registrierung fuer den Onlinebereich Boxen.",
       icon: UserRoundPlus,
       accentClass: "bg-[#154c83] text-white",
     },
     {
       href: "/trainer",
-      title: "Trainer",
+      title: "Trainerzugang",
       description: "Trainerzugang und Tagesuebersicht auf einer separaten Seite.",
       icon: Lock,
+      accentClass: "bg-white text-[#154c83] border border-[#d8e3ee]",
+    },
+    {
+      href: "https://tsv-falkensee.de",
+      title: "TSV Mitglied werden",
+      description: "Mitglied im TSV Falkensee werden.",
+      icon: UserRoundPlus,
       accentClass: "bg-white text-[#154c83] border border-[#d8e3ee]",
     },
   ]
@@ -184,27 +194,18 @@ export default function Home() {
   const heroCards: HeroInfoCard[] = [
     {
       id: "coming",
-      label: "Kommend",
+      label: "Nächste Einheit",
       value: formatSessionCompact(nextSession),
-      tooltip: "Naechste Einheit laut Tagesplan.",
     },
     {
       id: "live",
-      label: "Live",
+      label: "Laufende Einheit",
       value: currentSession ? `laeuft · ${currentSession.name}` : "—",
-      tooltip: "Zeigt die aktuell laufende Einheit.",
     },
     {
       id: "next",
-      label: "Naechster",
-      value: formatCheckinTime(nextCheckinTime),
-      tooltip: "Empfohlene Zeit kurz vor dem Trainingsstart.",
-    },
-    {
-      id: "info",
-      label: "Info",
-      value: "QR-Check-in",
-      tooltip: "Check-in nur vor Ort per QR-Code.",
+      label: "Nächster Check-in",
+      value: formatCheckinRange(nextCheckinTime, nextSession),
     },
   ]
 
@@ -257,24 +258,9 @@ export default function Home() {
               <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
                 <CardContent className="grid gap-2.5 p-3 sm:grid-cols-2 sm:p-3.5">
                   {heroCards.map((card) => (
-                    <div key={card.id} className="relative min-h-[64px] rounded-2xl bg-white/10 p-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="text-[10px] uppercase tracking-wide text-zinc-300">{card.label}</div>
-                        <button
-                          type="button"
-                          aria-label={`${card.label} Info anzeigen`}
-                          onClick={() => setOpenInfoCard((current) => (current === card.id ? null : card.id))}
-                          className="rounded-full p-0.5 text-zinc-300 transition hover:bg-white/10 hover:text-white"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <div className="mt-1 pr-5 text-sm font-semibold leading-tight">{card.value}</div>
-                      {openInfoCard === card.id ? (
-                        <div className="absolute right-2 top-7 z-10 max-w-[180px] rounded-xl border border-white/15 bg-[#0f2740]/95 px-2.5 py-2 text-[11px] leading-tight text-blue-50 shadow-lg">
-                          {card.tooltip}
-                        </div>
-                      ) : null}
+                    <div key={card.id} className="min-h-[64px] rounded-2xl bg-white/10 p-2">
+                      <div className="text-[10px] uppercase tracking-wide text-zinc-300">{card.label}</div>
+                      <div className="mt-1 text-sm font-semibold leading-tight">{card.value}</div>
                     </div>
                   ))}
                 </CardContent>
@@ -284,7 +270,7 @@ export default function Home() {
         </div>
 
         <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
-          {navigationCards.map((card, index) => {
+          {navigationCards.map((card) => {
             const Icon = card.icon
 
             return (
@@ -292,9 +278,7 @@ export default function Home() {
                 key={card.href}
                 asChild
                 variant="outline"
-                className={`h-auto min-h-24 w-full justify-start rounded-[24px] border border-[#d8e3ee] bg-white px-4 py-4 text-left shadow-sm transition-all hover:border-[#154c83] hover:bg-zinc-50 hover:shadow-md active:bg-zinc-100 sm:px-5 ${
-                  index === navigationCards.length - 1 ? "md:col-span-2" : ""
-                }`}
+                className="h-auto min-h-24 w-full justify-start rounded-[24px] border border-[#d8e3ee] bg-white px-4 py-4 text-left shadow-sm transition-all hover:border-[#154c83] hover:bg-zinc-50 hover:shadow-md active:bg-zinc-100 sm:px-5"
               >
                 <Link href={card.href}>
                   <div className="flex min-h-[96px] w-full items-center justify-between gap-3 sm:gap-4">
