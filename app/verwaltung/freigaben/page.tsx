@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { getRecommendedTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -101,6 +103,7 @@ function formatBirthdateLabel(value?: string) {
 }
 
 export default function FreigabenPage() {
+  const router = useRouter()
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [pendingMembers, setPendingMembers] = useState<PendingMemberRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -108,13 +111,12 @@ export default function FreigabenPage() {
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({})
   const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({})
   const [resendingVerification, setResendingVerification] = useState<Record<string, boolean>>({})
-  const [sendingGsRequest, setSendingGsRequest] = useState<Record<string, boolean>>({})
-  const [sendingGsTestRequest, setSendingGsTestRequest] = useState<Record<string, boolean>>({})
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [emailFilter, setEmailFilter] = useState("alle")
   const [toast, setToast] = useState<ToastState | null>(null)
   const [gsConfirmedAtByMemberId, setGsConfirmedAtByMemberId] = useState<Record<string, string>>({})
+  const [gsRejectedAtByMemberId, setGsRejectedAtByMemberId] = useState<Record<string, string>>({})
 
   function showToast(message: string, variant: ToastState["variant"]) {
     setToast({ message, variant })
@@ -134,11 +136,13 @@ export default function FreigabenPage() {
         pendingMembers: PendingMemberRecord[]
         checkinRows: CheckinCountRow[]
         gsConfirmedAtByMemberId?: Record<string, string>
+        gsRejectedAtByMemberId?: Record<string, string>
       }
 
       const nextPending = payload.pendingMembers ?? []
       setPendingMembers(nextPending)
       setGsConfirmedAtByMemberId(payload.gsConfirmedAtByMemberId ?? {})
+      setGsRejectedAtByMemberId(payload.gsRejectedAtByMemberId ?? {})
 
       const counts: Record<string, number> = {}
       for (const row of (payload.checkinRows ?? [])) {
@@ -152,43 +156,26 @@ export default function FreigabenPage() {
 
   async function resendVerification(member: PendingMemberRecord) {
     if (!member.id || !member.email) {
-      alert("Mitgliedsdaten unvollständig, kann E-Mail nicht erneut senden.")
+      alert("Mitgliedsdaten unvollständig, kann E-Mail nicht vorbereiten.")
       return
     }
 
     setResendingVerification((prev) => ({ ...prev, [member.id]: true }))
-
-    try {
-      const response = await fetch("/api/admin/member-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "resend_verification", memberId: member.id }),
+    router.push(
+      buildAdminMailComposeHref({
+        title: "Bestätigungs-Mail bearbeiten",
+        returnTo: "/verwaltung/freigaben",
+        requests: [
+          {
+            kind: "verification_member",
+            memberId: member.id,
+            email: member.email,
+            name: getMemberDisplayName(member),
+            targetKind: "member",
+          },
+        ],
       })
-
-      if (!response.ok) {
-        const message = await response.text()
-        throw new Error(message || "Bestätigungs-Mail konnte nicht versendet werden.")
-      }
-
-      const result = (await response.json()) as {
-        verificationLink?: string
-        delivery?: { messageId?: string | null }
-      }
-      const copied = result.verificationLink ? await copyTextToClipboard(result.verificationLink) : false
-      const providerSuffix = result.delivery?.messageId ? ` Provider-ID: ${result.delivery.messageId}` : ""
-      alert(
-        copied
-          ? `Bestätigungs-Mail wurde an den Mail-Dienst übergeben.${providerSuffix} Der Bestätigungslink wurde zusätzlich in die Zwischenablage kopiert.`
-          : `Bestätigungs-Mail wurde an den Mail-Dienst übergeben.${providerSuffix}`
-      )
-      await loadPending()
-    } catch (error) {
-      console.error(error)
-      const message = error instanceof Error ? error.message : "Bestätigungs-Mail konnte nicht versendet werden."
-      alert(message)
-    } finally {
-      setResendingVerification((prev) => ({ ...prev, [member.id]: false }))
-    }
+    )
   }
 
   async function deletePendingMember(member: PendingMemberRecord) {
@@ -222,61 +209,34 @@ export default function FreigabenPage() {
     }
   }
 
-  async function sendGsRequest(member: PendingMemberRecord, options?: SendGsRequestOptions) {
+  function sendGsRequest(member: PendingMemberRecord, options?: SendGsRequestOptions) {
     const firstName = member.first_name?.trim() ?? ""
     const lastName = member.last_name?.trim() ?? ""
     const birthdate = member.birthdate?.trim() ?? ""
-    const isTestMode = options?.mode === "test"
 
     if (!firstName || !lastName || !birthdate) {
       showToast("Vorname, Nachname oder Geburtsdatum fehlen.", "error")
       return
     }
 
-    const setSendingState = isTestMode ? setSendingGsTestRequest : setSendingGsRequest
-    setSendingState((prev) => ({ ...prev, [member.id]: true }))
-
-    try {
-      const response = await fetch("/api/admin/mail-gs-anfrage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          memberId: member.id,
-          firstName,
-          lastName,
-          birthdate,
-          recipientEmail: options?.recipientEmail,
-          subject: options?.subject,
-          athleteLabel: options?.athleteLabel,
-        }),
+    router.push(
+      buildAdminMailComposeHref({
+        title: options?.mode === "test" ? "Test-Mail an Christian bearbeiten" : "GS-Anfrage bearbeiten",
+        returnTo: "/verwaltung/freigaben",
+        requests: [
+          {
+            kind: "gs_request",
+            memberId: member.id,
+            firstName,
+            lastName,
+            birthdate,
+            recipientEmail: options?.recipientEmail,
+            subject: options?.subject,
+            athleteLabel: options?.athleteLabel,
+          },
+        ],
       })
-
-      if (!response.ok) {
-        let message = "GS-Anfrage konnte nicht versendet werden."
-
-        try {
-          const payload = (await response.json()) as { error?: string }
-          message = payload.error || message
-        } catch {
-          const fallback = await response.text()
-          if (fallback) {
-            message = fallback
-          }
-        }
-
-        throw new Error(message)
-      }
-
-      showToast(
-        isTestMode ? "Test-Anfrage an Christian gesendet" : "Anfrage an Geschäftsstelle gesendet",
-        "success"
-      )
-    } catch (error) {
-      console.error(error)
-      showToast(error instanceof Error ? error.message : "GS-Anfrage konnte nicht versendet werden.", "error")
-    } finally {
-      setSendingState((prev) => ({ ...prev, [member.id]: false }))
-    }
+    )
   }
 
   useEffect(() => {
@@ -413,6 +373,7 @@ export default function FreigabenPage() {
               const used = usedByMember[member.id] ?? 0
               const remaining = Math.max(0, 6 - used)
               const gsConfirmedAt = gsConfirmedAtByMemberId[member.id] ?? ""
+              const gsRejectedAt = gsRejectedAtByMemberId[member.id] ?? ""
               const isClaraTestMember =
                 member.first_name?.trim() === "Clara" && member.last_name?.trim() === "Ullrich" && member.birthdate?.trim() === "2007-05-09"
               const selectedGroup =
@@ -456,6 +417,11 @@ export default function FreigabenPage() {
                           TSV-Mitgliedschaft bestätigt am {new Date(gsConfirmedAt).toLocaleString("de-DE")}
                         </div>
                       ) : null}
+                      {gsRejectedAt ? (
+                        <div className="text-xs font-medium text-red-700">
+                          TSV-Mitgliedschaft verneint am {new Date(gsRejectedAt).toLocaleString("de-DE")}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="space-y-2">
@@ -496,9 +462,9 @@ export default function FreigabenPage() {
                         variant="outline"
                         className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
                         onClick={() => void sendGsRequest(member)}
-                        disabled={Boolean(sendingGsRequest[member.id]) || Boolean(sendingGsTestRequest[member.id]) || deletingMemberId === member.id}
+                        disabled={deletingMemberId === member.id}
                       >
-                        {sendingGsRequest[member.id] ? "Sende GS-Anfrage..." : "Anfrage an GS senden"}
+                        Anfrage an GS senden
                       </Button>
 
                       {isClaraTestMember ? (
@@ -514,9 +480,9 @@ export default function FreigabenPage() {
                               mode: "test",
                             })
                           }
-                          disabled={Boolean(sendingGsRequest[member.id]) || Boolean(sendingGsTestRequest[member.id]) || deletingMemberId === member.id}
+                          disabled={deletingMemberId === member.id}
                         >
-                          {sendingGsTestRequest[member.id] ? "Sende Testmail..." : "Test an Christian senden"}
+                          Test an Christian senden
                         </Button>
                       ) : null}
 
@@ -524,7 +490,9 @@ export default function FreigabenPage() {
                         className={
                           gsConfirmedAt
                             ? "rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700"
-                            : "rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                            : gsRejectedAt
+                              ? "rounded-2xl bg-red-600 text-white hover:bg-red-700"
+                              : "rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
                         }
                         disabled={!member.email_verified || deletingMemberId === member.id}
                         onClick={async () => {
@@ -554,15 +522,65 @@ export default function FreigabenPage() {
                             if (!response.ok) {
                               throw new Error(await response.text())
                             }
-                            alert("Mitglied freigegeben.")
+                            const payload = (await response.json()) as {
+                              ok: true
+                              member?: {
+                                email?: string | null
+                                first_name?: string | null
+                                last_name?: string | null
+                                name?: string | null
+                              }
+                            }
+
+                            const memberEmail = (payload.member?.email || member.email || "").trim()
+                            const memberName =
+                              `${payload.member?.first_name ?? member.first_name ?? ""} ${payload.member?.last_name ?? member.last_name ?? ""}`.trim() ||
+                              payload.member?.name ||
+                              member.name ||
+                              getMemberDisplayName(member)
+
+                            const mailRequests = []
+
+                            if (newPin && memberEmail) {
+                              mailRequests.push({
+                                kind: "access_code_changed" as const,
+                                email: memberEmail,
+                                name: memberName,
+                                targetKind: "member" as const,
+                              })
+                            }
+
+                            if (memberEmail) {
+                              mailRequests.push({
+                                kind: "approval_notice" as const,
+                                email: memberEmail,
+                                name: memberName,
+                                targetKind: "member" as const,
+                                group: selectedGroup,
+                              })
+                            }
+
                             await loadPending()
+
+                            if (mailRequests.length > 0) {
+                              router.push(
+                                buildAdminMailComposeHref({
+                                  title: "Freigabe-Mails bearbeiten",
+                                  returnTo: "/verwaltung/freigaben",
+                                  requests: mailRequests,
+                                })
+                              )
+                              return
+                            }
+
+                            alert("Mitglied freigegeben.")
                           } catch (error) {
                             console.error(error)
                             alert("Fehler bei der Freigabe.")
                           }
                         }}
                       >
-                        {gsConfirmedAt ? "Freigeben (GS bestätigt)" : "Freigeben"}
+                        {gsConfirmedAt ? "Freigeben (GS bestätigt)" : gsRejectedAt ? "Freigeben (GS verneint)" : "Freigeben"}
                       </Button>
 
                       {!member.email_verified && (

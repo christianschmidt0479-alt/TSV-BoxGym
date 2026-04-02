@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { buildTrainingGroupOptions, compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -158,6 +160,7 @@ function getCompetitionAgeClassBadgeClass(birthdate?: string) {
 }
 
 export default function WettkampfPage() {
+  const router = useRouter()
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -527,32 +530,36 @@ export default function WettkampfPage() {
                       const wasSelected = !!member.is_competition_member
                       await saveCompetitionDraft(member.id, draft)
 
+                      const competitionMailRequests = []
+
                       if (!wasSelected && draft.selected && member.email) {
-                        await fetch("/api/send-verification", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            purpose: "competition_assigned",
-                            email: member.email,
-                            name: getMemberDisplayName(member),
-                          }),
+                        competitionMailRequests.push({
+                          kind: "competition_assigned" as const,
+                          email: member.email,
+                          name: getMemberDisplayName(member),
                         })
                       }
 
                       if (wasSelected && !draft.selected && member.email) {
-                        await fetch("/api/send-verification", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            purpose: "competition_removed",
-                            email: member.email,
-                            name: getMemberDisplayName(member),
-                          }),
+                        competitionMailRequests.push({
+                          kind: "competition_removed" as const,
+                          email: member.email,
+                          name: getMemberDisplayName(member),
                         })
                       }
 
                       await loadData()
                       setOpenStatsMemberId((prev) => (prev === member.id ? "" : prev))
+
+                      if (competitionMailRequests.length > 0) {
+                        router.push(
+                          buildAdminMailComposeHref({
+                            title: "Wettkampf-Mail bearbeiten",
+                            returnTo: "/verwaltung/wettkampf",
+                            requests: competitionMailRequests,
+                          })
+                        )
+                      }
                     } catch (error) {
                       console.error(error)
                       alert("Fehler beim Speichern der Wettkampfdaten.")
@@ -841,15 +848,19 @@ export default function WettkampfPage() {
                             await saveCompetitionDraft(member.id, { ...draft, selected: true })
 
                             if (member.email) {
-                              await fetch("/api/send-verification", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  purpose: "competition_assigned",
-                                  email: member.email,
-                                  name: getMemberDisplayName(member),
-                                }),
-                              })
+                              router.push(
+                                buildAdminMailComposeHref({
+                                  title: "Wettkampf-Mail bearbeiten",
+                                  returnTo: "/verwaltung/wettkampf",
+                                  requests: [
+                                    {
+                                      kind: "competition_assigned",
+                                      email: member.email,
+                                      name: getMemberDisplayName(member),
+                                    },
+                                  ],
+                                })
+                              )
                             }
 
                             await loadData()

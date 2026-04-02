@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto"
 
+export type GsMembershipDecision = "ja" | "nein"
+
 type GsMembershipConfirmationPayload = {
   memberId: string
   exp: number
@@ -27,6 +29,10 @@ function fromBase64Url(value: string) {
   return Buffer.from(value, "base64url").toString("utf8")
 }
 
+function encodeCompactPayload(payload: GsMembershipConfirmationPayload) {
+  return `${toBase64Url(payload.memberId)}.${payload.exp.toString(36)}`
+}
+
 function sign(value: string) {
   return createHmac("sha256", getGsMembershipConfirmationSecret()).update(value).digest("base64url")
 }
@@ -37,16 +43,51 @@ export function createGsMembershipConfirmationToken(memberId: string, maxAgeSeco
     exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
   }
 
-  const encodedPayload = toBase64Url(JSON.stringify(payload))
+  const encodedPayload = encodeCompactPayload(payload)
   const signature = sign(encodedPayload)
   return `${encodedPayload}.${signature}`
+}
+
+export function normalizeGsMembershipDecision(value: string | null | undefined): GsMembershipDecision | null {
+  const normalizedValue = value?.trim().toLowerCase()
+
+  if (normalizedValue === "ja" || normalizedValue === "yes") {
+    return "ja"
+  }
+
+  if (normalizedValue === "nein" || normalizedValue === "no") {
+    return "nein"
+  }
+
+  return null
+}
+
+export function buildGsMembershipConfirmationPath(decision: GsMembershipDecision, token: string) {
+  return `/mitgliedschaft-bestaetigen/${decision}/${token}`
+}
+
+export function createGsMembershipConfirmationLinks(memberId: string, baseUrl: string, maxAgeSeconds?: number) {
+  const token = createGsMembershipConfirmationToken(memberId, maxAgeSeconds)
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "")
+
+  return {
+    yesLink: `${normalizedBaseUrl}${buildGsMembershipConfirmationPath("ja", token)}`,
+    noLink: `${normalizedBaseUrl}${buildGsMembershipConfirmationPath("nein", token)}`,
+  }
 }
 
 export function verifyGsMembershipConfirmationToken(token: string | null | undefined) {
   if (!token) return null
 
-  const [encodedPayload, providedSignature] = token.split(".")
-  if (!encodedPayload || !providedSignature) {
+  const tokenParts = token.split(".")
+  const providedSignature = tokenParts.at(-1)
+
+  if (!providedSignature) {
+    return null
+  }
+
+  const encodedPayload = tokenParts.slice(0, -1).join(".")
+  if (!encodedPayload) {
     return null
   }
 
@@ -59,7 +100,21 @@ export function verifyGsMembershipConfirmationToken(token: string | null | undef
   }
 
   try {
-    const payload = JSON.parse(fromBase64Url(encodedPayload)) as GsMembershipConfirmationPayload
+    let payload: GsMembershipConfirmationPayload | null = null
+
+    if (tokenParts.length === 3) {
+      const [encodedMemberId, encodedExpiry] = tokenParts
+      const memberId = fromBase64Url(encodedMemberId)
+      const exp = Number.parseInt(encodedExpiry, 36)
+      payload = { memberId, exp }
+    } else if (tokenParts.length === 2) {
+      payload = JSON.parse(fromBase64Url(encodedPayload)) as GsMembershipConfirmationPayload
+    }
+
+    if (!payload) {
+      return null
+    }
+
     if (!payload.memberId || !payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) {
       return null
     }

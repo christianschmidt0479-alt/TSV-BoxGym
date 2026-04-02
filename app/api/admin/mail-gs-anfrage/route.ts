@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
-import { createGsMembershipConfirmationToken } from "@/lib/gsMembershipConfirmation"
+import { createGsMembershipConfirmationLinks } from "@/lib/gsMembershipConfirmation"
 import { getAppBaseUrl } from "@/lib/mailConfig"
 import { sendGsMembershipCheckEmail } from "@/lib/resendClient"
 
@@ -13,6 +13,8 @@ type RequestBody = {
   birthdate?: string
   recipientEmail?: string
   subject?: string
+  confirmationYesLink?: string
+  confirmationNoLink?: string
   confirmationLink?: string
   athleteLabel?: string
 }
@@ -85,7 +87,8 @@ export async function POST(request: Request) {
     const memberId = body?.memberId?.trim() ?? ""
     const recipientEmail = body?.recipientEmail?.trim() ?? ""
     const subject = body?.subject?.trim() ?? ""
-    const confirmationLink = body?.confirmationLink?.trim() ?? ""
+    const confirmationYesLink = body?.confirmationYesLink?.trim() ?? body?.confirmationLink?.trim() ?? ""
+    const confirmationNoLink = body?.confirmationNoLink?.trim() ?? ""
     const athleteLabel = body?.athleteLabel?.trim() ?? ""
 
     if (!firstName || !lastName || !birthdate) {
@@ -97,9 +100,11 @@ export async function POST(request: Request) {
       return jsonError("Geburtsdatum ist ungültig.", 400)
     }
 
-    const resolvedConfirmationLink = confirmationLink || (memberId
-      ? `${getAppBaseUrl().replace(/\/+$/, "")}/mitgliedschaft-bestaetigen?token=${createGsMembershipConfirmationToken(memberId)}`
-      : undefined)
+    const generatedLinks = memberId
+      ? createGsMembershipConfirmationLinks(memberId, getAppBaseUrl())
+      : null
+    const resolvedConfirmationYesLink = confirmationYesLink || generatedLinks?.yesLink
+    const resolvedConfirmationNoLink = confirmationNoLink || generatedLinks?.noLink
 
     const delivery = await sendGsMembershipCheckEmail({
       firstName,
@@ -107,7 +112,8 @@ export async function POST(request: Request) {
       birthdateLabel,
       recipientEmail: recipientEmail || undefined,
       subject: subject || undefined,
-      confirmationLink: resolvedConfirmationLink,
+      confirmationYesLink: resolvedConfirmationYesLink,
+      confirmationNoLink: resolvedConfirmationNoLink,
       athleteLabel: athleteLabel || undefined,
     })
 
@@ -119,7 +125,12 @@ export async function POST(request: Request) {
       details: `GS-Anfrage gesendet an ${recipientEmail || "gs@tsv-falkensee.de"} fuer Geburtsdatum ${birthdateLabel}${delivery.messageId ? ` · Resend ${delivery.messageId}` : ""}`,
     })
 
-    return NextResponse.json({ ok: true, delivery, confirmationLink: resolvedConfirmationLink ?? null })
+    return NextResponse.json({
+      ok: true,
+      delivery,
+      confirmationYesLink: resolvedConfirmationYesLink ?? null,
+      confirmationNoLink: resolvedConfirmationNoLink ?? null,
+    })
   } catch (error) {
     console.error(error)
     const message = error instanceof Error ? error.message : "GS-Anfrage konnte nicht versendet werden."

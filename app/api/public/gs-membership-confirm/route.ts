@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import { isAllowedOrigin } from "@/lib/apiSecurity"
-import { verifyGsMembershipConfirmationToken } from "@/lib/gsMembershipConfirmation"
+import { normalizeGsMembershipDecision, verifyGsMembershipConfirmationToken } from "@/lib/gsMembershipConfirmation"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
-const GS_CONFIRMATION_TOKEN_PREFIX = "gs_confirmed:"
+const GS_CONFIRMATION_YES_PREFIX = "gs_confirmed:"
+const GS_CONFIRMATION_NO_PREFIX = "gs_rejected:"
 
 function isMissingAuditLogTableError(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
@@ -12,6 +13,7 @@ function isMissingAuditLogTableError(error: { message?: string; code?: string } 
 
 type RequestBody = {
   token?: string
+  decision?: string
 }
 
 export async function POST(request: Request) {
@@ -30,6 +32,11 @@ export async function POST(request: Request) {
     const payload = verifyGsMembershipConfirmationToken(body?.token?.trim() ?? "")
     if (!payload) {
       return NextResponse.json({ ok: false, error: "Link ungültig oder abgelaufen." }, { status: 400 })
+    }
+
+    const decision = normalizeGsMembershipDecision(body?.decision)
+    if (!decision) {
+      return NextResponse.json({ ok: false, error: "Entscheidung fehlt oder ist ungültig." }, { status: 400 })
     }
 
     const supabase = createServerSupabaseServiceClient()
@@ -52,13 +59,26 @@ export async function POST(request: Request) {
     }
 
     const existingToken = typeof member.email_verification_token === "string" ? member.email_verification_token : ""
-    const existingTokenConfirmation = existingToken.startsWith(GS_CONFIRMATION_TOKEN_PREFIX)
-    const confirmationStamp = existingTokenConfirmation ? existingToken.slice(GS_CONFIRMATION_TOKEN_PREFIX.length) : new Date().toISOString()
+    const existingDecision = existingToken.startsWith(GS_CONFIRMATION_YES_PREFIX)
+      ? "ja"
+      : existingToken.startsWith(GS_CONFIRMATION_NO_PREFIX)
+        ? "nein"
+        : null
+    const existingStamp = existingDecision === "ja"
+      ? existingToken.slice(GS_CONFIRMATION_YES_PREFIX.length)
+      : existingDecision === "nein"
+        ? existingToken.slice(GS_CONFIRMATION_NO_PREFIX.length)
+        : ""
+    const confirmationStamp = existingDecision === decision && existingStamp ? existingStamp : new Date().toISOString()
+    const decisionPrefix = decision === "ja" ? GS_CONFIRMATION_YES_PREFIX : GS_CONFIRMATION_NO_PREFIX
+    const decisionAction = decision === "ja" ? "member_gs_confirmation_confirmed" : "member_gs_confirmation_rejected"
+    const decisionDetails = decision === "ja" ? "Mitgliedschaft per GS-Link bestaetigt." : "Mitgliedschaft per GS-Link als nicht vorhanden markiert."
+    const actorName = decision === "ja" ? "GS Ja-Link" : "GS Nein-Link"
 
-    if (!existingTokenConfirmation) {
+    if (existingDecision !== decision || existingStamp !== confirmationStamp) {
       const { error: updateMemberError } = await supabase
         .from("members")
-        .update({ email_verification_token: `${GS_CONFIRMATION_TOKEN_PREFIX}${confirmationStamp}` })
+        .update({ email_verification_token: `${decisionPrefix}${confirmationStamp}` })
         .eq("id", payload.memberId)
 
       if (updateMemberError) {
@@ -66,32 +86,18 @@ export async function POST(request: Request) {
       }
     }
 
-    const { data: existingLog, error: existingLogError } = await supabase
-      .from("admin_audit_log")
-      .select("id, created_at")
-      .eq("action", "member_gs_confirmation_confirmed")
-      .eq("target_type", "member")
-      .eq("target_id", payload.memberId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-
-    if (existingLogError && !isMissingAuditLogTableError(existingLogError)) {
-      throw existingLogError
-    }
-
-    const existingConfirmation = existingLog?.[0] ?? null
-    if (!existingConfirmation) {
+    if (existingDecision !== decision) {
       const displayName = `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.name || "—"
       const { error: insertError } = await supabase.from("admin_audit_log").insert([
         {
           actor_role: "public",
           actor_email: null,
-          actor_name: "GS Bestaetigungslink",
-          action: "member_gs_confirmation_confirmed",
+          actor_name: actorName,
+          action: decisionAction,
           target_type: "member",
           target_id: payload.memberId,
           target_name: displayName,
-          details: "Mitgliedschaft per GS-Link bestaetigt.",
+          details: decisionDetails,
         },
       ])
 
@@ -102,7 +108,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      alreadyConfirmed: existingTokenConfirmation || !!existingConfirmation,
+      decision,
+      alreadyProcessed: existingDecision === decision,
       memberId: payload.memberId,
       confirmedAt: confirmationStamp,
     })

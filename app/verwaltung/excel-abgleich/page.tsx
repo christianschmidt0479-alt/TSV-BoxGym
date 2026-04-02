@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -283,6 +284,15 @@ export default function ExcelAbgleichPage() {
         throw new Error(await response.text())
       }
 
+      const payload = (await response.json()) as {
+        member?: {
+          email?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          name?: string | null
+        }
+      }
+
       setResult((current) => {
         if (!current) return current
 
@@ -305,6 +315,24 @@ export default function ExcelAbgleichPage() {
           metrics: buildMetrics(nextRows),
         }
       })
+
+      if (payload.member?.email) {
+        router.push(
+          buildAdminMailComposeHref({
+            title: "Freigabe-Mail bearbeiten",
+            returnTo: "/verwaltung/excel-abgleich",
+            requests: [
+              {
+                kind: "approval_notice",
+                email: payload.member.email,
+                name: `${payload.member.first_name ?? ""} ${payload.member.last_name ?? ""}`.trim() || payload.member.name || undefined,
+                targetKind: "member",
+                group: row.groupDb,
+              },
+            ],
+          })
+        )
+      }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "TSV-Mitglied konnte nicht gesetzt werden.")
     } finally {

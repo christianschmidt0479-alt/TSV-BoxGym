@@ -4,7 +4,8 @@ import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
-const GS_CONFIRMATION_TOKEN_PREFIX = "gs_confirmed:"
+const GS_CONFIRMATION_YES_PREFIX = "gs_confirmed:"
+const GS_CONFIRMATION_NO_PREFIX = "gs_rejected:"
 
 function isMissingAuditLogTableError(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
@@ -46,22 +47,27 @@ export async function GET(request: Request) {
 
     const pendingMemberIds = (pendingMembersResponse.data ?? []).map((row) => row.id).filter(Boolean)
     const gsConfirmedAtByMemberId: Record<string, string> = {}
+    const gsRejectedAtByMemberId: Record<string, string> = {}
 
     for (const row of pendingMembersResponse.data ?? []) {
       if (typeof row.email_verification_token !== "string") {
         continue
       }
 
-      if (row.email_verification_token.startsWith(GS_CONFIRMATION_TOKEN_PREFIX)) {
-        gsConfirmedAtByMemberId[row.id] = row.email_verification_token.slice(GS_CONFIRMATION_TOKEN_PREFIX.length)
+      if (row.email_verification_token.startsWith(GS_CONFIRMATION_YES_PREFIX)) {
+        gsConfirmedAtByMemberId[row.id] = row.email_verification_token.slice(GS_CONFIRMATION_YES_PREFIX.length)
+      }
+
+      if (row.email_verification_token.startsWith(GS_CONFIRMATION_NO_PREFIX)) {
+        gsRejectedAtByMemberId[row.id] = row.email_verification_token.slice(GS_CONFIRMATION_NO_PREFIX.length)
       }
     }
 
     if (pendingMemberIds.length > 0) {
       const { data: confirmationLogs, error: confirmationLogsError } = await supabase
         .from("admin_audit_log")
-        .select("target_id, created_at")
-        .eq("action", "member_gs_confirmation_confirmed")
+        .select("target_id, action, created_at")
+        .in("action", ["member_gs_confirmation_confirmed", "member_gs_confirmation_rejected"])
         .eq("target_type", "member")
         .in("target_id", pendingMemberIds)
         .order("created_at", { ascending: false })
@@ -71,11 +77,17 @@ export async function GET(request: Request) {
       }
 
       for (const row of confirmationLogs ?? []) {
-        if (!row.target_id || gsConfirmedAtByMemberId[row.target_id]) {
+        if (!row.target_id || gsConfirmedAtByMemberId[row.target_id] || gsRejectedAtByMemberId[row.target_id]) {
           continue
         }
 
-        gsConfirmedAtByMemberId[row.target_id] = row.created_at as string
+        if (row.action === "member_gs_confirmation_confirmed") {
+          gsConfirmedAtByMemberId[row.target_id] = row.created_at as string
+        }
+
+        if (row.action === "member_gs_confirmation_rejected") {
+          gsRejectedAtByMemberId[row.target_id] = row.created_at as string
+        }
       }
     }
 
@@ -91,6 +103,7 @@ export async function GET(request: Request) {
       }),
       checkinRows: checkinsResponse.data ?? [],
       gsConfirmedAtByMemberId,
+      gsRejectedAtByMemberId,
     })
   } catch (error) {
     console.error("admin pending overview failed", error)

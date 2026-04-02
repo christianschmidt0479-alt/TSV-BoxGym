@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { type TrainerAccountRecord } from "@/lib/trainerDb"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -33,6 +35,7 @@ async function readResponseError(response: Response, fallback: string) {
 }
 
 export default function TrainerverwaltungPage() {
+  const router = useRouter()
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -325,18 +328,21 @@ export default function TrainerverwaltungPage() {
                             action: "approve_trainer",
                             trainerId: trainer.id,
                           })
-                          await fetch("/api/send-verification", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              purpose: "approval_notice",
-                              email: trainer.email,
-                              name: getTrainerDisplayName(trainer),
-                              kind: "trainer",
-                            }),
-                          })
-                          alert("Trainerzugang freigegeben.")
                           await loadTrainers()
+                          router.push(
+                            buildAdminMailComposeHref({
+                              title: "Trainer-Freigabemail bearbeiten",
+                              returnTo: "/verwaltung/trainer",
+                              requests: [
+                                {
+                                  kind: "approval_notice",
+                                  email: trainer.email,
+                                  name: getTrainerDisplayName(trainer),
+                                  targetKind: "trainer",
+                                },
+                              ],
+                            })
+                          )
                         } catch (error) {
                           console.error(error)
                           alert("Fehler bei der Trainerfreigabe.")

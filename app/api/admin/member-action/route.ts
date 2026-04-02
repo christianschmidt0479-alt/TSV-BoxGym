@@ -6,7 +6,7 @@ import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
-import { sendAccessCodeChangedEmail, sendApprovalEmail, sendVerificationEmail } from "@/lib/resendClient"
+import { sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup, parseTrainingGroup } from "@/lib/trainingGroups"
 
@@ -197,23 +197,6 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!data) return jsonError("Mitglied nicht gefunden", 404)
-
-      if (body.newPin?.trim() && data.email) {
-        await sendAccessCodeChangedEmail({
-          email: data.email,
-          name: getMemberDisplayName(data),
-          kind: "member",
-        })
-      }
-
-      if (data.email) {
-        await sendApprovalEmail({
-          email: data.email,
-          name: getMemberDisplayName(data),
-          kind: "member",
-          group: approvedGroup,
-        })
-      }
 
       await writeAdminAuditLog({
         session,

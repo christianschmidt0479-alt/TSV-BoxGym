@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +13,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ChevronDown, ChevronUp } from "lucide-react"
+import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { buildTrainingGroupOptions, compareTrainingGroupOrder, normalizeTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -187,6 +189,7 @@ function getMemberGroupValue(group?: string | null) {
 }
 
 export default function MitgliederverwaltungPage() {
+  const router = useRouter()
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [members, setMembers] = useState<MemberRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -409,25 +412,20 @@ export default function MitgliederverwaltungPage() {
 
     setResendingVerificationMemberId(member.id)
     try {
-      const response = await fetch("/api/admin/member-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "resend_verification",
-          memberId: member.id,
-        }),
-      })
-      if (!response.ok) throw new Error(await response.text())
-      const result = (await response.json()) as {
-        verificationLink?: string
-        delivery?: { messageId?: string | null }
-      }
-      const copied = result.verificationLink ? await copyTextToClipboard(result.verificationLink) : false
-      const providerSuffix = result.delivery?.messageId ? ` Provider-ID: ${result.delivery.messageId}` : ""
-      alert(
-        copied
-          ? `Bestätigungs-Mail wurde an den Mail-Dienst übergeben.${providerSuffix} Der Bestätigungslink wurde zusätzlich in die Zwischenablage kopiert.`
-          : `Bestätigungs-Mail wurde an den Mail-Dienst übergeben.${providerSuffix}`
+      router.push(
+        buildAdminMailComposeHref({
+          title: "Bestätigungs-Mail bearbeiten",
+          returnTo: "/verwaltung/mitglieder",
+          requests: [
+            {
+              kind: "verification_member",
+              memberId: member.id,
+              email: member.email,
+              name: getMemberDisplayName(member),
+              targetKind: "member",
+            },
+          ],
+        })
       )
     } catch (error) {
       console.error(error)
@@ -871,27 +869,21 @@ export default function MitgliederverwaltungPage() {
                                             const payload = (await response.json()) as { member: MemberRecord }
                                             const updated = payload.member
 
+                                            const competitionMailRequests = []
+
                                             if (!editingMember.is_competition_member && updated.is_competition_member && editingMember.email) {
-                                              await fetch("/api/send-verification", {
-                                                method: "POST",
-                                                headers: { "Content-Type": "application/json" },
-                                                body: JSON.stringify({
-                                                  purpose: "competition_assigned",
-                                                  email: editingMember.email,
-                                                  name: `${editingMember.first_name ?? ""} ${editingMember.last_name ?? ""}`.trim() || editingMember.name,
-                                                }),
+                                              competitionMailRequests.push({
+                                                kind: "competition_assigned" as const,
+                                                email: editingMember.email,
+                                                name: `${editingMember.first_name ?? ""} ${editingMember.last_name ?? ""}`.trim() || editingMember.name,
                                               })
                                             }
 
                                             if (editingMember.is_competition_member && !updated.is_competition_member && editingMember.email) {
-                                              await fetch("/api/send-verification", {
-                                                method: "POST",
-                                                headers: { "Content-Type": "application/json" },
-                                                body: JSON.stringify({
-                                                  purpose: "competition_removed",
-                                                  email: editingMember.email,
-                                                  name: `${editingMember.first_name ?? ""} ${editingMember.last_name ?? ""}`.trim() || editingMember.name,
-                                                }),
+                                              competitionMailRequests.push({
+                                                kind: "competition_removed" as const,
+                                                email: editingMember.email,
+                                                name: `${editingMember.first_name ?? ""} ${editingMember.last_name ?? ""}`.trim() || editingMember.name,
                                               })
                                             }
 
@@ -912,6 +904,16 @@ export default function MitgliederverwaltungPage() {
                                                   : row
                                               )
                                             )
+
+                                            if (competitionMailRequests.length > 0) {
+                                              router.push(
+                                                buildAdminMailComposeHref({
+                                                  title: "Wettkampf-Mail bearbeiten",
+                                                  returnTo: "/verwaltung/mitglieder",
+                                                  requests: competitionMailRequests,
+                                                })
+                                              )
+                                            }
                                           } catch (error) {
                                             alert(getErrorMessage(error, "Die Wettkämpferrolle konnte nicht gespeichert werden."))
                                           } finally {

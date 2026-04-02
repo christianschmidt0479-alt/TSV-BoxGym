@@ -64,6 +64,8 @@ type GsMembershipCheckMailInput = {
   birthdateLabel: string
   recipientEmail?: string
   subject?: string
+  confirmationYesLink?: string
+  confirmationNoLink?: string
   confirmationLink?: string
   athleteLabel?: string
 }
@@ -88,6 +90,88 @@ function getResendApiKey() {
   const serverKey = process.env.RESEND_API_KEY
   const devFallback = process.env.NODE_ENV !== "production" ? process.env.NEXT_PUBLIC_RESEND_API_KEY : undefined
   return serverKey || devFallback
+}
+
+async function sendMailWithResend(input: {
+  to: string
+  subject: string
+  text: string
+  html: string
+  replyTo?: string
+}): Promise<ResendEmailDeliveryResult> {
+  const apiKey = getResendApiKey()
+  const from = getMailFromAddress()
+  const replyTo = input.replyTo?.trim() || getReplyToAddress()
+
+  if (!apiKey) {
+    throw new Error("Missing RESEND_API_KEY")
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      reply_to: replyTo,
+      to: [input.to],
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(errorText || "Resend request failed")
+  }
+
+  try {
+    const payload = (await response.json()) as { id?: string | null }
+    return {
+      provider: "resend",
+      messageId: typeof payload?.id === "string" ? payload.id : null,
+    }
+  } catch {
+    return {
+      provider: "resend",
+      messageId: null,
+    }
+  }
+}
+
+export async function sendCustomEmail(input: {
+  to: string
+  subject: string
+  text: string
+  replyTo?: string
+}): Promise<ResendEmailDeliveryResult> {
+  const htmlBody = input.text
+    .split(/\n\n+/)
+    .map((paragraph) => `<p style="margin: 0 0 16px; white-space: pre-wrap;">${escapeHtml(paragraph)}</p>`)
+    .join("")
+
+  return sendMailWithResend({
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    replyTo: input.replyTo,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #18181b; background: #f4f4f5; padding: 24px;">
+        <div style="max-width: 720px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e4e4e7;">
+          <div style="background: linear-gradient(135deg, #154c83 0%, #0f2740 100%); color: #ffffff; padding: 28px 28px 24px;">
+            <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85;">TSV BoxGym</div>
+            <h1 style="margin: 10px 0 0; font-size: 24px; line-height: 1.2;">${escapeHtml(input.subject)}</h1>
+          </div>
+          <div style="padding: 28px;">
+            ${htmlBody}
+          </div>
+        </div>
+      </div>
+    `,
+  })
 }
 
 function getVerificationMailContent(input: VerificationMailInput) {
@@ -148,25 +232,10 @@ function getVerificationMailContent(input: VerificationMailInput) {
 }
 
 export async function sendVerificationEmail(input: VerificationMailInput): Promise<ResendEmailDeliveryResult> {
-  const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = getReplyToAddress()
   const content = getVerificationMailContent(input)
 
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [input.email],
+  return sendMailWithResend({
+      to: input.email,
       subject: content.subject,
       text: `${content.headline}
 
@@ -211,30 +280,11 @@ TSV BoxGym`,
             </div>
           </div>
           <div style="max-width: 640px; margin: 14px auto 0; font-size: 12px; color: #71717a; text-align: center;">
-            TSV BoxGym · Antwort an ${escapeHtml(replyTo)}
+            TSV BoxGym · Antwort an ${escapeHtml(getReplyToAddress())}
           </div>
         </div>
       `,
-    }),
   })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend request failed")
-  }
-
-  try {
-    const payload = (await response.json()) as { id?: string | null }
-    return {
-      provider: "resend",
-      messageId: typeof payload?.id === "string" ? payload.id : null,
-    }
-  } catch {
-    return {
-      provider: "resend",
-      messageId: null,
-    }
-  }
 }
 
 export async function sendAdminNotificationEmail(input: AdminNotificationInput) {
@@ -789,11 +839,17 @@ export async function sendGsMembershipCheckEmail(
   const fullName = `${input.firstName} ${input.lastName}`.trim()
   const athleteLabel = input.athleteLabel?.trim() || "Sportler"
   const subject = input.subject?.trim() || `Mitgliedsabgleich TSV - ${fullName}`
-  const confirmationBlock = input.confirmationLink?.trim()
+  const confirmationYesLink = input.confirmationYesLink?.trim() || input.confirmationLink?.trim()
+  const confirmationNoLink = input.confirmationNoLink?.trim()
+  const confirmationBlock = confirmationYesLink && confirmationNoLink
     ? `
 
-Bitte bestätigt dies über folgenden Link:
-${input.confirmationLink.trim()}`
+Bitte genau einen Link anklicken:
+JA, Mitglied:
+${confirmationYesLink}
+
+NEIN, kein Mitglied:
+${confirmationNoLink}`
     : ""
   const text = `Liebe GS,
 
@@ -803,10 +859,11 @@ Vielen Dank.
 
 Liebe Grüße
 Christian`
-  const confirmationHtml = input.confirmationLink?.trim()
+  const confirmationHtml = confirmationYesLink && confirmationNoLink
     ? `
-              <p>Bitte bestätigt dies über folgenden Link:</p>
-              <p><a href="${escapeHtml(input.confirmationLink.trim())}">${escapeHtml(input.confirmationLink.trim())}</a></p>
+              <p>Bitte genau eine Auswahl anklicken:</p>
+              <p><strong>JA, Mitglied:</strong><br /><a href="${escapeHtml(confirmationYesLink)}">${escapeHtml(confirmationYesLink)}</a></p>
+              <p><strong>NEIN, kein Mitglied:</strong><br /><a href="${escapeHtml(confirmationNoLink)}">${escapeHtml(confirmationNoLink)}</a></p>
             `
     : ""
 

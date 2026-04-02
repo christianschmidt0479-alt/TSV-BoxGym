@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type MailConfigResponse = {
@@ -23,6 +25,7 @@ type CheckinSettingsResponse = {
 }
 
 export default function EinstellungenPage() {
+  const router = useRouter()
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [mailTestEmail, setMailTestEmail] = useState("")
   const [mailTestName, setMailTestName] = useState("Testmitglied")
@@ -249,23 +252,21 @@ export default function EinstellungenPage() {
 
               try {
                 setMailTestSending(true)
-
-                const response = await fetch("/api/send-verification", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    email: mailTestEmail.trim(),
-                    name: mailTestName.trim() || "Testmitglied",
-                    link: window.location.origin,
-                  }),
-                })
-
-                if (!response.ok) {
-                  const message = await response.text()
-                  throw new Error(message || "Mailversand fehlgeschlagen.")
-                }
-
-                alert("Probe-Mail erfolgreich versendet.")
+                router.push(
+                  buildAdminMailComposeHref({
+                    title: "Probe-Mail bearbeiten",
+                    returnTo: "/verwaltung/einstellungen",
+                    requests: [
+                      {
+                        kind: "verification",
+                        email: mailTestEmail.trim(),
+                        name: mailTestName.trim() || "Testmitglied",
+                        link: window.location.origin,
+                        targetKind: "member",
+                      },
+                    ],
+                  })
+                )
               } catch (error) {
                 console.error(error)
                 const message = error instanceof Error ? error.message : "Mailversand fehlgeschlagen."
