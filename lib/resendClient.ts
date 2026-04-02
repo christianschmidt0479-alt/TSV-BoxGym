@@ -58,6 +58,21 @@ type MedicalExamReminderAdminMailInput = {
   dueDate?: string
 }
 
+type GsMembershipCheckMailInput = {
+  firstName: string
+  lastName: string
+  birthdateLabel: string
+  recipientEmail?: string
+  subject?: string
+  confirmationLink?: string
+  athleteLabel?: string
+}
+
+export type ResendEmailDeliveryResult = {
+  provider: "resend"
+  messageId: string | null
+}
+
 import { getAdminNotificationAddress, getMailFromAddress, getReplyToAddress } from "@/lib/mailConfig"
 
 function escapeHtml(value: string) {
@@ -132,7 +147,7 @@ function getVerificationMailContent(input: VerificationMailInput) {
   }
 }
 
-export async function sendVerificationEmail(input: VerificationMailInput) {
+export async function sendVerificationEmail(input: VerificationMailInput): Promise<ResendEmailDeliveryResult> {
   const apiKey = getResendApiKey()
   const from = getMailFromAddress()
   const replyTo = getReplyToAddress()
@@ -206,6 +221,19 @@ TSV BoxGym`,
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(errorText || "Resend request failed")
+  }
+
+  try {
+    const payload = (await response.json()) as { id?: string | null }
+    return {
+      provider: "resend",
+      messageId: typeof payload?.id === "string" ? payload.id : null,
+    }
+  } catch {
+    return {
+      provider: "resend",
+      messageId: null,
+    }
   }
 }
 
@@ -743,6 +771,93 @@ TSV BoxGym`,
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(errorText || "Resend medical exam reminder failed")
+  }
+}
+
+export async function sendGsMembershipCheckEmail(
+  input: GsMembershipCheckMailInput
+): Promise<ResendEmailDeliveryResult> {
+  const apiKey = getResendApiKey()
+
+  if (!apiKey) {
+    throw new Error("Missing RESEND_API_KEY")
+  }
+
+  const from = getMailFromAddress()
+  const replyTo = "christian.schmidt@tsv-falkensee.de"
+  const to = input.recipientEmail?.trim() || "gs@tsv-falkensee.de"
+  const fullName = `${input.firstName} ${input.lastName}`.trim()
+  const athleteLabel = input.athleteLabel?.trim() || "Sportler"
+  const subject = input.subject?.trim() || `Mitgliedsabgleich TSV - ${fullName}`
+  const confirmationBlock = input.confirmationLink?.trim()
+    ? `
+
+Bitte bestätigt dies über folgenden Link:
+${input.confirmationLink.trim()}`
+    : ""
+  const text = `Liebe GS,
+
+bitte prüft, ob ${athleteLabel} ${fullName}, geboren am ${input.birthdateLabel}, Mitglied in unserem Verein ist.${confirmationBlock}
+
+Vielen Dank.
+
+Liebe Grüße
+Christian`
+  const confirmationHtml = input.confirmationLink?.trim()
+    ? `
+              <p>Bitte bestätigt dies über folgenden Link:</p>
+              <p><a href="${escapeHtml(input.confirmationLink.trim())}">${escapeHtml(input.confirmationLink.trim())}</a></p>
+            `
+    : ""
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      reply_to: replyTo,
+      to: [to],
+      subject,
+      text,
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #18181b; background: #f4f4f5; padding: 24px;">
+          <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e4e4e7;">
+            <div style="background: linear-gradient(135deg, #154c83 0%, #0f2740 100%); color: #ffffff; padding: 28px 28px 24px;">
+              <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85;">TSV BoxGym</div>
+              <h1 style="margin: 10px 0 0; font-size: 24px; line-height: 1.2;">Mitgliedsabgleich TSV</h1>
+            </div>
+            <div style="padding: 28px;">
+              <p style="margin-top: 0;">Liebe GS,</p>
+              <p>bitte prüft, ob ${escapeHtml(athleteLabel)} <strong>${escapeHtml(fullName)}</strong>, geboren am <strong>${escapeHtml(input.birthdateLabel)}</strong>, Mitglied in unserem Verein ist.</p>
+              ${confirmationHtml}
+              <p>Vielen Dank.</p>
+              <p style="margin-bottom: 0;">Liebe Grüße<br />Christian</p>
+            </div>
+          </div>
+        </div>
+      `,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(errorText || "Resend GS membership check failed")
+  }
+
+  try {
+    const payload = (await response.json()) as { id?: string | null }
+    return {
+      provider: "resend",
+      messageId: typeof payload?.id === "string" ? payload.id : null,
+    }
+  } catch {
+    return {
+      provider: "resend",
+      messageId: null,
+    }
   }
 }
 
