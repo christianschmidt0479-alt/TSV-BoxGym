@@ -8,6 +8,11 @@ import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup, parseTrainingGroup } from "@/lib/trainingGroups"
 
+function isMissingColumnError(error: { message?: string; code?: string; details?: string } | null, column: string) {
+  const message = `${error?.message ?? ""} ${error?.details ?? ""}`.toLowerCase()
+  return error?.code === "PGRST204" || message.includes(column.toLowerCase())
+}
+
 type MemberProfileBody =
   | {
       action: "save_profile"
@@ -57,6 +62,61 @@ function sanitizeMemberForAdmin(member: Record<string, unknown>) {
   return sanitized
 }
 
+async function saveMemberProfile(
+  supabase: ReturnType<typeof getServerSupabase>,
+  body: Extract<MemberProfileBody, { action: "save_profile" }>,
+  nextValues: {
+    firstName?: string | null
+    lastName?: string | null
+    fullName?: string | null
+    birthdate?: string | null
+    gender?: string | null
+    baseGroup?: string | null
+    memberPin?: string
+  }
+) {
+  const baseUpdate = {
+    first_name: nextValues.firstName,
+    last_name: nextValues.lastName,
+    name: nextValues.fullName,
+    birthdate: nextValues.birthdate,
+    email: body.email?.trim() || null,
+    phone: body.phone?.trim() || null,
+    guardian_name: body.guardianName?.trim() || null,
+    member_pin: nextValues.memberPin ? await hashAuthSecret(nextValues.memberPin) : undefined,
+  }
+
+  const withGender = await supabase
+    .from("members")
+    .update({
+      ...baseUpdate,
+      gender: nextValues.gender,
+      base_group: nextValues.baseGroup,
+    })
+    .eq("id", body.memberId)
+    .select("id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group")
+    .single()
+
+  if (!withGender.error || !isMissingColumnError(withGender.error, "gender")) {
+    return withGender
+  }
+
+  const withoutGender = await supabase
+    .from("members")
+    .update({
+      ...baseUpdate,
+      base_group: nextValues.baseGroup,
+    })
+    .eq("id", body.memberId)
+    .select("id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group")
+    .single()
+
+  return {
+    data: withoutGender.data ? { ...withoutGender.data, gender: null } : null,
+    error: withoutGender.error,
+  }
+}
+
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
@@ -91,25 +151,18 @@ export async function POST(request: Request) {
         ? `${nextFirstName ?? ""} ${nextLastName ?? ""}`.trim() || null
         : undefined
 
-      const { data: member, error: memberError } = await supabase
-        .from("members")
-        .update({
-          first_name: nextFirstName,
-          last_name: nextLastName,
-          name: nextFullName,
-          birthdate: nextBirthdate,
-          gender: nextGender,
-          base_group: nextBaseGroup,
-          email: body.email?.trim() || null,
-          phone: body.phone?.trim() || null,
-          guardian_name: body.guardianName?.trim() || null,
-          member_pin: memberPin ? await hashAuthSecret(memberPin) : undefined,
-        })
-        .eq("id", body.memberId)
-        .select("id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group")
-        .single()
+      const { data: member, error: memberError } = await saveMemberProfile(supabase, body, {
+        firstName: nextFirstName,
+        lastName: nextLastName,
+        fullName: nextFullName,
+        birthdate: nextBirthdate,
+        gender: nextGender,
+        baseGroup: nextBaseGroup,
+        memberPin,
+      })
 
       if (memberError) throw memberError
+      if (!member) throw new Error("Mitglied nicht gefunden")
 
       let parentLink: {
         parent_account_id: string

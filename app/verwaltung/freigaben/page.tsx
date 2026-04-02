@@ -615,7 +615,7 @@ export default function FreigabenPage() {
                         onClick={() => (isEditing ? closePendingEditor() : openPendingEditor(member))}
                         disabled={savingEditMemberId === member.id || deletingMemberId === member.id}
                       >
-                        {isEditing ? "Korrektur schließen" : "Daten korrigieren"}
+                        {isEditing ? "Änderung schließen" : "Daten ändern"}
                       </Button>
 
                       <Button

@@ -7,6 +7,11 @@ import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 const GS_CONFIRMATION_YES_PREFIX = "gs_confirmed:"
 const GS_CONFIRMATION_NO_PREFIX = "gs_rejected:"
 
+function isMissingColumnError(error: { message?: string; code?: string; details?: string } | null, column: string) {
+  const message = `${error?.message ?? ""} ${error?.details ?? ""}`.toLowerCase()
+  return error?.code === "PGRST204" || message.includes(column.toLowerCase())
+}
+
 function isMissingAuditLogTableError(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
   return error?.code === "PGRST205" || message.includes("admin_audit_log")
@@ -14,6 +19,29 @@ function isMissingAuditLogTableError(error: { message?: string; code?: string } 
 
 function getServerSupabase() {
   return createServerSupabaseServiceClient()
+}
+
+async function loadPendingMembers(supabase: ReturnType<typeof getServerSupabase>) {
+  const withGender = await supabase
+    .from("members")
+    .select("id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group")
+    .eq("is_approved", false)
+    .order("created_at", { ascending: false })
+
+  if (!withGender.error || !isMissingColumnError(withGender.error, "gender")) {
+    return withGender
+  }
+
+  const withoutGender = await supabase
+    .from("members")
+    .select("id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group")
+    .eq("is_approved", false)
+    .order("created_at", { ascending: false })
+
+  return {
+    data: (withoutGender.data ?? []).map((row) => ({ ...row, gender: null })),
+    error: withoutGender.error,
+  }
 }
 
 export async function GET(request: Request) {
@@ -34,11 +62,7 @@ export async function GET(request: Request) {
 
     const supabase = getServerSupabase()
     const [pendingMembersResponse, checkinsResponse] = await Promise.all([
-      supabase
-        .from("members")
-        .select("id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group")
-        .eq("is_approved", false)
-        .order("created_at", { ascending: false }),
+      loadPendingMembers(supabase),
       supabase.from("checkins").select("member_id"),
     ])
 
