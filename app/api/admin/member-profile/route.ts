@@ -6,12 +6,17 @@ import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { hashParentAccessCode } from "@/lib/parentAccountsDb"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+import { normalizeTrainingGroup, parseTrainingGroup } from "@/lib/trainingGroups"
 
 type MemberProfileBody =
   | {
       action: "save_profile"
       memberId: string
+      firstName?: string
+      lastName?: string
+      birthdate?: string
+      gender?: string
+      baseGroup?: string
       email?: string
       phone?: string
       guardianName?: string
@@ -77,16 +82,31 @@ export async function POST(request: Request) {
         return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
+      const nextFirstName = "firstName" in body ? body.firstName?.trim() || null : undefined
+      const nextLastName = "lastName" in body ? body.lastName?.trim() || null : undefined
+      const nextBirthdate = "birthdate" in body ? body.birthdate?.trim() || null : undefined
+      const nextGender = "gender" in body ? body.gender?.trim() || null : undefined
+      const nextBaseGroup = "baseGroup" in body ? parseTrainingGroup(body.baseGroup) || null : undefined
+      const nextFullName = nextFirstName !== undefined || nextLastName !== undefined
+        ? `${nextFirstName ?? ""} ${nextLastName ?? ""}`.trim() || null
+        : undefined
+
       const { data: member, error: memberError } = await supabase
         .from("members")
         .update({
+          first_name: nextFirstName,
+          last_name: nextLastName,
+          name: nextFullName,
+          birthdate: nextBirthdate,
+          gender: nextGender,
+          base_group: nextBaseGroup,
           email: body.email?.trim() || null,
           phone: body.phone?.trim() || null,
           guardian_name: body.guardianName?.trim() || null,
           member_pin: memberPin ? await hashAuthSecret(memberPin) : undefined,
         })
         .eq("id", body.memberId)
-        .select("id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group")
+        .select("id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, competition_target_weight, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group")
         .single()
 
       if (memberError) throw memberError

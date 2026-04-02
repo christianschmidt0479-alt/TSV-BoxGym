@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     const [pendingMembersResponse, checkinsResponse] = await Promise.all([
       supabase
         .from("members")
-        .select("id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group")
+        .select("id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group")
         .eq("is_approved", false)
         .order("created_at", { ascending: false }),
       supabase.from("checkins").select("member_id"),

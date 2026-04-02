@@ -21,6 +21,7 @@ type PendingMemberRecord = {
   first_name?: string
   last_name?: string
   birthdate?: string
+  gender?: string | null
   email?: string | null
   email_verified?: boolean
   email_verified_at?: string | null
@@ -44,7 +45,18 @@ type SendGsRequestOptions = {
   recipientEmail?: string
   subject?: string
   athleteLabel?: string
-  mode?: "default" | "test"
+}
+
+type PendingEditDraft = {
+  firstName: string
+  lastName: string
+  birthdate: string
+  gender: string
+  baseGroup: string
+  email: string
+  phone: string
+  guardianName: string
+  memberPin: string
 }
 
 const groupOptions = [...TRAINING_GROUPS]
@@ -117,6 +129,9 @@ export default function FreigabenPage() {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [gsConfirmedAtByMemberId, setGsConfirmedAtByMemberId] = useState<Record<string, string>>({})
   const [gsRejectedAtByMemberId, setGsRejectedAtByMemberId] = useState<Record<string, string>>({})
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<PendingEditDraft | null>(null)
+  const [savingEditMemberId, setSavingEditMemberId] = useState<string | null>(null)
 
   function showToast(message: string, variant: ToastState["variant"]) {
     setToast({ message, variant })
@@ -209,6 +224,116 @@ export default function FreigabenPage() {
     }
   }
 
+  function openPendingEditor(member: PendingMemberRecord) {
+    setEditingMemberId(member.id)
+    setEditDraft({
+      firstName: member.first_name ?? "",
+      lastName: member.last_name ?? "",
+      birthdate: member.birthdate ?? "",
+      gender: member.gender ?? "",
+      baseGroup: normalizeTrainingGroupOrFallback(member.base_group, getRecommendedTrainingGroup(member.birthdate)),
+      email: member.email ?? "",
+      phone: member.phone ?? "",
+      guardianName: member.guardian_name ?? "",
+      memberPin: pinDrafts[member.id] ?? "",
+    })
+  }
+
+  function closePendingEditor() {
+    setEditingMemberId(null)
+    setEditDraft(null)
+  }
+
+  async function savePendingEditor(member: PendingMemberRecord) {
+    if (!editDraft) {
+      return
+    }
+
+    const firstName = editDraft.firstName.trim()
+    const lastName = editDraft.lastName.trim()
+    const birthdate = editDraft.birthdate.trim()
+    const gender = editDraft.gender.trim()
+    const baseGroup = editDraft.baseGroup.trim()
+    const memberPin = editDraft.memberPin.trim()
+
+    if (!firstName || !lastName || !birthdate) {
+      alert("Vorname, Nachname und Geburtsdatum sind erforderlich.")
+      return
+    }
+
+    if (!gender) {
+      alert("Geschlecht ist erforderlich.")
+      return
+    }
+
+    if (!baseGroup) {
+      alert("Stammgruppe ist erforderlich.")
+      return
+    }
+
+    if (memberPin && !isValidPin(memberPin)) {
+      alert(PIN_REQUIREMENTS_MESSAGE)
+      return
+    }
+
+    try {
+      setSavingEditMemberId(member.id)
+
+      const response = await fetch("/api/admin/member-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_profile",
+          memberId: member.id,
+          firstName,
+          lastName,
+          birthdate,
+          gender,
+          baseGroup,
+          email: editDraft.email.trim(),
+          phone: editDraft.phone.trim(),
+          guardianName: editDraft.guardianName.trim() || undefined,
+          memberPin: memberPin || undefined,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+
+      const payload = (await response.json()) as { member: PendingMemberRecord }
+      const updated = payload.member
+
+      setPendingMembers((current) =>
+        current.map((entry) =>
+          entry.id === member.id
+            ? {
+                ...entry,
+                name: updated.name,
+                first_name: updated.first_name,
+                last_name: updated.last_name,
+                birthdate: updated.birthdate,
+                gender: updated.gender,
+                base_group: updated.base_group,
+                email: updated.email,
+                phone: updated.phone,
+                guardian_name: updated.guardian_name,
+              }
+            : entry
+        )
+      )
+      setGroupDrafts((current) => ({ ...current, [member.id]: updated.base_group || baseGroup }))
+      setPinDrafts((current) => ({ ...current, [member.id]: memberPin }))
+      showToast("Sportlerdaten aktualisiert", "success")
+      closePendingEditor()
+    } catch (error) {
+      console.error(error)
+      alert("Die Daten konnten nicht gespeichert werden.")
+    } finally {
+      setSavingEditMemberId(null)
+    }
+  }
+
   function sendGsRequest(member: PendingMemberRecord, options?: SendGsRequestOptions) {
     const firstName = member.first_name?.trim() ?? ""
     const lastName = member.last_name?.trim() ?? ""
@@ -221,7 +346,7 @@ export default function FreigabenPage() {
 
     router.push(
       buildAdminMailComposeHref({
-        title: options?.mode === "test" ? "Test-Mail an Christian bearbeiten" : "GS-Anfrage bearbeiten",
+        title: "GS-Anfrage bearbeiten",
         returnTo: "/verwaltung/freigaben",
         requests: [
           {
@@ -374,8 +499,7 @@ export default function FreigabenPage() {
               const remaining = Math.max(0, 6 - used)
               const gsConfirmedAt = gsConfirmedAtByMemberId[member.id] ?? ""
               const gsRejectedAt = gsRejectedAtByMemberId[member.id] ?? ""
-              const isClaraTestMember =
-                member.first_name?.trim() === "Clara" && member.last_name?.trim() === "Ullrich" && member.birthdate?.trim() === "2007-05-09"
+              const isEditing = editingMemberId === member.id && editDraft
               const selectedGroup =
                 groupDrafts[member.id] ??
                 normalizeTrainingGroupOrFallback(member.base_group, getRecommendedTrainingGroup(member.birthdate))
@@ -403,6 +527,7 @@ export default function FreigabenPage() {
                       {member.base_group === "Boxzwerge" ? (
                         <div className="text-zinc-600">Eltern / Notfallkontakt: {member.guardian_name || "—"}</div>
                       ) : null}
+                      <div className="text-zinc-600">Geschlecht: {member.gender || "—"}</div>
                       <div className="text-zinc-600">Stammgruppe: {member.base_group || "—"}</div>
                       {member.email_verified_at && (
                         <div className="text-xs text-zinc-500">
@@ -467,24 +592,31 @@ export default function FreigabenPage() {
                         Anfrage an GS senden
                       </Button>
 
-                      {isClaraTestMember ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="rounded-2xl border-amber-200 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
-                          onClick={() =>
-                            void sendGsRequest(member, {
-                              recipientEmail: "christian.schmidt0479@gmail.com",
-                              subject: "Test Mitgliedsabgleich Clara Ullrich",
-                              athleteLabel: "Sportlerin",
-                              mode: "test",
-                            })
-                          }
-                          disabled={deletingMemberId === member.id}
-                        >
-                          Test an Christian senden
-                        </Button>
-                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-2xl border-amber-200 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
+                        onClick={() =>
+                          void sendGsRequest(member, {
+                            recipientEmail: "christian.schmidt0479@gmail.com",
+                            subject: `Test Mitgliedsabgleich ${getMemberDisplayName(member)}`,
+                            athleteLabel: member.gender === "weiblich" ? "Sportlerin" : "Sportler",
+                          })
+                        }
+                        disabled={deletingMemberId === member.id}
+                      >
+                        Test an Christian senden
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-2xl border-zinc-300 text-zinc-800 hover:bg-zinc-50"
+                        onClick={() => (isEditing ? closePendingEditor() : openPendingEditor(member))}
+                        disabled={savingEditMemberId === member.id || deletingMemberId === member.id}
+                      >
+                        {isEditing ? "Korrektur schließen" : "Daten korrigieren"}
+                      </Button>
 
                       <Button
                         className={
@@ -606,6 +738,132 @@ export default function FreigabenPage() {
                       )}
                     </div>
                   </div>
+
+                  {isEditing ? (
+                    <form
+                      className="mt-5 grid gap-4 rounded-3xl border border-zinc-200 bg-zinc-50 p-4 md:grid-cols-2 xl:grid-cols-3"
+                      onSubmit={async (event) => {
+                        event.preventDefault()
+                        await savePendingEditor(member)
+                      }}
+                    >
+                      <div className="space-y-2">
+                        <Label>Vorname</Label>
+                        <Input
+                          value={editDraft.firstName}
+                          onChange={(event) => setEditDraft((current) => (current ? { ...current, firstName: event.target.value } : current))}
+                          className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Nachname</Label>
+                        <Input
+                          value={editDraft.lastName}
+                          onChange={(event) => setEditDraft((current) => (current ? { ...current, lastName: event.target.value } : current))}
+                          className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Geburtsdatum</Label>
+                        <Input
+                          type="date"
+                          value={editDraft.birthdate}
+                          onChange={(event) => setEditDraft((current) => (current ? { ...current, birthdate: event.target.value } : current))}
+                          className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Geschlecht</Label>
+                        <Select
+                          value={editDraft.gender}
+                          onValueChange={(value) => setEditDraft((current) => (current ? { ...current, gender: value } : current))}
+                        >
+                          <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
+                            <SelectValue placeholder="Bitte auswählen" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="männlich">männlich</SelectItem>
+                            <SelectItem value="weiblich">weiblich</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Stammgruppe</Label>
+                        <Select
+                          value={editDraft.baseGroup}
+                          onValueChange={(value) => setEditDraft((current) => (current ? { ...current, baseGroup: value } : current))}
+                        >
+                          <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {groupOptions.map((group) => (
+                              <SelectItem key={group} value={group}>
+                                {group}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>E-Mail</Label>
+                        <Input
+                          type="email"
+                          value={editDraft.email}
+                          onChange={(event) => setEditDraft((current) => (current ? { ...current, email: event.target.value } : current))}
+                          className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Zugangscode</Label>
+                        <PasswordInput
+                          value={editDraft.memberPin}
+                          onChange={(event) => setEditDraft((current) => (current ? { ...current, memberPin: event.target.value } : current))}
+                          placeholder="optional, 6 bis 16 Zeichen"
+                          className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Telefon</Label>
+                        <Input
+                          value={editDraft.phone}
+                          onChange={(event) => setEditDraft((current) => (current ? { ...current, phone: event.target.value } : current))}
+                          className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                        />
+                      </div>
+
+                      {member.base_group === "Boxzwerge" ? (
+                        <div className="space-y-2">
+                          <Label>Eltern / Notfallkontakt</Label>
+                          <Input
+                            value={editDraft.guardianName}
+                            onChange={(event) => setEditDraft((current) => (current ? { ...current, guardianName: event.target.value } : current))}
+                            className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                          />
+                        </div>
+                      ) : null}
+
+                      <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-3">
+                        <Button
+                          type="submit"
+                          className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                          disabled={savingEditMemberId === member.id}
+                        >
+                          {savingEditMemberId === member.id ? "Speichert..." : "Korrekturen speichern"}
+                        </Button>
+                        <Button type="button" variant="outline" className="rounded-2xl" onClick={closePendingEditor} disabled={savingEditMemberId === member.id}>
+                          Abbrechen
+                        </Button>
+                      </div>
+                    </form>
+                  ) : null}
                 </div>
               )
             })
