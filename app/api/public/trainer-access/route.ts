@@ -36,7 +36,8 @@ type TrainerAccessBody =
     }
 
 const TRAINER_VERIFY_PARAM = "trainer_verify"
-const DUPLICATE_EMAIL_MESSAGE = "Diese E-Mail-Adresse ist bereits vergeben."
+const EXISTING_TRAINER_ACCOUNT_MESSAGE =
+  "Fuer diese E-Mail-Adresse existiert bereits ein Trainerkonto oder eine laufende Registrierung. Bitte vorhandenen Zugang nutzen oder Admin ansprechen."
 
 function generateEmailVerificationToken() {
   return randomUUID()
@@ -121,13 +122,7 @@ export async function POST(request: Request) {
           emailVerified: existingTrainer.email_verified,
           isApproved: existingTrainer.is_approved,
         })
-        if (existingTrainer.is_approved) {
-          return new NextResponse(DUPLICATE_EMAIL_MESSAGE, { status: 409 })
-        }
-        if (existingTrainer.email_verified) {
-          return new NextResponse("Dieses Trainerkonto ist bereits bestaetigt und wartet nur noch auf die Admin-Freigabe.", { status: 409 })
-        }
-        return new NextResponse("Fuer diese E-Mail existiert bereits eine offene Trainerregistrierung.", { status: 409 })
+        return new NextResponse(EXISTING_TRAINER_ACCOUNT_MESSAGE, { status: 409 })
       }
 
       let registerStep = "role assignment"
@@ -163,7 +158,7 @@ export async function POST(request: Request) {
       } catch (error) {
         if (isTrainerAccountEmailConflict(error)) {
           console.warn("[public trainer access] duplicate email", { step: "duplicate email", email })
-          return new NextResponse(DUPLICATE_EMAIL_MESSAGE, { status: 409 })
+          return new NextResponse(EXISTING_TRAINER_ACCOUNT_MESSAGE, { status: 409 })
         }
 
         if (isMailDeliveryError(error)) {

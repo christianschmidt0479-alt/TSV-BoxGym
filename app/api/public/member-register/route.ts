@@ -47,6 +47,12 @@ function generateEmailVerificationToken() {
   return randomUUID()
 }
 
+function hasExistingMemberAccess(record: Record<string, unknown>) {
+  const email = typeof record.email === "string" ? record.email.trim() : ""
+  const memberPin = typeof record.member_pin === "string" ? record.member_pin.trim() : ""
+  return Boolean(email || memberPin || record.email_verified || record.email_verified_at)
+}
+
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
@@ -98,6 +104,13 @@ export async function POST(request: Request) {
 
     const emailToken = generateEmailVerificationToken()
     const existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
+
+    if (existing && hasExistingMemberAccess(existing as Record<string, unknown>)) {
+      return new NextResponse(
+        "Zu diesem Mitglied existiert bereits ein Zugang. Bitte Mein Bereich nutzen oder Trainer/Admin ansprechen.",
+        { status: 409 }
+      )
+    }
 
     const member = existing
       ? await updateMemberRegistrationData(existing.id, {

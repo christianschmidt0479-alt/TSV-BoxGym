@@ -12,8 +12,10 @@ import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { sessions } from "@/lib/boxgymSessions"
+import { getActiveCheckinSession, parseTimeToDate } from "@/lib/checkinWindow"
+import { buildQrAccessHeaders, clearStoredQrAccess, readStoredQrAccess, storeQrAccess } from "@/lib/qrAccessClient"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
-import { QR_ACCESS_MINUTES, QR_ACCESS_STORAGE_KEY } from "@/lib/qrAccess"
+import { QR_ACCESS_PARAM } from "@/lib/qrAccess"
 
 function todayString() {
   const today = new Date()
@@ -43,21 +45,16 @@ function getDayKey(dateString: string) {
   }
 }
 
-function parseTimeToDate(time: string, referenceDate: Date) {
-  const [hours, minutes] = time.split(":").map(Number)
-  const parsed = new Date(referenceDate)
-  parsed.setHours(hours, minutes, 0, 0)
-  return parsed
-}
-
 function isNowBetween(now: Date, start: Date, end: Date) {
   return now.getTime() >= start.getTime() && now.getTime() < end.getTime()
 }
 
 export default function MemberCheckinPage() {
   const [now, setNow] = useState<Date | null>(null)
+  const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
   const [dbLoading, setDbLoading] = useState(false)
   const [fastCheckinLoading, setFastCheckinLoading] = useState(false)
+  const [qrAccessToken, setQrAccessToken] = useState("")
   const [memberEmail, setMemberEmail] = useState("")
   const [memberPin, setMemberPin] = useState("")
   const [memberWeight, setMemberWeight] = useState("")
@@ -74,13 +71,60 @@ export default function MemberCheckinPage() {
   const liveDate = now ? todayStringFromDate(now) : todayString()
   useEffect(() => {
     setNow(new Date())
-    window.localStorage.setItem(QR_ACCESS_STORAGE_KEY, String(Date.now() + QR_ACCESS_MINUTES * 60 * 1000))
     const params = new URLSearchParams(window.location.search)
     setRequestedGroup(params.get("group")?.trim() ?? "")
+    const storedQrAccess = readStoredQrAccess("member")
+
+    const qrToken = params.get(QR_ACCESS_PARAM)?.trim() ?? ""
+    const initialQrAccessToken = qrToken || storedQrAccess?.token || ""
+    setQrAccessToken(initialQrAccessToken)
+
+    if (qrToken) {
+      void (async () => {
+        try {
+          const response = await fetch(`/api/qr-access?panel=member&${QR_ACCESS_PARAM}=${encodeURIComponent(qrToken)}`)
+          if (!response.ok) {
+            clearStoredQrAccess("member")
+            setQrAccessToken("")
+            console.error("member qr access validation failed", response.status)
+            return
+          }
+
+          const result = (await response.json()) as { accessUntil?: number }
+          const accessUntil = result.accessUntil ?? Date.now()
+          storeQrAccess("member", qrToken, accessUntil)
+          setQrAccessToken(qrToken)
+
+          params.delete(QR_ACCESS_PARAM)
+          params.delete("panel")
+          const nextQuery = params.toString()
+          window.history.replaceState(null, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`)
+        } catch (error) {
+          clearStoredQrAccess("member")
+          setQrAccessToken("")
+          console.error("member qr access validation failed", error)
+        }
+      })()
+    }
 
     void (async () => {
       try {
-        const response = await fetch("/api/public/member-fast-checkin", { method: "GET" })
+        const response = await fetch("/api/public/checkin-settings", { cache: "no-store" })
+        if (response.ok) {
+          const result = (await response.json()) as { disableCheckinTimeWindow?: boolean }
+          setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
+        }
+      } catch (error) {
+        console.error("member checkin settings loading failed", error)
+      }
+    })()
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/public/member-fast-checkin", {
+          method: "GET",
+          headers: buildQrAccessHeaders(initialQrAccessToken),
+        })
         if (!response.ok) return
 
         const result = (await response.json()) as {
@@ -117,14 +161,9 @@ export default function MemberCheckinPage() {
 
   const activeSession = useMemo(() => {
     if (!now) return null
-    return (
-      displaySessions.find((session) => {
-        const start = parseTimeToDate(session.start, now)
-        const end = parseTimeToDate(session.end, now)
-        return isNowBetween(now, start, end)
-      }) ?? null
-    )
-  }, [displaySessions, now])
+    if (disableCheckinTimeWindow) return null
+    return getActiveCheckinSession(now, displaySessions)
+  }, [disableCheckinTimeWindow, displaySessions, now])
 
   const nextSession = useMemo(() => {
     if (!now) return null
@@ -142,6 +181,7 @@ export default function MemberCheckinPage() {
   const autoSession = activeSession ?? nextSession
   const selectedSession =
     displaySessions.find((session) => session.id === selectedSessionId) ?? autoSession ?? displaySessions[0] ?? null
+  const checkinAllowed = disableCheckinTimeWindow ? displaySessions.length > 0 : Boolean(activeSession)
 
   useEffect(() => {
     if (displaySessions.length === 0) {
@@ -207,11 +247,19 @@ export default function MemberCheckinPage() {
       return
     }
 
+    if (!checkinAllowed) {
+      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.")
+      return
+    }
+
     try {
       setDbLoading(true)
       const response = await fetch("/api/public/member-checkin", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...buildQrAccessHeaders(qrAccessToken),
+        },
         body: JSON.stringify({
           email,
           pin,
@@ -223,6 +271,10 @@ export default function MemberCheckinPage() {
 
       if (!response.ok) {
         const message = await response.text()
+        if (response.status === 403) {
+          clearStoredQrAccess("member")
+          setQrAccessToken("")
+        }
         alert(message || "Fehler beim Speichern des Check-ins.")
         return
       }
@@ -266,11 +318,19 @@ export default function MemberCheckinPage() {
       return
     }
 
+    if (!checkinAllowed) {
+      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.")
+      return
+    }
+
     try {
       setFastCheckinLoading(true)
       const response = await fetch("/api/public/member-fast-checkin", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...buildQrAccessHeaders(qrAccessToken),
+        },
         body: JSON.stringify({
           sessionId: selectedSession.id,
           weight: rememberedWeight.trim(),
@@ -281,6 +341,10 @@ export default function MemberCheckinPage() {
         const message = await response.text()
         if (response.status === 401 || response.status === 404) {
           forgetRememberedDevice()
+        }
+        if (response.status === 403) {
+          clearStoredQrAccess("member")
+          setQrAccessToken("")
         }
         alert(message || "Fehler beim Schnell-Check-in.")
         return
@@ -328,7 +392,7 @@ export default function MemberCheckinPage() {
             <div className="relative grid gap-6 md:grid-cols-[1.4fr_1fr] md:items-center">
               <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                 <Image
-                  src="/BoxGym Kompakt.png"
+                  src="/boxgym-headline-old.png"
                   alt="TSV Falkensee BoxGym"
                   width={192}
                   height={128}
@@ -343,6 +407,9 @@ export default function MemberCheckinPage() {
                   <p className="mt-2 text-sm leading-6 text-blue-50/90 sm:text-base">
                     Bestehende Mitglieder werden hier direkt für die aktuelle Einheit eingecheckt.
                   </p>
+                  {disableCheckinTimeWindow ? (
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-200">Ferienmodus aktiv</p>
+                  ) : null}
                 </div>
               </div>
               <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
@@ -365,6 +432,12 @@ export default function MemberCheckinPage() {
             <CardTitle>Mitglieder-Check-in</CardTitle>
           </CardHeader>
           <CardContent>
+            {!checkinAllowed ? (
+              <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                Check-in ist aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.
+              </div>
+            ) : null}
+
             {hasRememberedDevice ? (
               <div className="mb-5 rounded-[24px] border border-[#cfe0ef] bg-[#f4f9ff] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -379,7 +452,7 @@ export default function MemberCheckinPage() {
                     <p className="mt-1 text-sm text-zinc-600">Dieses Geraet ist gespeichert. Ein Tap reicht fuer den naechsten Check-in.</p>
                   </div>
                   <Button type="button" variant="outline" className="rounded-2xl" onClick={forgetRememberedDevice}>
-                    Geraet vergessen
+                    Ausloggen
                   </Button>
                 </div>
 
@@ -400,7 +473,7 @@ export default function MemberCheckinPage() {
                   <Button
                     type="button"
                     className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
-                    disabled={fastCheckinLoading || dbLoading || !selectedSession}
+                    disabled={fastCheckinLoading || dbLoading || !selectedSession || !checkinAllowed}
                     onClick={() => {
                       void handleFastCheckin()
                     }}
@@ -493,7 +566,7 @@ export default function MemberCheckinPage() {
               </label>
 
               <div className="sticky bottom-3 -mx-1 rounded-[24px] border border-[#d8e3ee] bg-white/95 p-2 shadow-lg backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none">
-                <Button type="submit" className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading || !selectedSession}>
+                <Button type="submit" className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading || !selectedSession || !checkinAllowed}>
                   {dbLoading ? "Speichert..." : "Mitglied einchecken"}
                 </Button>
               </div>

@@ -5,7 +5,9 @@ import { cookies } from "next/headers"
 import { ChevronLeft, LayoutPanelLeft, Settings } from "lucide-react"
 import { APP_VERSION } from "@/lib/appVersion"
 import { TRAINER_SESSION_COOKIE, verifyTrainerSessionToken } from "@/lib/authSession"
+import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { AdminMobileNav } from "@/components/admin-mobile-nav"
+import { TrainerLogoutButton } from "@/components/trainer-logout-button"
 
 type NavItem = {
   href: string
@@ -16,6 +18,7 @@ type NavItem = {
 export default async function VerwaltungLayout({ children }: { children: ReactNode }) {
   const cookieStore = await cookies()
   const trainerAccess = await verifyTrainerSessionToken(cookieStore.get(TRAINER_SESSION_COOKIE)?.value)
+  const checkinSettings = await readCheckinSettings()
   const isAdmin = trainerAccess?.role === "admin" || trainerAccess?.accountRole === "admin"
   const startItems: NavItem[] = [
     { href: "/verwaltung", label: "Übersicht" },
@@ -32,7 +35,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
     { href: "/verwaltung/excel-abgleich", label: "Excel-Abgleich" },
     { href: "/verwaltung/gruppen", label: "Gruppen" },
     { href: "/verwaltung/wettkampf", label: "Wettkampf" },
-    { href: "/verwaltung/qr-codes", label: "QR Codes" },
+    { href: "/verwaltung/qr-codes", label: "QR-Codes" },
   ]
   const systemItems: NavItem[] = [
     { href: "/verwaltung/mail", label: "Mail" },
@@ -57,7 +60,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
             <div className="flex flex-col gap-2 px-4 py-3 md:gap-3 md:px-5 md:py-3.5">
               <div className="flex flex-row items-center justify-between gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <Image src="/BoxGym Kompakt.png" alt="TSV BoxGym" width={66} height={28} className="h-auto w-[28px] object-contain sm:w-[33px] md:w-auto" priority />
+                  <Image src="/boxgym-headline-old.png" alt="TSV Falkensee BoxGym" width={66} height={28} className="h-auto w-[28px] object-contain sm:w-[33px] md:w-auto" priority />
                   <div className="min-w-0">
                     <div className="inline-flex items-center gap-2 rounded-full bg-[#eef4fb] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#154c83] md:px-3 md:text-[11px] md:tracking-[0.18em]">
                       <LayoutPanelLeft className="h-3.5 w-3.5" />
@@ -72,6 +75,12 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                   <div className="md:hidden">
                     <AdminMobileNav sections={mobileSections} />
                   </div>
+                  {checkinSettings.disableCheckinTimeWindow ? (
+                    <div className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm">
+                      Ferienmodus aktiv
+                    </div>
+                  ) : null}
+                  <TrainerLogoutButton className="rounded-2xl border-[#cfd9e4] bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-[#154c83] hover:bg-[#f7fbff] md:px-3.5" />
                   <Link
                     href="/"
                     className="inline-flex items-center gap-2 rounded-2xl border border-[#cfd9e4] bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff] md:px-3.5"
@@ -170,7 +179,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                   href="/verwaltung/qr-codes"
                   className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
                 >
-                  QR Codes
+                  QR-Codes
                 </Link>
                 <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
                   System

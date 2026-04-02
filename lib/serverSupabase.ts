@@ -31,7 +31,7 @@ export function createServerSupabaseAnonClient() {
 export function createServerSupabaseServiceClient() {
   const serviceRoleKey = getSupabaseServiceRoleKey()
   if (!serviceRoleKey) {
-    return createServerSupabaseAnonClient()
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY")
   }
 
   return createClient(getSupabaseUrl(), serviceRoleKey, {

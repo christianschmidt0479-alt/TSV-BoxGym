@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { groupOptions } from "@/lib/boxgymSessions"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { normalizeTrainingGroupOrFallback } from "@/lib/trainingGroups"
-import { QR_ACCESS_MINUTES, QR_ACCESS_STORAGE_KEY } from "@/lib/qrAccess"
 
 function getStoredString(key: string) {
   if (typeof window === "undefined") return ""
@@ -43,7 +42,6 @@ export default function CheckinJoinPage() {
 
   useEffect(() => {
     setIsClient(true)
-    window.localStorage.setItem(QR_ACCESS_STORAGE_KEY, String(Date.now() + QR_ACCESS_MINUTES * 60 * 1000))
     setRegisterFirstName(getStoredString("tsv_register_first_name"))
     setRegisterLastName(getStoredString("tsv_register_last_name"))
     setRegisterBirthDate(getStoredString("tsv_register_birthdate"))
@@ -181,7 +179,7 @@ export default function CheckinJoinPage() {
             <div className="relative grid gap-6 md:grid-cols-[1.4fr_1fr] md:items-center">
               <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                 <Image
-                  src="/BoxGym Kompakt.png"
+                  src="/boxgym-headline-old.png"
                   alt="TSV Falkensee BoxGym"
                   width={192}
                   height={128}

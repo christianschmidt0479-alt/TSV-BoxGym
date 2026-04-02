@@ -29,13 +29,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "api.qrserver.com",
-      },
-    ],
+  turbopack: {
+    root: process.cwd(),
   },
   async redirects() {
     return [

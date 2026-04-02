@@ -9,7 +9,7 @@ import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { trainerLicenseOptions } from "@/lib/trainerLicense"
+import { normalizeTrainerLicense } from "@/lib/trainerLicense"
 
 type AdminTrainerAccountBody = {
   firstName?: string
@@ -46,7 +46,8 @@ export async function POST(request: Request) {
     const lastName = body.lastName?.trim() ?? ""
     const email = body.email?.trim().toLowerCase() ?? ""
     const phone = body.phone?.trim() ?? ""
-    const trainerLicense = body.trainerLicense
+    const trainerLicenseInput = typeof body.trainerLicense === "string" ? body.trainerLicense : undefined
+    const trainerLicense = normalizeTrainerLicense(trainerLicenseInput)
     const pin = body.pin?.trim() ?? ""
     const linkedMemberId = body.linkedMemberId?.trim() || null
 
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
       return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
-    if (trainerLicense && !trainerLicenseOptions.includes(trainerLicense)) {
+    if (trainerLicenseInput && !trainerLicense) {
       return new NextResponse("Ungueltige Trainerlizenz.", { status: 400 })
     }
 

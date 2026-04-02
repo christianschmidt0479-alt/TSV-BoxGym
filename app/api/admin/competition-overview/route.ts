@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`admin-competition-overview:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`admin-competition-overview:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { buildTrainingGroupOptions, compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type CheckinRow = {
@@ -103,13 +104,14 @@ export default function CheckinsPage() {
   }
 
   const groupOptions = useMemo(() => {
-    return Array.from(new Set(rows.map((row) => row.group_name))).sort((a, b) => a.localeCompare(b))
+    return buildTrainingGroupOptions(rows.map((row) => row.group_name))
   }, [rows])
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       const matchesDate = row.date === dateFilter
-      const matchesGroup = groupFilter === "alle" || row.group_name === groupFilter
+      const normalizedGroup = normalizeTrainingGroup(row.group_name) || row.group_name
+      const matchesGroup = groupFilter === "alle" || normalizedGroup === groupFilter
       const matchesType =
         typeFilter === "alle" ||
         (typeFilter === "mitglied" && !row.members?.is_trial) ||
@@ -126,16 +128,17 @@ export default function CheckinsPage() {
     const counts = new Map<string, { count: number; trial: number; members: number }>()
 
     for (const row of filteredRows) {
-      const current = counts.get(row.group_name) ?? { count: 0, trial: 0, members: 0 }
+      const normalizedGroup = normalizeTrainingGroup(row.group_name) || row.group_name
+      const current = counts.get(normalizedGroup) ?? { count: 0, trial: 0, members: 0 }
       current.count += 1
       if (row.members?.is_trial) current.trial += 1
       else current.members += 1
-      counts.set(row.group_name, current)
+      counts.set(normalizedGroup, current)
     }
 
     return Array.from(counts.entries())
       .map(([group, values]) => ({ group, ...values }))
-      .sort((a, b) => a.group.localeCompare(b.group))
+      .sort((a, b) => compareTrainingGroupOrder(a.group, b.group) || a.group.localeCompare(b.group, "de"))
   }, [filteredRows])
 
   if (!authResolved) {

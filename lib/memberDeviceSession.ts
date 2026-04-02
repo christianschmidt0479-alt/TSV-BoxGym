@@ -18,7 +18,7 @@ function getSessionSecret() {
   const secret =
     process.env.MEMBER_DEVICE_SESSION_SECRET ||
     process.env.TRAINER_SESSION_SECRET ||
-    (process.env.NODE_ENV !== "production" ? process.env.ADMIN_LOGIN_PASSWORD || "" : "")
+    ""
 
   if (!secret) {
     throw new Error("Missing MEMBER_DEVICE_SESSION_SECRET")

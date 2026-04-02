@@ -1,9 +1,16 @@
-export const DEFAULT_APP_BASE_URL = "https://tsvboxgym.de"
+export const LOCAL_APP_BASE_URL = "http://localhost:3000"
+export const PRODUCTION_APP_BASE_URL = "https://www.tsvboxgym.de"
+export const DEFAULT_APP_BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.NEXT_PUBLIC_APP_BASE_URL ||
+  process.env.APP_BASE_URL ||
+  (process.env.NODE_ENV === "production" ? PRODUCTION_APP_BASE_URL : LOCAL_APP_BASE_URL)
 export const DEFAULT_MAIL_FROM = "TSV BoxGym <noreply@tsvboxgym.de>"
 
 export function getAppBaseUrl() {
   return (
     process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_APP_BASE_URL ||
     process.env.APP_BASE_URL ||
     DEFAULT_APP_BASE_URL
   )

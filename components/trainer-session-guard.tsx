@@ -80,7 +80,7 @@ export function TrainerSessionGuard() {
         const current = readTrainerAccess()
         const remaining = Math.max(0, current.sessionUntil - Date.now())
       logoutTimeoutRef.current = window.setTimeout(async () => {
-        await clearTrainerAccessSession()
+        await clearTrainerAccessSession({ remote: false })
         if (isProtectedTrainerPath(pathname)) {
           router.replace("/trainer-zugang")
           router.refresh()
@@ -101,7 +101,7 @@ export function TrainerSessionGuard() {
 
         if (!response.ok) {
           if (response.status === 401) {
-            await clearTrainerAccessSession()
+            await clearTrainerAccessSession({ remote: false })
             if (isProtectedTrainerPath(pathname)) {
               router.replace("/trainer-zugang")
               router.refresh()
@@ -134,12 +134,6 @@ export function TrainerSessionGuard() {
     const registerActivity = () => {
       const current = readTrainerAccess()
       if (!current.role) return
-
-      persistTrainerAccess(current.role, Date.now() + TRAINER_SESSION_MAX_AGE_MS, current.accountRole, current.linkedMemberId, {
-        email: current.accountEmail,
-        firstName: current.accountFirstName,
-        lastName: current.accountLastName,
-      })
       void refreshServerSession()
       scheduleLogout()
     }

@@ -5,27 +5,19 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { PasswordInput } from "@/components/ui/password-input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { buildPersonRoleProfiles, type RoleMemberRecord } from "@/lib/personRoles"
-import {
-  type TrainerAccountRecord,
-} from "@/lib/trainerDb"
-import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
-import { trainerLicenseOptions } from "@/lib/trainerLicense"
-import { compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
+import { type TrainerAccountRecord } from "@/lib/trainerDb"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 function getTrainerDisplayName(trainer: TrainerAccountRecord) {
   return `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim() || trainer.email || "—"
 }
 
-function getMemberDisplayName(member?: Partial<RoleMemberRecord> | null) {
-  const first = member?.first_name ?? ""
-  const last = member?.last_name ?? ""
-  const full = `${first} ${last}`.trim()
-  return full || member?.name || "—"
+function getDisplayedLicense(trainer: TrainerAccountRecord) {
+  if (trainer.trainer_license && trainer.trainer_license !== "Keine DOSB-Lizenz") {
+    return trainer.trainer_license
+  }
+
+  return trainer.lizenzart || "Keine Angabe"
 }
 
 async function readResponseError(response: Response, fallback: string) {
@@ -45,11 +37,6 @@ export default function TrainerverwaltungPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [trainers, setTrainers] = useState<TrainerAccountRecord[]>([])
-  const [members, setMembers] = useState<RoleMemberRecord[]>([])
-  const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({})
-  const [licenseDrafts, setLicenseDrafts] = useState<Record<string, string>>({})
-  const [creatingMemberId, setCreatingMemberId] = useState<string | null>(null)
-
   async function loadTrainers() {
     setLoading(true)
     try {
@@ -63,7 +50,6 @@ export default function TrainerverwaltungPage() {
 
       const payload = (await response.json()) as {
         trainers: TrainerAccountRecord[]
-        members: RoleMemberRecord[]
       }
 
       setTrainers(
@@ -74,11 +60,9 @@ export default function TrainerverwaltungPage() {
             }))
           : []
       )
-      setMembers(Array.isArray(payload.members) ? payload.members : [])
     } catch (error) {
       console.error(error)
       setTrainers([])
-      setMembers([])
       setLoadError(error instanceof Error ? error.message : "Trainerdaten konnten nicht geladen werden.")
     } finally {
       setLoading(false)
@@ -112,10 +96,9 @@ export default function TrainerverwaltungPage() {
   const admins = useMemo(() => trainers.filter((trainer) => trainer.role === "admin"), [trainers])
   const pending = useMemo(() => trainers.filter((trainer) => trainer.role !== "admin" && !trainer.is_approved), [trainers])
   const approved = useMemo(() => trainers.filter((trainer) => trainer.role !== "admin" && trainer.is_approved), [trainers])
-  const roleProfiles = useMemo(() => buildPersonRoleProfiles(members, trainers), [members, trainers])
   // Kein Mitglieder-Suchfeld/Anlegen mehr auf dieser Seite
 
-  function getLicenseStatus(trainer: any) {
+  function getLicenseStatus(trainer: TrainerAccountRecord) {
     const d = trainer?.lizenz_gueltig_bis
     if (!d) return { key: "keine", label: "keine Angabe", color: "bg-zinc-100 text-zinc-700" }
     const date = new Date(d + "T00:00:00Z")
@@ -124,18 +107,6 @@ export default function TrainerverwaltungPage() {
     if (diff < 0) return { key: "abgelaufen", label: "abgelaufen", color: "bg-red-100 text-red-800" }
     if (diff <= 30) return { key: "bald", label: "läuft bald ab", color: "bg-amber-100 text-amber-800" }
     return { key: "gueltig", label: "gültig", color: "bg-green-100 text-green-800" }
-  }
-
-  function getRoleSummary(trainer: TrainerAccountRecord) {
-    const profile = roleProfiles.find((entry) => entry.trainer?.id === trainer.id)
-    if (!profile) return []
-
-    return profile.roles.filter((role) => role !== "trainer" && role !== "admin")
-  }
-
-  function getLinkedMemberGroup(trainer: TrainerAccountRecord) {
-    const profile = roleProfiles.find((entry) => entry.trainer?.id === trainer.id)
-    return normalizeTrainingGroup(profile?.member?.base_group) || null
   }
 
   if (!authResolved) {
@@ -201,44 +172,84 @@ export default function TrainerverwaltungPage() {
         </Card>
       </div>
 
+      {loadError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>
+      ) : null}
+
+
       <Card className="rounded-[24px] border-0 shadow-sm">
         <CardHeader>
-          <CardTitle>Trainer-Lizenzen</CardTitle>
+          <CardTitle>Aktuelle Trainerliste</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-zinc-600">
-                  <th className="p-3">Name</th>
-                  <th className="p-3">Lizenzart</th>
-                  <th className="p-3">Liz.-Nr.</th>
-                  <th className="p-3">gültig bis</th>
+                  <th className="p-3">Trainer</th>
+                  <th className="p-3">Lizenz</th>
+                  <th className="p-3">Lizenzdetails</th>
                   <th className="p-3">Status</th>
-                  <th className="p-3">Aktion</th>
+                  <th className="p-3">Aktionen</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} className="p-3 text-zinc-500">Lädt...</td></tr>
-                ) : trainers.length === 0 ? (
-                  <tr><td colSpan={6} className="p-3 text-zinc-500">Keine Trainer vorhanden.</td></tr>
+                  <tr><td colSpan={5} className="p-3 text-zinc-500">Lädt...</td></tr>
+                ) : approved.length === 0 ? (
+                  <tr><td colSpan={5} className="p-3 text-zinc-500">Keine Trainer vorhanden.</td></tr>
                 ) : (
-                  trainers.map((trainer) => {
+                  approved.map((trainer) => {
                     const status = getLicenseStatus(trainer)
                     return (
-                      <tr key={trainer.id} className="border-t border-zinc-100 bg-white">
-                        <td className="p-3 font-medium text-zinc-900">{getTrainerDisplayName(trainer)}</td>
-                        <td className="p-3">{trainer.lizenzart || trainer.trainer_license || '—'}</td>
-                        <td className="p-3">{trainer.lizenznummer || '—'}</td>
-                        <td className="p-3">{trainer.lizenz_gueltig_bis ? new Date(trainer.lizenz_gueltig_bis).toLocaleDateString('de-DE') : '—'}</td>
+                      <tr key={trainer.id} className="border-t border-zinc-100 bg-white align-top">
+                        <td className="p-3">
+                          <div className="font-medium text-zinc-900">{getTrainerDisplayName(trainer)}</div>
+                          <div className="mt-1 text-xs text-zinc-500">{trainer.email}</div>
+                          <div className="mt-2 text-xs text-zinc-400">
+                            Freigegeben am {trainer.approved_at ? new Date(trainer.approved_at).toLocaleDateString("de-DE") : "—"}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <div className="font-medium text-zinc-900">{getDisplayedLicense(trainer)}</div>
+                          <div className="mt-1 text-xs text-zinc-500">{trainer.lizenz_verband || "Kein Verband hinterlegt"}</div>
+                        </td>
+                        <td className="p-3">
+                          <div className="text-zinc-900">Nr.: {trainer.lizenznummer || "—"}</div>
+                          <div className="mt-1 text-zinc-600">
+                            Gültig bis {trainer.lizenz_gueltig_bis ? new Date(trainer.lizenz_gueltig_bis).toLocaleDateString("de-DE") : "—"}
+                          </div>
+                        </td>
                         <td className="p-3">
                           <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${status.color}`}>{status.label}</span>
                         </td>
                         <td className="p-3">
-                          <Button asChild variant="outline" className="rounded-2xl">
-                            <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Bearbeiten</Link>
-                          </Button>
+                          <div className="flex min-w-[180px] flex-col gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="justify-start rounded-2xl"
+                              onClick={async () => {
+                                try {
+                                  await runTrainerAction({
+                                    action: "set_trainer_role",
+                                    trainerId: trainer.id,
+                                    role: "admin",
+                                  })
+                                  alert("Trainer wurde zum Admin ernannt.")
+                                  await loadTrainers()
+                                } catch (error) {
+                                  console.error(error)
+                                  alert("Fehler beim Ernennen zum Admin.")
+                                }
+                              }}
+                            >
+                              Admin ernennen
+                            </Button>
+                            <Button asChild variant="outline" className="justify-start rounded-2xl">
+                              <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -290,63 +301,54 @@ export default function TrainerverwaltungPage() {
                       </Badge>
                     </div>
                     <div>E-Mail: {trainer.email}</div>
-                    <div>Lizenz: {trainer.trainer_license || "—"}</div>
-                    <div>Stammgruppe: {getLinkedMemberGroup(trainer) || "—"}</div>
+                    <div>Lizenz: {getDisplayedLicense(trainer)}</div>
                     <div>Registriert am: {new Date(trainer.created_at).toLocaleString("de-DE")}</div>
                     <div>
                       E-Mail-Bestätigung:{" "}
                       {trainer.email_verified_at ? new Date(trainer.email_verified_at).toLocaleString("de-DE") : "noch offen"}
                     </div>
-                    {getRoleSummary(trainer).length > 0 ? (
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        {getRoleSummary(trainer).map((role) => (
-                          <Badge key={role} variant="outline" className="border-blue-200 bg-blue-100 text-blue-800">
-                            {role === "mitglied" ? "Auch Mitglied" : role === "wettkaempfer" ? "Auch Wettkämpfer" : role}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : null}
                   </div>
 
-                  <Button
-                    className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
-                    onClick={async () => {
-                      if (!trainer.email_verified) {
-                        const confirmed = window.confirm(
-                          "E-Mail ist noch nicht bestätigt. Trotzdem freigeben und Benachrichtigung senden?"
-                        )
-                        if (!confirmed) return
-                      }
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                      onClick={async () => {
+                        if (!trainer.email_verified) {
+                          const confirmed = window.confirm(
+                            "E-Mail ist noch nicht bestätigt. Trotzdem freigeben und Benachrichtigung senden?"
+                          )
+                          if (!confirmed) return
+                        }
 
-                      try {
-                        await runTrainerAction({
-                          action: "approve_trainer",
-                          trainerId: trainer.id,
-                        })
-                        await fetch("/api/send-verification", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            purpose: "approval_notice",
-                            email: trainer.email,
-                            name: getTrainerDisplayName(trainer),
-                            kind: "trainer",
-                            group: getLinkedMemberGroup(trainer) || undefined,
-                          }),
-                        })
-                        alert("Trainerzugang freigegeben.")
-                        await loadTrainers()
-                      } catch (error) {
-                        console.error(error)
-                        alert("Fehler bei der Trainerfreigabe.")
-                      }
-                    }}
-                  >
-                    Freigeben
-                  </Button>
-                  <Button asChild variant="outline" className="rounded-2xl">
-                    <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
-                  </Button>
+                        try {
+                          await runTrainerAction({
+                            action: "approve_trainer",
+                            trainerId: trainer.id,
+                          })
+                          await fetch("/api/send-verification", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              purpose: "approval_notice",
+                              email: trainer.email,
+                              name: getTrainerDisplayName(trainer),
+                              kind: "trainer",
+                            }),
+                          })
+                          alert("Trainerzugang freigegeben.")
+                          await loadTrainers()
+                        } catch (error) {
+                          console.error(error)
+                          alert("Fehler bei der Trainerfreigabe.")
+                        }
+                      }}
+                    >
+                      Freigeben
+                    </Button>
+                    <Button asChild variant="outline" className="rounded-2xl">
+                      <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))
@@ -378,8 +380,7 @@ export default function TrainerverwaltungPage() {
                   ) : null}
                 </div>
                 <div className="mt-1">{trainer.email}</div>
-                <div className="mt-1">Lizenz: {trainer.trainer_license || "—"}</div>
-                <div className="mt-1">Stammgruppe: {getLinkedMemberGroup(trainer) || "—"}</div>
+                <div className="mt-1">Lizenz: {getDisplayedLicense(trainer)}</div>
                 <div className="mt-1 text-xs text-red-700">
                   Freigegeben am: {trainer.approved_at ? new Date(trainer.approved_at).toLocaleString("de-DE") : "—"}
                 </div>
@@ -394,65 +395,6 @@ export default function TrainerverwaltungPage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-[24px] border-0 shadow-sm">
-        <CardHeader>
-          <CardTitle>Freigegebene Trainer</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {loading ? (
-            <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Trainerkonten werden geladen...</div>
-          ) : approved.length === 0 ? (
-            <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Noch keine freigegebenen Trainer vorhanden.</div>
-          ) : (
-            approved.map((trainer) => (
-              <div key={trainer.id} className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-700">
-                <div className="font-semibold text-zinc-900">{getTrainerDisplayName(trainer)}</div>
-                <div className="mt-1">{trainer.email}</div>
-                <div className="mt-1">Lizenz: {trainer.trainer_license || "—"}</div>
-                <div className="mt-1">Stammgruppe: {getLinkedMemberGroup(trainer) || "—"}</div>
-                <div className="text-xs text-zinc-500">
-                  Freigegeben am: {trainer.approved_at ? new Date(trainer.approved_at).toLocaleString("de-DE") : "—"}
-                </div>
-                {getRoleSummary(trainer).length > 0 ? (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {getRoleSummary(trainer).map((role) => (
-                      <Badge key={role} variant="outline" className="border-blue-200 bg-blue-100 text-blue-800">
-                        {role === "mitglied" ? "Auch Mitglied" : role === "wettkaempfer" ? "Auch Wettkämpfer" : role}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="mt-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="rounded-2xl"
-                    onClick={async () => {
-                      try {
-                        await runTrainerAction({
-                          action: "set_trainer_role",
-                          trainerId: trainer.id,
-                          role: "admin",
-                        })
-                        alert("Konto in die Admin-Liste verschoben.")
-                        await loadTrainers()
-                      } catch (error) {
-                        console.error(error)
-                        alert("Fehler beim Verschieben in die Admin-Liste.")
-                      }
-                    }}
-                  >
-                    In Admin-Liste verschieben
-                  </Button>
-                  <Button asChild variant="outline" className="rounded-2xl ml-2">
-                    <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
-                  </Button>
-                </div>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
     </div>
   )
 }

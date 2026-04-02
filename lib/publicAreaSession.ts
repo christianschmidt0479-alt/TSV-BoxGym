@@ -23,7 +23,7 @@ function getSessionSecret() {
   const secret =
     process.env.PUBLIC_AREA_SESSION_SECRET ||
     process.env.TRAINER_SESSION_SECRET ||
-    (process.env.NODE_ENV !== "production" ? process.env.ADMIN_LOGIN_PASSWORD || "" : "")
+    ""
 
   if (!secret) {
     throw new Error("Missing PUBLIC_AREA_SESSION_SECRET")

@@ -53,6 +53,24 @@ export function compareTrainingGroupOrder(left?: string | null, right?: string |
   return leftIndex - rightIndex
 }
 
+export function buildTrainingGroupOptions(values: Array<string | null | undefined> = []) {
+  const extraGroups = Array.from(
+    new Set(
+      values
+        .map((value) => {
+          const sanitized = sanitizeTrainingGroup(value)
+          if (!sanitized) return ""
+          return normalizeTrainingGroup(sanitized) || sanitized
+        })
+        .filter((value): value is string => !!value)
+    )
+  )
+    .filter((group) => !TRAINING_GROUPS.includes(group as TrainingGroup))
+    .sort((left, right) => left.localeCompare(right, "de"))
+
+  return [...TRAINING_GROUPS, ...extraGroups]
+}
+
 export function getRecommendedTrainingGroup(birthdate?: string | null): TrainingGroup {
   if (!birthdate) return "Basic 15 - 18 Jahre"
 

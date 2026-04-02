@@ -1,14 +1,12 @@
 "use client"
 
-import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, BarChart3, Clock3, Printer, ScanLine, Settings, ShieldCheck, Users } from "lucide-react"
+import { ArrowRight, BarChart3, Clock3, Settings, ShieldCheck, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
 import { groupOptions, sessions } from "@/lib/boxgymSessions"
-import { DEFAULT_APP_BASE_URL } from "@/lib/mailConfig"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type MemberOverviewRow = {
@@ -172,15 +170,6 @@ export default function VerwaltungOverviewPage() {
     }
   }, [digestQueueRows])
 
-  const memberRegistrationUrl = useMemo(() => {
-    if (typeof window === "undefined") return `${DEFAULT_APP_BASE_URL}/tsv-mitglied-registrieren`
-    return `${window.location.origin}/tsv-mitglied-registrieren`
-  }, [])
-
-  const memberRegistrationQrUrl = useMemo(() => {
-    return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=16&data=${encodeURIComponent(memberRegistrationUrl)}`
-  }, [memberRegistrationUrl])
-
   const overviewSections = useMemo<OverviewSection[]>(() => {
     const operationsSection = {
       title: "Betrieb",
@@ -213,8 +202,8 @@ export default function VerwaltungOverviewPage() {
         },
         {
           href: "/verwaltung/qr-codes",
-          title: "QR Codes",
-          description: "QR Codes zum Ausdrucken: Mitglied registrieren & Checkin.",
+          title: "QR-Codes",
+          description: "Alle Registrierungs- und Check-in-Codes zentral öffnen.",
         },
       ],
     }
@@ -360,263 +349,6 @@ export default function VerwaltungOverviewPage() {
           </CardContent>
         </Card>
       </div>
-
-      {trainerRole === "admin" ? (
-        <Card className="rounded-[24px] border-0 shadow-sm">
-          <CardHeader>
-            <CardTitle>QR-Code Registrierung</CardTitle>
-            <div className="flex items-center gap-2 text-sm text-zinc-500">
-              <span>Direkt im Admin-Bereich sichtbar, auch mobil.</span>
-              <InfoHint text="Der QR-Code fuehrt direkt zur Registrierungsseite fuer den TSV-Boxbereich und ist fuer Handyansicht und Ausdruck gedacht." />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-5 rounded-[24px] border border-[#d8e3ee] bg-[linear-gradient(135deg,#f7fbff_0%,#ffffff_100%)] p-4 md:grid-cols-[1.2fr_220px] md:items-center">
-              <div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-[#154c83]/8 px-3 py-1 text-xs font-semibold tracking-wide text-[#154c83]">
-                  <ScanLine className="h-4 w-4" />
-                  Registrierung per Handy
-                </div>
-                <div className="mt-3 text-lg font-bold tracking-tight text-zinc-900">
-                  QR-Code fuer Sportler zur Registrierung
-                </div>
-                <div className="mt-2 text-sm leading-6 text-zinc-600">
-                  Ideal fuer Handyansicht, direkte Ausgabe im Gym oder zum Ausdrucken als Aushang.
-                </div>
-                <div className="mt-4 break-all rounded-2xl bg-white/80 px-3 py-2 text-xs text-zinc-500">
-                  {memberRegistrationUrl}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <Button asChild className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]">
-                    <a href={memberRegistrationUrl} target="_blank" rel="noreferrer">
-                      Registrierungsseite oeffnen
-                    </a>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="rounded-2xl"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(memberRegistrationUrl)
-                        alert("Registrierungslink kopiert.")
-                      } catch (error) {
-                        console.error(error)
-                        alert("Registrierungslink konnte nicht kopiert werden.")
-                      }
-                    }}
-                  >
-                    Link kopieren
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="rounded-2xl"
-                    onClick={() => {
-                      const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=1200")
-                      if (!printWindow) {
-                        alert("Druckansicht konnte nicht geöffnet werden.")
-                        return
-                      }
-
-                      printWindow.document.write(`
-                        <!doctype html>
-                        <html lang="de">
-                          <head>
-                            <meta charset="utf-8" />
-                            <title>TSV BoxGym Registrierung QR-Code</title>
-                            <style>
-                              @page {
-                                size: A4 portrait;
-                                margin: 14mm;
-                              }
-                              body {
-                                font-family: "Avenir Next", "Segoe UI", sans-serif;
-                                margin: 0;
-                                padding: 0;
-                                color: #18181b;
-                                background: #f4f7fb;
-                              }
-                              .sheet {
-                                box-sizing: border-box;
-                                width: 100%;
-                                min-height: calc(297mm - 28mm);
-                                max-width: 182mm;
-                                margin: 0 auto;
-                                border: 3px solid #154c83;
-                                border-radius: 28px;
-                                padding: 28px 28px 32px;
-                                text-align: center;
-                                background:
-                                  radial-gradient(circle at top right, rgba(230, 51, 42, 0.12), transparent 28%),
-                                  linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
-                              }
-                              .header {
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                                gap: 18px;
-                                margin-bottom: 18px;
-                              }
-                              .logo {
-                                width: 170px;
-                                height: auto;
-                                padding: 10px 12px;
-                                border-radius: 18px;
-                                background: rgba(255, 255, 255, 0.92);
-                                border: 1px solid #d8e3ee;
-                              }
-                              .brand-badge {
-                                display: inline-block;
-                                background: #154c83;
-                                color: #ffffff;
-                                padding: 8px 16px;
-                                border-radius: 999px;
-                                font-size: 13px;
-                                font-weight: 700;
-                                letter-spacing: 0.05em;
-                                text-transform: uppercase;
-                              }
-                              h1 {
-                                margin: 16px 0 10px;
-                                font-size: 38px;
-                                line-height: 1.08;
-                              }
-                              p {
-                                margin: 0 auto 24px;
-                                max-width: 620px;
-                                font-size: 19px;
-                                line-height: 1.55;
-                                color: #3f3f46;
-                              }
-                              .qr-wrap {
-                                margin: 28px auto 18px;
-                                width: fit-content;
-                                padding: 18px;
-                                border-radius: 28px;
-                                border: 1px solid #d8e3ee;
-                                background: #ffffff;
-                                box-shadow: 0 18px 40px rgba(21, 76, 131, 0.08);
-                              }
-                              .qr {
-                                width: 360px;
-                                height: 360px;
-                                border-radius: 24px;
-                                display: block;
-                              }
-                              .steps {
-                                display: grid;
-                                grid-template-columns: repeat(3, minmax(0, 1fr));
-                                gap: 14px;
-                                margin: 28px 0 20px;
-                                text-align: left;
-                              }
-                              .step {
-                                border: 1px solid #d8e3ee;
-                                border-radius: 20px;
-                                background: rgba(255, 255, 255, 0.92);
-                                padding: 16px;
-                              }
-                              .step-number {
-                                display: inline-flex;
-                                width: 32px;
-                                height: 32px;
-                                align-items: center;
-                                justify-content: center;
-                                border-radius: 999px;
-                                background: #154c83;
-                                color: #ffffff;
-                                font-size: 15px;
-                                font-weight: 700;
-                                margin-bottom: 10px;
-                              }
-                              .step-title {
-                                font-size: 16px;
-                                font-weight: 700;
-                                margin-bottom: 6px;
-                              }
-                              .step-text {
-                                color: #52525b;
-                                font-size: 14px;
-                                line-height: 1.5;
-                              }
-                              .note {
-                                margin: 4px auto 0;
-                                max-width: 640px;
-                                border-radius: 20px;
-                                background: #edf4fb;
-                                border: 1px solid #cfe0f0;
-                                padding: 16px 18px;
-                                font-size: 15px;
-                                line-height: 1.6;
-                                color: #23405f;
-                              }
-                              .url {
-                                margin-top: 24px;
-                                font-size: 14px;
-                                color: #52525b;
-                                word-break: break-all;
-                              }
-                            </style>
-                          </head>
-                          <body>
-                            <div class="sheet">
-                              <div class="header">
-                                <img class="logo" src="${window.location.origin}/BoxGym%20Kompakt.png" alt="TSV Falkensee BoxGym" />
-                                <div class="brand-badge">TSV Falkensee · BoxGym</div>
-                              </div>
-                              <h1>Jetzt fuer den Boxbereich registrieren</h1>
-                              <p>QR-Code mit dem Handy scannen und die Registrierung direkt online ausfuellen.</p>
-                              <div class="qr-wrap">
-                                <img class="qr" src="${memberRegistrationQrUrl}" alt="QR-Code zur Registrierung" />
-                              </div>
-                              <div class="steps">
-                                <div class="step">
-                                  <div class="step-number">1</div>
-                                  <div class="step-title">QR-Code scannen</div>
-                                  <div class="step-text">Mit der Handykamera oder einer QR-App den Code oeffnen.</div>
-                                </div>
-                                <div class="step">
-                                  <div class="step-number">2</div>
-                                  <div class="step-title">Formular ausfuellen</div>
-                                  <div class="step-text">Persoenliche Daten fuer die Registrierung im Boxbereich eintragen.</div>
-                                </div>
-                                <div class="step">
-                                  <div class="step-number">3</div>
-                                  <div class="step-title">Absenden</div>
-                                  <div class="step-text">Anmeldung abschliessen und die Bestaetigung auf dem Handy pruefen.</div>
-                                </div>
-                              </div>
-                              <div class="note">
-                                Nur fuer TSV-Mitglieder bzw. Personen, die parallel die TSV-Mitgliedschaft beantragen.
-                              </div>
-                              <div class="url">${memberRegistrationUrl}</div>
-                            </div>
-                          </body>
-                        </html>
-                      `)
-                      printWindow.document.close()
-                      printWindow.focus()
-                      printWindow.print()
-                    }}
-                  >
-                    <Printer className="mr-2 h-4 w-4" />
-                    Drucken
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mx-auto w-full max-w-[220px] rounded-[28px] border border-[#d8e3ee] bg-white p-4 shadow-sm">
-                <Image
-                  src={memberRegistrationQrUrl}
-                  alt="QR-Code zur Registrierung für den TSV Boxbereich"
-                  width={320}
-                  height={320}
-                  className="h-auto w-full rounded-2xl"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.45fr_0.95fr]">
         <div className="space-y-4 md:hidden">

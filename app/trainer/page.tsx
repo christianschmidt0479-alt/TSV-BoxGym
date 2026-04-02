@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GroupFilterBar } from "@/components/group-filter-bar"
 import { InfoHint } from "@/components/ui/info-hint"
 import { groupOptions, sessions } from "@/lib/boxgymSessions"
+import { compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { clearTrainerAccessSession } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -59,12 +60,13 @@ function countByGroup<T extends { group: string }>(rows: T[]) {
   const counts = new Map<string, number>()
 
   for (const row of rows) {
-    counts.set(row.group, (counts.get(row.group) ?? 0) + 1)
+    const normalizedGroup = normalizeTrainingGroup(row.group) || row.group
+    counts.set(normalizedGroup, (counts.get(normalizedGroup) ?? 0) + 1)
   }
 
   return Array.from(counts.entries())
     .map(([group, count]) => ({ group, count }))
-    .sort((a, b) => a.group.localeCompare(b.group))
+    .sort((a, b) => compareTrainingGroupOrder(a.group, b.group) || a.group.localeCompare(b.group, "de"))
 }
 
 function TrainerStat({
@@ -254,12 +256,12 @@ export default function TrainerDashboardPage() {
 
   const filteredTodayCheckins = useMemo(() => {
     if (selectedGroup === "alle") return todayCheckins
-    return todayCheckins.filter((row) => row.group_name === selectedGroup)
+    return todayCheckins.filter((row) => (normalizeTrainingGroup(row.group_name) || row.group_name) === selectedGroup)
   }, [selectedGroup, todayCheckins])
 
   const filteredMemberRows = useMemo(() => {
     if (selectedGroup === "alle") return memberRows
-    return memberRows.filter((member) => member.base_group === selectedGroup)
+    return memberRows.filter((member) => (normalizeTrainingGroup(member.base_group) || member.base_group) === selectedGroup)
   }, [memberRows, selectedGroup])
 
   const filteredActiveSession = useMemo(() => {
@@ -288,7 +290,7 @@ export default function TrainerDashboardPage() {
 
   const trainerAssistMembers = useMemo(() => {
     return filteredMemberRows.filter(
-      (member) => member.base_group !== "Boxzwerge" && member.needs_trainer_assist_checkin
+      (member) => (normalizeTrainingGroup(member.base_group) || member.base_group) !== "Boxzwerge" && member.needs_trainer_assist_checkin
     ).length
   }, [filteredMemberRows])
 
@@ -296,10 +298,11 @@ export default function TrainerDashboardPage() {
     const grouped = new Map<string, { count: number; trial: number }>()
 
     for (const row of filteredTodayCheckins) {
-      const current = grouped.get(row.group_name) ?? { count: 0, trial: 0 }
+      const normalizedGroup = normalizeTrainingGroup(row.group_name) || row.group_name
+      const current = grouped.get(normalizedGroup) ?? { count: 0, trial: 0 }
       current.count += 1
       if (row.members?.is_trial) current.trial += 1
-      grouped.set(row.group_name, current)
+      grouped.set(normalizedGroup, current)
     }
 
     return Array.from(grouped.entries())
@@ -309,14 +312,14 @@ export default function TrainerDashboardPage() {
         trial: values.trial,
         members: values.count - values.trial,
       }))
-      .sort((a, b) => a.group.localeCompare(b.group))
+      .sort((a, b) => compareTrainingGroupOrder(a.group, b.group) || a.group.localeCompare(b.group, "de"))
   }, [filteredTodayCheckins])
 
   const assistSummary = useMemo(() => {
     const grouped = countByGroup(
       filteredMemberRows
         .filter((member) => member.base_group && member.needs_trainer_assist_checkin)
-        .map((member) => ({ group: member.base_group as string }))
+        .map((member) => ({ group: (normalizeTrainingGroup(member.base_group) || member.base_group) as string }))
     )
 
     return grouped
@@ -396,7 +399,7 @@ export default function TrainerDashboardPage() {
 
   async function handleLogout() {
     await clearTrainerAccessSession()
-    router.replace("/trainer-zugang")
+    router.replace("/")
     router.refresh()
   }
 
@@ -421,7 +424,7 @@ export default function TrainerDashboardPage() {
         </div>
         <div className="flex flex-wrap gap-3">
           <Button variant="outline" className="rounded-2xl" onClick={() => void handleLogout()}>
-            Abmelden
+            Ausloggen
           </Button>
           <Button asChild variant="outline" className="rounded-2xl">
             <Link href="/">Zur Startseite</Link>

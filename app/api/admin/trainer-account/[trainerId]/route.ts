@@ -3,7 +3,7 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { trainerLicenseOptions } from "@/lib/trainerLicense"
+import { normalizeTrainerLicense, trainerLicenseOptions } from "@/lib/trainerLicense"
 import { validateEmail } from "@/lib/formValidation"
 
 type UpdateTrainerBody = {
@@ -11,6 +11,9 @@ type UpdateTrainerBody = {
   lastName?: string
   email?: string
   phone?: string
+  isSportler?: boolean
+  memberBirthdate?: string | null
+  linkedMemberId?: string | null
   trainerLicense?: (typeof trainerLicenseOptions)[number]
   trainerLicenseRenewals?: string[]
   lizenzart?: string | null
@@ -34,6 +37,46 @@ const TRAINER_ACCOUNT_OPTIONAL_COLUMNS = [
   "lizenz_verband",
   "bemerkung",
 ] as const
+
+const MEMBER_AUTO_CREATE_BASE_SELECT = "id, first_name, last_name, email, created_at"
+const MEMBER_AUTO_CREATE_OPTIONAL_COLUMNS = [
+  "phone",
+  "birthdate",
+  "guardian_name",
+  "gender",
+  "member_pin",
+  "is_trial",
+  "trial_count",
+  "is_approved",
+  "email_verified",
+  "email_verified_at",
+  "base_group",
+] as const
+
+type UpdatedTrainerResponse = {
+  id: string
+  first_name?: string | null
+  last_name?: string | null
+  email?: string | null
+  linked_member_id?: string | null
+}
+
+type ExistingTrainerRow = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  password_hash: string | null
+  email_verified: boolean | null
+  email_verified_at: string | null
+  is_approved: boolean | null
+  linked_member_id: string | null
+}
+
+type MemberLookupRow = {
+  id: string
+  email?: string | null
+}
 
 function jsonError(message: string, status: number, details?: string) {
   return NextResponse.json({ ok: false, error: message, ...(details ? { details } : {}) }, { status })
@@ -70,9 +113,18 @@ function findMissingColumn(error: { message?: string } | null) {
   return TRAINER_ACCOUNT_OPTIONAL_COLUMNS.find((column) => message.includes(column)) ?? null
 }
 
+function findMissingMemberColumn(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  return MEMBER_AUTO_CREATE_OPTIONAL_COLUMNS.find((column) => message.includes(column)) ?? null
+}
+
 function isUniqueConstraintError(error: { code?: string; message?: string; details?: string | null } | null) {
   const message = `${error?.message ?? ""} ${error?.details ?? ""}`.toLowerCase()
   return error?.code === "23505" || message.includes("duplicate key") || message.includes("already exists")
+}
+
+function normalizeEmail(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase()
 }
 
 function normalizeRenewals(value: string[] | undefined) {
@@ -80,12 +132,43 @@ function normalizeRenewals(value: string[] | undefined) {
   const normalized = Array.from(
     new Set(
       renewals
-        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-        .filter((entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry))
+        .map((entry) => (typeof entry === "string" ? normalizeDateInput(entry) : null))
+        .filter((entry): entry is string => Boolean(entry))
     )
   )
 
   return normalized.sort((left, right) => right.localeCompare(left, "de"))
+}
+
+function normalizeDateInput(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? ""
+  if (!trimmed) return null
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const germanMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})$/)
+
+  const parts = isoMatch
+    ? { year: isoMatch[1], month: isoMatch[2], day: isoMatch[3] }
+    : germanMatch
+      ? { year: germanMatch[3], month: germanMatch[2], day: germanMatch[1] }
+      : null
+
+  if (!parts) return null
+
+  const isoDate = `${parts.year}-${parts.month}-${parts.day}`
+  const parsedDate = new Date(`${isoDate}T12:00:00`)
+
+  if (Number.isNaN(parsedDate.getTime())) return null
+
+  if (
+    parsedDate.getFullYear() !== Number(parts.year) ||
+    parsedDate.getMonth() + 1 !== Number(parts.month) ||
+    parsedDate.getDate() !== Number(parts.day)
+  ) {
+    return null
+  }
+
+  return isoDate
 }
 
 async function updateTrainerWithFallback(
@@ -122,6 +205,67 @@ async function updateTrainerWithFallback(
   }
 }
 
+async function createMemberWithFallback(
+  supabase: ReturnType<typeof getServerSupabase>,
+  payload: Record<string, unknown>
+) {
+  const attemptPayload = { ...payload }
+  const optionalColumns = MEMBER_AUTO_CREATE_OPTIONAL_COLUMNS.filter((column) => column in attemptPayload)
+
+  while (true) {
+    const select = [MEMBER_AUTO_CREATE_BASE_SELECT, ...optionalColumns].join(", ")
+    const response = await supabase.from("members").insert([attemptPayload]).select(select).single()
+
+    if (!response.error) {
+      return response
+    }
+
+    const missingColumn = isMissingColumnError(response.error) ? findMissingMemberColumn(response.error) : null
+    if (!missingColumn || !(missingColumn in attemptPayload)) {
+      return response
+    }
+
+    delete attemptPayload[missingColumn]
+    const missingIndex = optionalColumns.indexOf(missingColumn)
+    if (missingIndex >= 0) {
+      optionalColumns.splice(missingIndex, 1)
+    }
+  }
+}
+
+async function findMatchingMemberByEmail(
+  supabase: ReturnType<typeof getServerSupabase>,
+  email: string
+) {
+  const normalizedEmail = normalizeEmail(email)
+  if (!normalizedEmail) return null
+
+  const exact = await supabase
+    .from("members")
+    .select("id, email")
+    .eq("email", normalizedEmail)
+    .order("created_at", { ascending: false })
+    .limit(1)
+
+  if (exact.error) throw exact.error
+  const exactMatch = (exact.data?.[0] as MemberLookupRow | undefined) ?? null
+  if (exactMatch?.id) return exactMatch
+
+  const caseInsensitive = await supabase
+    .from("members")
+    .select("id, email")
+    .ilike("email", normalizedEmail)
+    .order("created_at", { ascending: false })
+    .limit(10)
+
+  if (caseInsensitive.error) throw caseInsensitive.error
+  return (
+    (caseInsensitive.data as MemberLookupRow[] | null)?.find(
+      (member) => normalizeEmail(member.email) === normalizedEmail
+    ) ?? null
+  )
+}
+
 export async function PATCH(request: Request, context: { params: Promise<{ trainerId: string }> }) {
   try {
     const authError = await requireAdminSession(request)
@@ -148,11 +292,17 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
     const lastName = body.lastName?.trim() ?? ""
     const email = body.email?.trim().toLowerCase() ?? ""
     const phone = body.phone?.trim() ?? ""
-    const trainerLicense = body.trainerLicense
+    const isSportler = body.isSportler === true
+    const memberBirthdateInput = body.memberBirthdate?.trim() ?? null
+    const memberBirthdate = normalizeDateInput(memberBirthdateInput)
+    const linkedMemberId = body.linkedMemberId?.trim() || null
+    const trainerLicenseInput = typeof body.trainerLicense === "string" ? body.trainerLicense : undefined
+    const trainerLicense = normalizeTrainerLicense(trainerLicenseInput)
     const trainerLicenseRenewals = normalizeRenewals(body.trainerLicenseRenewals)
     const lizenzart = body.lizenzart?.trim() ?? null
     const lizenznummer = body.lizenznummer?.trim() ?? null
-    const lizenzGueltigBis = body.lizenz_gueltig_bis?.trim() ?? null
+    const lizenzGueltigBisInput = body.lizenz_gueltig_bis?.trim() ?? null
+    const lizenzGueltigBis = normalizeDateInput(lizenzGueltigBisInput)
     const lizenzVerband = body.lizenz_verband?.trim() ?? null
     const bemerkung = body.bemerkung?.trim() ?? null
 
@@ -165,24 +315,99 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
       return jsonError(emailValidation.error || "Bitte eine gueltige E-Mail-Adresse eingeben.", 400)
     }
 
-    if (trainerLicense && !trainerLicenseOptions.includes(trainerLicense)) {
+    if (trainerLicenseInput && !trainerLicense) {
       return jsonError("Ungueltige Trainerlizenz.", 400)
     }
 
     if (Array.isArray(body.trainerLicenseRenewals) && trainerLicenseRenewals.length !== body.trainerLicenseRenewals.filter((entry) => typeof entry === "string" && entry.trim().length > 0).length) {
-      return jsonError("Lizenzverlaengerungen muessen als Datum im Format JJJJ-MM-TT gespeichert werden.", 400)
+      return jsonError("Lizenzverlaengerungen muessen als Datum im Format TT.MM.JJJJ gespeichert werden.", 400)
     }
 
-    if (lizenzGueltigBis && !/^\d{4}-\d{2}-\d{2}$/.test(lizenzGueltigBis)) {
-      return jsonError("'gültig bis' muss im Format JJJJ-MM-TT sein.", 400)
+    if (lizenzGueltigBisInput && !lizenzGueltigBis) {
+      return jsonError("'gueltig bis' muss im Format TT.MM.JJJJ sein.", 400)
+    }
+
+    if (memberBirthdateInput && !memberBirthdate) {
+      return jsonError("Geburtsdatum fuer das Mitglied muss im Format TT.MM.JJJJ sein.", 400)
     }
 
     const supabase = getServerSupabase()
+    const { data: currentTrainer, error: currentTrainerError } = await supabase
+      .from("trainer_accounts")
+      .select("id, first_name, last_name, email, password_hash, email_verified, email_verified_at, is_approved, linked_member_id")
+      .eq("id", normalizedTrainerId)
+      .maybeSingle()
+
+    if (currentTrainerError) {
+      throw currentTrainerError
+    }
+    if (!currentTrainer) {
+      return jsonError("Trainer nicht gefunden", 404)
+    }
+
+    const trainerRow = currentTrainer as ExistingTrainerRow
+    let resolvedLinkedMemberId = linkedMemberId
+    let autoCreatedMemberId: string | null = null
+
+    if (isSportler && !resolvedLinkedMemberId) {
+      const matchedMember = await findMatchingMemberByEmail(supabase, email)
+      if (matchedMember?.id) {
+        resolvedLinkedMemberId = matchedMember.id
+      } else {
+        if (!memberBirthdate) {
+          return jsonError("Bitte ein Geburtsdatum fuer das neue Mitglied eingeben.", 400)
+        }
+
+        const memberPayload: Record<string, unknown> = {
+          name: `${firstName} ${lastName}`.trim(),
+          first_name: firstName,
+          last_name: lastName,
+          birthdate: memberBirthdate,
+          email,
+          phone: phone || null,
+          guardian_name: null,
+          gender: null,
+          is_trial: false,
+          trial_count: 0,
+          member_pin: trainerRow.password_hash || null,
+          is_approved: trainerRow.is_approved ?? true,
+          email_verified: trainerRow.email_verified ?? false,
+          email_verified_at: trainerRow.email_verified_at ?? null,
+          base_group: null,
+        }
+
+        const { data: createdMember, error: createdMemberError } = await createMemberWithFallback(supabase, memberPayload)
+        if (createdMemberError) {
+          if (isUniqueConstraintError(createdMemberError)) {
+            const duplicateMember = await findMatchingMemberByEmail(supabase, email)
+            if (duplicateMember?.id) {
+              resolvedLinkedMemberId = duplicateMember.id
+            } else {
+              return jsonError("Zur E-Mail existiert bereits ein Mitglied. Bitte bestehendes Mitglied pruefen und erneut speichern.", 409)
+            }
+          } else {
+            throw createdMemberError
+          }
+        }
+
+        if (!resolvedLinkedMemberId && createdMember) {
+          const member = createdMember as unknown as { id: string }
+          resolvedLinkedMemberId = member.id
+          autoCreatedMemberId = member.id
+        }
+      }
+    }
+
+    if (isSportler && !resolvedLinkedMemberId) {
+      return jsonError("Sportlerkonto konnte nicht verknuepft werden.", 500)
+    }
+
     const payload: Record<string, unknown> = {
       first_name: firstName,
       last_name: lastName,
       email,
       phone: phone || null,
+      linked_member_id: resolvedLinkedMemberId,
       trainer_license: trainerLicense ?? null,
       trainer_license_renewals: trainerLicenseRenewals,
       lizenzart: lizenzart,
@@ -202,7 +427,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
     if (!data) {
       return jsonError("Trainer nicht gefunden", 404)
     }
-    const trainer = data as any
+    const trainer = data as unknown as UpdatedTrainerResponse
 
     await writeAdminAuditLog({
       session,
@@ -210,12 +435,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
       targetType: "trainer",
       targetId: trainer.id,
       targetName: `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim() || trainer.email || "—",
-      details: `E-Mail: ${trainer.email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${trainerLicenseRenewals.length ? `, Verlängerungen: ${trainerLicenseRenewals.join(", ")}` : ""}${lizenzart ? `, lizenzart: ${lizenzart}` : ""}${lizenznummer ? `, lizenznr: ${lizenznummer}` : ""}${lizenzGueltigBis ? `, gueltig_bis: ${lizenzGueltigBis}` : ""}`,
+      details: `E-Mail: ${trainer.email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${trainerLicenseRenewals.length ? `, Verlängerungen: ${trainerLicenseRenewals.join(", ")}` : ""}${lizenzart ? `, lizenzart: ${lizenzart}` : ""}${lizenznummer ? `, lizenznr: ${lizenznummer}` : ""}${lizenzGueltigBis ? `, gueltig_bis: ${lizenzGueltigBis}` : ""}${resolvedLinkedMemberId ? `, Mitglied verknuepft: ${resolvedLinkedMemberId}` : ""}${autoCreatedMemberId ? `, Mitglied automatisch angelegt` : ""}`,
     })
 
-    return NextResponse.json({ ok: true, trainer: trainer })
+    return NextResponse.json({ ok: true, trainer, linkedMemberId: resolvedLinkedMemberId, autoCreatedMemberId })
   } catch (error) {
     console.error("admin trainer account update failed", error)
-    return jsonError("Internal server error", 500)
+    const details = error instanceof Error ? error.message : undefined
+    return jsonError("Internal server error", 500, details)
   }
 }

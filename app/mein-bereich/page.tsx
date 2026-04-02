@@ -74,6 +74,21 @@ type MemberAreaSnapshot = {
   baseGroupPosition: number | null
 }
 
+const MEMBER_AREA_DEFAULT_ROUTE = "/mein-bereich/profil"
+
+async function copyTextToClipboard(value: string) {
+  if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+    return false
+  }
+
+  try {
+    await navigator.clipboard.writeText(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function getDayKey(dateString: string) {
   const date = new Date(`${dateString}T12:00:00`)
   const day = date.getDay()
@@ -229,7 +244,6 @@ export default function MemberAreaPage() {
   const [parentChildren, setParentChildren] = useState<MemberRecord[]>([])
   const [parentCheckinsByMember, setParentCheckinsByMember] = useState<Record<string, CheckinRow[]>>({})
   const [trainerHasRoleAccess, setTrainerHasRoleAccess] = useState(false)
-  const [trainerHasAdminAccess, setTrainerHasAdminAccess] = useState(false)
 
   const liveDate = new Date().toISOString().slice(0, 10)
   const currentMonthKey = liveDate.slice(0, 7)
@@ -283,7 +297,6 @@ export default function MemberAreaPage() {
     setParentLastName(getStoredString("tsv_parent_area_last_name"))
     const trainerAccess = readTrainerAccess()
     setTrainerHasRoleAccess(Boolean(trainerAccess.role))
-    setTrainerHasAdminAccess(trainerAccess.accountRole === "admin")
 
     try {
       const params = new URLSearchParams(window.location.search)
@@ -392,7 +405,7 @@ export default function MemberAreaPage() {
 
       const snapshot = (await response.json()) as MemberAreaSnapshot
       applyMemberSnapshot(snapshot)
-      router.push("/mein-bereich/profil/wettkampf")
+      router.replace(MEMBER_AREA_DEFAULT_ROUTE)
     } catch (error) {
       console.error(error)
       alert("Fehler beim Laden des Mitgliederbereichs.")
@@ -416,11 +429,12 @@ export default function MemberAreaPage() {
 
         const snapshot = (await response.json()) as MemberAreaSnapshot
         applyMemberSnapshot(snapshot)
+        router.replace(MEMBER_AREA_DEFAULT_ROUTE)
       } catch (error) {
         console.error("Member session restore failed", error)
       }
     })()
-  }, [isClient, memberAreaUnlocked])
+  }, [isClient, memberAreaUnlocked, router])
 
   useEffect(() => {
     if (!isClient || memberAreaUnlocked || !trainerHasRoleAccess) return
@@ -440,6 +454,7 @@ export default function MemberAreaPage() {
 
         const snapshot = (await response.json()) as MemberAreaSnapshot
         applyMemberSnapshot(snapshot)
+        router.replace(MEMBER_AREA_DEFAULT_ROUTE)
       } catch (error) {
         console.error("Trainer-linked member area loading failed", error)
       } finally {
@@ -572,7 +587,7 @@ export default function MemberAreaPage() {
           <div className="h-2 bg-[#154c83]" />
           <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
             <div className="flex items-center gap-4">
-              <Image src="/BoxGym Kompakt.png" alt="TSV Falkensee BoxGym" width={104} height={70} className="h-auto w-[46px] md:w-[92px]" priority />
+              <Image src="/boxgym-headline-old.png" alt="TSV Falkensee BoxGym" width={104} height={70} className="h-auto w-[46px] md:w-[92px]" priority />
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#154c83]">
                   <CircleUserRound className="h-4 w-4" />
@@ -583,31 +598,16 @@ export default function MemberAreaPage() {
               </div>
             </div>
 
-            <Button asChild variant="outline" className="rounded-2xl border-[#c8d8ea] text-[#154c83]">
-              <Link href="/">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Zur Startseite
-              </Link>
-            </Button>
+            <div className="flex flex-col items-end gap-3">
+              <Button asChild variant="outline" className="rounded-2xl border-[#c8d8ea] text-[#154c83]">
+                <Link href="/">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Zur Startseite
+                </Link>
+              </Button>
+            </div>
           </div>
         </div>
-
-        {trainerHasRoleAccess && (
-          <div className="mb-6 flex flex-wrap gap-3 rounded-[24px] border border-[#d8e3ee] bg-white p-4 shadow-sm">
-            <div className="rounded-2xl bg-[#154c83] px-4 py-2 text-sm font-semibold text-white">Rollenwechsel</div>
-            <Button type="button" className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]">
-              Mitglied
-            </Button>
-            <Button asChild type="button" variant="outline" className="rounded-2xl border-[#c8d8ea] text-[#154c83]">
-              <Link href="/trainer">Trainer</Link>
-            </Button>
-            {trainerHasAdminAccess && (
-              <Button asChild type="button" variant="outline" className="rounded-2xl border-[#c8d8ea] text-[#154c83]">
-                <Link href="/verwaltung">Admin</Link>
-              </Button>
-            )}
-          </div>
-        )}
 
         <Tabs value={portalView} onValueChange={(value) => setPortalView(value as "member" | "parent")} className="space-y-6">
           <TabsList className="rounded-2xl bg-white p-1 shadow-sm">
@@ -647,26 +647,6 @@ export default function MemberAreaPage() {
                       {memberAreaLoading ? "Lädt..." : "Mitgliederbereich öffnen"}
                     </Button>
 
-                    {memberAreaUnlocked && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-2xl"
-                        onClick={() => {
-                          void fetch("/api/public/member-area", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ action: "logout_member_session" }),
-                          })
-                          setMemberAreaUnlocked(false)
-                          setMemberAreaData(null)
-                          setMemberAttendanceRows([])
-                          setRecentCheckins([])
-                        }}
-                      >
-                        Schließen
-                      </Button>
-                    )}
                   </div>
                 </form>
               </CardContent>
@@ -701,30 +681,6 @@ export default function MemberAreaPage() {
                       <div className="mt-1 text-3xl font-bold text-[#154c83]">{baseGroupMonthVisits}</div>
                       <div className="mt-1 text-xs text-zinc-500">{memberAreaData.base_group || "Keine Stammgruppe"}</div>
                     </div>
-                  </div>
-
-                  <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
-                    E-Mail-Status:{" "}
-                    {memberAreaData.email_verified ? (
-                      <span className="font-semibold text-green-600">bestätigt</span>
-                    ) : (
-                      <span className="font-semibold text-amber-600">noch nicht bestätigt</span>
-                    )}
-                  </div>
-
-                  {memberAreaData.email_verified_at && (
-                    <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
-                      Bestätigt am: <span className="font-semibold">{new Date(memberAreaData.email_verified_at).toLocaleString("de-DE")}</span>
-                    </div>
-                  )}
-
-                  <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
-                    Admin-Status:{" "}
-                    {memberAreaData.is_approved ? (
-                      <span className="font-semibold text-green-600">freigegeben</span>
-                    ) : (
-                      <span className="font-semibold text-amber-600">noch nicht freigegeben</span>
-                    )}
                   </div>
 
                   <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
@@ -883,8 +839,18 @@ export default function MemberAreaPage() {
                                 }
 
                                 await response.json()
+                                const result = (await response.json()) as {
+                                  verificationLink?: string
+                                  delivery?: { messageId?: string | null }
+                                }
+                                const copied = result.verificationLink ? await copyTextToClipboard(result.verificationLink) : false
+                                const providerSuffix = result.delivery?.messageId ? ` Provider-ID: ${result.delivery.messageId}` : ""
 
-                                alert("Bestätigungs-Mail wurde erneut versendet.")
+                                alert(
+                                  copied
+                                    ? `Bestätigungs-Mail wurde an den Mail-Dienst übergeben.${providerSuffix} Der Bestätigungslink wurde zusätzlich in die Zwischenablage kopiert.`
+                                    : `Bestätigungs-Mail wurde an den Mail-Dienst übergeben.${providerSuffix}`
+                                )
                               } catch (error) {
                                 console.error(error)
                                 const message = error instanceof Error ? error.message : "Bestätigungs-Mail konnte nicht versendet werden."
@@ -1083,26 +1049,6 @@ export default function MemberAreaPage() {
                       {parentLoading ? "Lädt..." : "Elternbereich öffnen"}
                     </Button>
 
-                    {parentUnlocked && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-2xl"
-                        onClick={() => {
-                          void fetch("/api/public/member-area", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ action: "logout_parent_session" }),
-                          })
-                          setParentUnlocked(false)
-                          setParentAccount(null)
-                          setParentChildren([])
-                          setParentCheckinsByMember({})
-                        }}
-                      >
-                        Schließen
-                      </Button>
-                    )}
                   </div>
                 </form>
               </CardContent>

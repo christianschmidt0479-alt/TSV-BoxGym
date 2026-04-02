@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, createMember, findMemberByFirstLastAndBirthdate, updateMemberProfile, updateTrialMember } from "@/lib/boxgymDb"
+import { readCheckinSettings } from "@/lib/checkinSettingsDb"
+import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
 import { sessions } from "@/lib/boxgymSessions"
+import { readQrAccessFromHeaders } from "@/lib/qrAccess"
 import { supabase } from "@/lib/supabaseClient"
 
 type TrialCheckinBody = {
@@ -77,6 +80,11 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
+    const qrAccess = await readQrAccessFromHeaders(request)
+    if (!qrAccess || qrAccess.panel !== "trial") {
+      return new NextResponse("QR-Zugang erforderlich.", { status: 403 })
+    }
+
     const body = (await request.json()) as TrialCheckinBody
     const firstName = body.firstName?.trim() ?? ""
     const lastName = body.lastName?.trim() ?? ""
@@ -115,9 +123,13 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte Telefonnummer angeben.", { status: 400 })
     }
 
-    // TESTPHASE: Zeitfenster fuer Probetrainings-Check-ins spaeter wieder aktivieren.
     if (!selectedSession) {
       return new NextResponse("Bitte eine Trainingsgruppe auswaehlen.", { status: 400 })
+    }
+
+    const checkinSettings = await readCheckinSettings()
+    if (!checkinSettings.disableCheckinTimeWindow && !isSessionOpenForCheckin(selectedSession, now)) {
+      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.", { status: 400 })
     }
 
     let member = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
@@ -133,6 +145,11 @@ export async function POST(request: Request) {
         is_approved: true,
         base_group: selectedSession.group,
       })
+    } else if (!member.is_trial) {
+      return new NextResponse(
+        "Diese Person ist bereits als Mitglied erfasst. Probetraining darf bestehende Mitgliedsdaten nicht aendern.",
+        { status: 409 }
+      )
     }
 
     const { data: trialCheckins, error: trialCheckinsError } = await supabase

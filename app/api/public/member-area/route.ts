@@ -13,7 +13,6 @@ import {
   getChildrenForParent,
   getParentAccountByEmail,
   getParentAccountByLogin,
-  hashParentAccessCode,
   isParentAccountSetupPending,
   type ParentAccountRow,
 } from "@/lib/parentAccountsDb"
@@ -132,8 +131,7 @@ type MemberAreaBody =
     }
 
 const MEMBER_LOGIN_ERROR_MESSAGE = "Mitglied nicht gefunden oder PIN nicht korrekt."
-const MEMBER_MISSING_EMAIL_MESSAGE =
-  "Für dieses Konto ist noch keine E-Mail-Adresse hinterlegt. Bitte Trainer oder Admin ansprechen."
+const PARENT_LOGIN_ERROR_MESSAGE = "Elternkonto nicht gefunden oder Zugangscode nicht korrekt."
 
 function getMonthKey(dateString: string) {
   return dateString.slice(0, 7)
@@ -394,12 +392,12 @@ export async function POST(request: Request) {
 
       const memberMatch = await findMemberByEmailAndPin(email, pin)
       if (memberMatch?.status === "missing_email") {
-        return new NextResponse(MEMBER_MISSING_EMAIL_MESSAGE, { status: 409 })
+        return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
       }
 
       const member = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
       if (!member) {
-        return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 404 })
+        return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
       }
 
       const response = NextResponse.json(await buildMemberSnapshot(member))
@@ -460,8 +458,6 @@ export async function POST(request: Request) {
 
     if (body.action === "parent_login") {
       const email = body.email?.trim().toLowerCase() ?? ""
-      const firstName = body.firstName?.trim() ?? ""
-      const lastName = body.lastName?.trim() ?? ""
       const accessCode = body.accessCode?.trim() ?? ""
 
       if (!email || !accessCode) {
@@ -469,31 +465,14 @@ export async function POST(request: Request) {
       }
 
       const existingParent = await getParentAccountByEmail(email)
-      let parent: ParentAccountRow | null = null
-
       if (existingParent && isParentAccountSetupPending(existingParent)) {
-        if (!firstName || !lastName) {
-          return new NextResponse("Bitte beim ersten Öffnen Vorname und Nachname des Elternteils angeben.", { status: 400 })
-        }
-
-        const { data: activatedParent, error: parentUpdateError } = await supabase
-          .from("parent_accounts")
-          .update({
-            parent_name: `${firstName} ${lastName}`.trim(),
-            access_code_hash: await hashParentAccessCode(accessCode),
-          })
-          .eq("id", existingParent.id)
-          .select("*")
-          .single()
-
-        if (parentUpdateError) throw parentUpdateError
-        parent = activatedParent as ParentAccountRow
-      } else {
-        parent = await getParentAccountByLogin(email, accessCode)
+        return new NextResponse(PARENT_LOGIN_ERROR_MESSAGE, { status: 401 })
       }
 
+      const parent = await getParentAccountByLogin(email, accessCode)
+
       if (!parent) {
-        return new NextResponse("Kein Elternkonto mit dieser Kombination gefunden.", { status: 404 })
+        return new NextResponse(PARENT_LOGIN_ERROR_MESSAGE, { status: 401 })
       }
 
       const response = NextResponse.json(await buildParentSnapshot(parent))
@@ -578,14 +557,18 @@ export async function POST(request: Request) {
       const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
       const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`
 
-      await sendVerificationEmail({
+      const delivery = await sendVerificationEmail({
         email: targetEmail,
         name: getMemberDisplayName(member),
         link: verificationLink,
         kind: "member",
       })
 
-      return NextResponse.json({ ok: true })
+      return NextResponse.json({
+        ok: true,
+        verificationLink,
+        delivery,
+      })
     }
 
     return new NextResponse("Invalid action", { status: 400 })

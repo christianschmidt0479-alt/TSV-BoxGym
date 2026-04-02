@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, findMemberByEmailAndPin } from "@/lib/boxgymDb"
+import { readCheckinSettings } from "@/lib/checkinSettingsDb"
+import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
 import { applyMemberDeviceCookie, clearMemberDeviceCookie, createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
+import { readQrAccessFromHeaders } from "@/lib/qrAccess"
 import { sessions } from "@/lib/boxgymSessions"
 import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { supabase } from "@/lib/supabaseClient"
@@ -96,6 +99,11 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
+    const qrAccess = await readQrAccessFromHeaders(request)
+    if (!qrAccess || qrAccess.panel !== "member") {
+      return new NextResponse("QR-Zugang erforderlich.", { status: 403 })
+    }
+
     const body = (await request.json()) as MemberCheckinBody
     const email = body.email?.trim().toLowerCase() ?? ""
     const pin = body.pin?.trim() ?? ""
@@ -124,19 +132,23 @@ export async function POST(request: Request) {
       return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
-    // TESTPHASE: Zeitfenster fuer Mitglieder-Check-ins spaeter wieder aktivieren.
     if (!selectedSession) {
       return new NextResponse("Bitte eine Trainingsgruppe auswaehlen.", { status: 400 })
     }
 
+    const checkinSettings = await readCheckinSettings()
+    if (!checkinSettings.disableCheckinTimeWindow && !isSessionOpenForCheckin(selectedSession, now)) {
+      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.", { status: 400 })
+    }
+
     const memberMatch = await findMemberByEmailAndPin(email, pin)
     if (memberMatch?.status === "missing_email") {
-      return new NextResponse("Für dieses Konto ist noch keine E-Mail-Adresse hinterlegt. Bitte Trainer oder Admin ansprechen.", { status: 409 })
+      return new NextResponse("Mitglied nicht gefunden oder PIN nicht korrekt.", { status: 401 })
     }
     const resolvedMember = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
 
     if (!resolvedMember) {
-      return new NextResponse("Mitglied nicht gefunden oder PIN nicht korrekt.", { status: 404 })
+      return new NextResponse("Mitglied nicht gefunden oder PIN nicht korrekt.", { status: 401 })
     }
 
     if (resolvedMember.is_competition_member) {

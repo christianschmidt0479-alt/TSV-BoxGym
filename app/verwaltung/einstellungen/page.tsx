@@ -18,6 +18,10 @@ type MailConfigResponse = {
   admin_notification_email: string
 }
 
+type CheckinSettingsResponse = {
+  disableCheckinTimeWindow: boolean
+}
+
 export default function EinstellungenPage() {
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [mailTestEmail, setMailTestEmail] = useState("")
@@ -29,6 +33,9 @@ export default function EinstellungenPage() {
   const [mailReplyToAddress, setMailReplyToAddress] = useState("")
   const [mailAdminAddress, setMailAdminAddress] = useState("")
   const [mailAppBaseUrl, setMailAppBaseUrl] = useState("")
+  const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
+  const [checkinSettingsLoading, setCheckinSettingsLoading] = useState(true)
+  const [checkinSettingsSaving, setCheckinSettingsSaving] = useState(false)
 
   useEffect(() => {
     if (!authResolved || trainerRole !== "admin") return
@@ -63,6 +70,29 @@ export default function EinstellungenPage() {
         setMailReplyToAddress("")
         setMailAdminAddress("")
         setMailAppBaseUrl("")
+      }
+    })()
+  }, [authResolved, trainerRole])
+
+  useEffect(() => {
+    if (!authResolved || trainerRole !== "admin") return
+
+    ;(async () => {
+      try {
+        setCheckinSettingsLoading(true)
+        const response = await fetch("/api/admin/checkin-settings", { method: "GET", cache: "no-store" })
+        if (!response.ok) {
+          setDisableCheckinTimeWindow(false)
+          return
+        }
+
+        const data = (await response.json()) as CheckinSettingsResponse
+        setDisableCheckinTimeWindow(Boolean(data.disableCheckinTimeWindow))
+      } catch (error) {
+        console.error("Checkin settings loading failed", error)
+        setDisableCheckinTimeWindow(false)
+      } finally {
+        setCheckinSettingsLoading(false)
       }
     })()
   }, [authResolved, trainerRole])
@@ -246,6 +276,67 @@ export default function EinstellungenPage() {
             }}
           >
             {mailTestSending ? "Sendet..." : "Probe-Mail senden"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>Ferienmodus</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div
+            className={`rounded-2xl border p-4 text-sm ${
+              disableCheckinTimeWindow
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-green-200 bg-green-50 text-green-800"
+            }`}
+          >
+            {disableCheckinTimeWindow
+              ? "Ferienmodus ist aktiv. Die 30-Minuten-Regel ist ausser Kraft und Check-ins sind fuer heutige Einheiten ganztägig moeglich."
+              : "Standard aktiv: Check-ins sind nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich."}
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+            Einsatzbeispiel: Ferien oder Sonderbetrieb, wenn Mitglieder ausserhalb des normalen Zeitfensters einchecken sollen.
+          </div>
+
+          <Button
+            className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+            disabled={checkinSettingsLoading || checkinSettingsSaving}
+            onClick={async () => {
+              try {
+                setCheckinSettingsSaving(true)
+
+                const response = await fetch("/api/admin/checkin-settings", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    disableCheckinTimeWindow: !disableCheckinTimeWindow,
+                  }),
+                })
+
+                if (!response.ok) {
+                  const message = await response.text()
+                  throw new Error(message || "Schalter konnte nicht gespeichert werden.")
+                }
+
+                const result = (await response.json()) as CheckinSettingsResponse
+                setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
+              } catch (error) {
+                console.error(error)
+                const message = error instanceof Error ? error.message : "Schalter konnte nicht gespeichert werden."
+                alert(`Speichern fehlgeschlagen: ${message}`)
+              } finally {
+                setCheckinSettingsSaving(false)
+              }
+            }}
+          >
+            {checkinSettingsSaving
+              ? "Speichert..."
+              : disableCheckinTimeWindow
+                ? "Ferienmodus beenden"
+                : "Ferienmodus aktivieren"}
           </Button>
         </CardContent>
       </Card>

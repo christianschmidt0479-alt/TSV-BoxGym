@@ -264,7 +264,7 @@ export async function POST(request: Request) {
       const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
       const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`
 
-      await sendVerificationEmail({
+      const delivery = await sendVerificationEmail({
         email: member.email,
         name: getMemberDisplayName(member),
         link: verificationLink,
@@ -277,10 +277,14 @@ export async function POST(request: Request) {
         targetType: "member",
         targetId: member.id,
         targetName: getMemberDisplayName(member),
-        details: `Verification email resent to ${member.email}`,
+        details: `Verification email resent to ${member.email}${delivery.messageId ? ` · Resend ${delivery.messageId}` : ""}`,
       })
 
-      return NextResponse.json({ ok: true })
+      return NextResponse.json({
+        ok: true,
+        verificationLink,
+        delivery,
+      })
     }
 
     if (body.action === "change_group") {

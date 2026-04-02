@@ -3,6 +3,7 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 import { ChevronLeft, ClipboardCheck } from "lucide-react"
 import { APP_VERSION } from "@/lib/appVersion"
+import { TrainerLogoutButton } from "@/components/trainer-logout-button"
 
 export default function TrainerLayout({ children }: { children: ReactNode }) {
   return (
@@ -16,7 +17,7 @@ export default function TrainerLayout({ children }: { children: ReactNode }) {
             <div className="flex flex-col gap-3 px-4 py-3 md:px-5 md:py-3.5">
               <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <Image src="/BoxGym Kompakt.png" alt="TSV BoxGym" width={66} height={28} className="h-auto w-[28px] object-contain sm:w-[33px] md:w-auto" priority />
+                  <Image src="/boxgym-headline-old.png" alt="TSV Falkensee BoxGym" width={66} height={28} className="h-auto w-[28px] object-contain sm:w-[33px] md:w-auto" priority />
                   <div className="min-w-0">
                     <div className="inline-flex items-center gap-2 rounded-full bg-[#eef4fb] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#154c83]">
                       <ClipboardCheck className="h-3.5 w-3.5" />
@@ -27,6 +28,7 @@ export default function TrainerLayout({ children }: { children: ReactNode }) {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
+                  <TrainerLogoutButton className="rounded-2xl border-[#cfd9e4] bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-700 hover:border-[#154c83] hover:bg-[#f7fbff]" />
                   <Link
                     href="/"
                     className="inline-flex items-center gap-2 rounded-2xl border border-[#cfd9e4] bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff]"

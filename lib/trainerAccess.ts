@@ -106,13 +106,25 @@ export function clearTrainerAccess() {
   notifyTrainerAccessChanged()
 }
 
-export async function clearTrainerAccessSession() {
+type ClearTrainerAccessSessionOptions = {
+  remote?: boolean
+  logErrors?: boolean
+}
+
+export async function clearTrainerAccessSession(options?: ClearTrainerAccessSessionOptions) {
+  const remote = options?.remote ?? true
+  const logErrors = options?.logErrors ?? false
+
   try {
-    await fetch("/api/trainer-auth", {
-      method: "DELETE",
-    })
+    if (remote) {
+      await fetch("/api/trainer-auth", {
+        method: "DELETE",
+      })
+    }
   } catch (error) {
-    console.error("trainer session logout failed", error)
+    if (logErrors) {
+      console.error("trainer session logout failed", error)
+    }
   } finally {
     clearTrainerAccess()
   }

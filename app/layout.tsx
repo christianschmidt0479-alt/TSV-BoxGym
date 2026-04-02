@@ -1,18 +1,20 @@
 import type { Metadata } from "next"
 import { APP_VERSION } from "@/lib/appVersion"
+import { getAppBaseUrl } from "@/lib/mailConfig"
 import { TrainerSessionGuard } from "@/components/trainer-session-guard"
 import { WorkspaceSwitcher } from "@/components/workspace-switcher"
 import "./globals.css"
 
 const brandName = "TSV BoxGym"
-const iconVersion = `v=${APP_VERSION}-tsv-boxgym-stack-v5`
-const svgIcon = `/boxgym-wordmark-tab.svg?${iconVersion}`
+const iconVersion = `v=${APP_VERSION}-tsv-boxgym-logo-v6`
+const svgIcon = `/tsv-boxgym-brand-mark.svg?${iconVersion}`
 const tabIcon = `/tsv-boxgym-stack-icon.png?${iconVersion}`
 const faviconIcon = `/favicon-tsv-boxgym-stack.ico?${iconVersion}`
-const socialImage = "/tsv-boxgym-share-v2.png"
+const socialImage = "/tsv-boxgym-share-v3.png"
+const appBaseUrl = getAppBaseUrl()
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.tsvboxgym.de"),
+  metadataBase: new URL(appBaseUrl),
   applicationName: brandName,
   title: brandName,
   description: brandName,
@@ -27,7 +29,7 @@ export const metadata: Metadata = {
     siteName: brandName,
     locale: "de_DE",
     type: "website",
-    url: "https://www.tsvboxgym.de",
+    url: appBaseUrl,
     images: [
       {
         url: socialImage,

@@ -4,6 +4,7 @@ const distributedRateLimitUrl = process.env.UPSTASH_REDIS_REST_URL?.trim() || ""
 const distributedRateLimitToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim() || ""
 const distributedRateLimitPrefix = process.env.RATE_LIMIT_PREFIX?.trim() || "tsvboxgym:ratelimit"
 let didWarnPartialDistributedConfig = false
+let didWarnStrictRateLimitMode = false
 
 function normalizeOrigin(value: string) {
   return value.replace(/\/+$/, "").toLowerCase()
@@ -35,6 +36,25 @@ function getDistributedRateLimitConfig() {
     token: distributedRateLimitToken,
     prefix: distributedRateLimitPrefix,
   }
+}
+
+function isDistributedRateLimitRequired() {
+  const allowLocalFallback = (process.env.ALLOW_LOCAL_RATE_LIMIT_FALLBACK || "").trim().toLowerCase() === "true"
+  return process.env.NODE_ENV === "production" && !allowLocalFallback
+}
+
+function warnStrictRateLimitMode(reason: string) {
+  if (didWarnStrictRateLimitMode) return
+  didWarnStrictRateLimitMode = true
+  console.warn(`Strict distributed rate limit mode active: ${reason}`)
+}
+
+function unavailableRateLimitResult(windowMs: number) {
+  return { ok: false, remaining: 0, retryAfterMs: windowMs, unavailable: true }
+}
+
+function unavailableLoginLockState(windowMs = 15 * 60 * 1000) {
+  return { blocked: true, retryAfterMs: windowMs, remainingAttempts: 0, unavailable: true }
 }
 
 async function runDistributedPipeline(commands: Array<Array<string>>) {
@@ -119,6 +139,10 @@ export function checkRateLimit(key: string, limit: number, windowMs: number) {
 export async function checkRateLimitAsync(key: string, limit: number, windowMs: number) {
   const distributedKey = `${distributedRateLimitPrefix}:${key}`
   if (!getDistributedRateLimitConfig()) {
+    if (isDistributedRateLimitRequired()) {
+      warnStrictRateLimitMode("missing distributed limiter configuration")
+      return unavailableRateLimitResult(windowMs)
+    }
     return checkRateLimit(key, limit, windowMs)
   }
 
@@ -146,6 +170,10 @@ export async function checkRateLimitAsync(key: string, limit: number, windowMs: 
 
     return { ok: true, remaining: Math.max(0, limit - currentCount) }
   } catch (error) {
+    if (isDistributedRateLimitRequired()) {
+      warnStrictRateLimitMode("distributed limiter unavailable")
+      return unavailableRateLimitResult(windowMs)
+    }
     console.warn("Distributed rate limit unavailable, falling back to local store.", error)
     return checkRateLimit(key, limit, windowMs)
   }
@@ -172,6 +200,10 @@ export function getLoginLockState(key: string) {
 export async function getLoginLockStateAsync(key: string, maxAttempts = 5) {
   const config = getDistributedRateLimitConfig()
   if (!config) {
+    if (isDistributedRateLimitRequired()) {
+      warnStrictRateLimitMode("missing distributed login lock configuration")
+      return unavailableLoginLockState()
+    }
     return getLoginLockState(key)
   }
 
@@ -208,6 +240,10 @@ export async function getLoginLockStateAsync(key: string, maxAttempts = 5) {
       remainingAttempts: Math.max(0, maxAttempts - (current.count ?? 0)),
     }
   } catch (error) {
+    if (isDistributedRateLimitRequired()) {
+      warnStrictRateLimitMode("distributed login lock unavailable")
+      return unavailableLoginLockState()
+    }
     console.warn("Distributed login lock unavailable, falling back to local store.", error)
     return getLoginLockState(key)
   }
@@ -242,6 +278,10 @@ export function registerLoginFailure(key: string, maxAttempts = 5, windowMs = 15
 export async function registerLoginFailureAsync(key: string, maxAttempts = 5, windowMs = 15 * 60 * 1000, blockMs = 15 * 60 * 1000) {
   const config = getDistributedRateLimitConfig()
   if (!config) {
+    if (isDistributedRateLimitRequired()) {
+      warnStrictRateLimitMode("missing distributed login failure configuration")
+      return unavailableLoginLockState(blockMs)
+    }
     return registerLoginFailure(key, maxAttempts, windowMs, blockMs)
   }
 
@@ -295,6 +335,10 @@ export async function registerLoginFailureAsync(key: string, maxAttempts = 5, wi
 
     return { blocked: false, remainingAttempts: Math.max(0, maxAttempts - nextCount) }
   } catch (error) {
+    if (isDistributedRateLimitRequired()) {
+      warnStrictRateLimitMode("distributed login failure tracking unavailable")
+      return unavailableLoginLockState(blockMs)
+    }
     console.warn("Distributed login lock unavailable, falling back to local store.", error)
     return registerLoginFailure(key, maxAttempts, windowMs, blockMs)
   }

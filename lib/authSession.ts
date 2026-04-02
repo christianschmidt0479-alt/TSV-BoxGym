@@ -18,9 +18,7 @@ export type TrainerSessionPayload = {
 }
 
 function getSessionSecret() {
-  const secret =
-    process.env.TRAINER_SESSION_SECRET ||
-    (process.env.NODE_ENV !== "production" ? process.env.ADMIN_LOGIN_PASSWORD || "" : "")
+  const secret = process.env.TRAINER_SESSION_SECRET || ""
   if (!secret) {
     throw new Error("Missing TRAINER_SESSION_SECRET")
   }

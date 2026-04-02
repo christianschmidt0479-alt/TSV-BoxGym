@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+import { buildTrainingGroupOptions, compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -269,8 +269,8 @@ export default function WettkampfPage() {
   )
 
   const groupOptions = useMemo(() => {
-    return Array.from(new Set(eligibleMembers.map((member) => member.base_group).filter(Boolean) as string[])).sort((a, b) =>
-      a.localeCompare(b)
+    return buildTrainingGroupOptions(eligibleMembers.map((member) => member.base_group)).sort(
+      (left, right) => compareTrainingGroupOrder(left, right) || left.localeCompare(right, "de")
     )
   }, [eligibleMembers])
 
@@ -279,16 +279,17 @@ export default function WettkampfPage() {
 
     return eligibleMembers
       .filter((member) => {
+        const normalizedGroup = normalizeTrainingGroup(member.base_group) || member.base_group || "ohne-gruppe"
         const draft = drafts[member.id]
         const matchesSearch =
           trimmedSearch === "" ||
           getMemberDisplayName(member).toLowerCase().includes(trimmedSearch) ||
           (member.email ?? "").toLowerCase().includes(trimmedSearch)
-        const matchesGroup = groupFilter === "alle" || (member.base_group ?? "ohne-gruppe") === groupFilter
+        const matchesGroup = groupFilter === "alle" || normalizedGroup === groupFilter
         const matchesStatus =
           statusFilter === "alle" ||
           (statusFilter === "wettkampf" && !!draft?.selected) ||
-          (statusFilter === "kader" && member.base_group === "L-Gruppe") ||
+          (statusFilter === "kader" && normalizedGroup === "L-Gruppe") ||
           (statusFilter === "offen" && !draft?.selected)
 
         return matchesSearch && matchesGroup && matchesStatus
@@ -307,13 +308,14 @@ export default function WettkampfPage() {
         .filter((member) => !!member.is_approved)
         .filter((member) => !drafts[member.id]?.selected)
         .filter((member) => {
+          const normalizedGroup = normalizeTrainingGroup(member.base_group) || member.base_group || "ohne-gruppe"
           const trimmedSearch = search.trim().toLowerCase()
           const matchesSearch =
             trimmedSearch === "" ||
             getMemberDisplayName(member).toLowerCase().includes(trimmedSearch) ||
             (member.email ?? "").toLowerCase().includes(trimmedSearch)
-          const matchesGroup = groupFilter === "alle" || (member.base_group ?? "ohne-gruppe") === groupFilter
-          const matchesStatus = statusFilter === "alle" || statusFilter === "offen" || (statusFilter === "kader" && member.base_group === "L-Gruppe")
+          const matchesGroup = groupFilter === "alle" || normalizedGroup === groupFilter
+          const matchesStatus = statusFilter === "alle" || statusFilter === "offen" || (statusFilter === "kader" && normalizedGroup === "L-Gruppe")
           return matchesSearch && matchesGroup && matchesStatus
         })
         .sort((a, b) => getMemberDisplayName(a).localeCompare(getMemberDisplayName(b))),
@@ -335,7 +337,7 @@ export default function WettkampfPage() {
       selectedCount,
       missingMedical,
       missingLicense,
-      performanceGroupCount: eligibleMembers.filter((member) => member.base_group === "L-Gruppe").length,
+      performanceGroupCount: eligibleMembers.filter((member) => (normalizeTrainingGroup(member.base_group) || member.base_group) === "L-Gruppe").length,
       totalFights: eligibleMembers.reduce((sum, member) => {
         const draft = drafts[member.id]
         return draft?.selected ? sum + Number(draft.fights || 0) : sum
@@ -568,7 +570,7 @@ export default function WettkampfPage() {
                             Wettkämpfer
                           </Badge>
                         ) : null}
-                        {member.base_group === "L-Gruppe" ? (
+                        {(normalizeTrainingGroup(member.base_group) || member.base_group) === "L-Gruppe" ? (
                           <Badge variant="outline" className="border-blue-200 bg-blue-100 text-blue-800">
                             Leistungsgruppe
                           </Badge>

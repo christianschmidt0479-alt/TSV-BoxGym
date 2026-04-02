@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { applyTrainerSessionCookie, clearTrainerSessionCookie, readTrainerSessionFromHeaders, getTrainerSessionMaxAgeMs } from "@/lib/authSession"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { findTrainerByEmail } from "@/lib/trainerDb"
 
 export async function POST(request: Request) {
   if (!isAllowedOrigin(request)) {
@@ -17,24 +18,32 @@ export async function POST(request: Request) {
     return new NextResponse("Unauthorized", { status: 401 })
   }
 
+  const trainerAccount = await findTrainerByEmail(session.accountEmail)
+  if (!trainerAccount || !trainerAccount.email_verified || !trainerAccount.is_approved) {
+    const response = new NextResponse("Unauthorized", { status: 401 })
+    return clearTrainerSessionCookie(response)
+  }
+
+  const accountRole = trainerAccount.role === "admin" ? "admin" : "trainer"
+
   const response = NextResponse.json({
     ok: true,
-    role: session.role,
-    accountRole: session.accountRole,
-    linkedMemberId: session.linkedMemberId,
-    accountEmail: session.accountEmail,
-    accountFirstName: session.accountFirstName,
-    accountLastName: session.accountLastName,
+    role: accountRole,
+    accountRole,
+    linkedMemberId: trainerAccount.linked_member_id ?? null,
+    accountEmail: trainerAccount.email,
+    accountFirstName: trainerAccount.first_name,
+    accountLastName: trainerAccount.last_name,
     sessionUntil: Date.now() + getTrainerSessionMaxAgeMs(),
   })
 
   return await applyTrainerSessionCookie(response, {
-    role: session.role,
-    accountRole: session.accountRole,
-    linkedMemberId: session.linkedMemberId,
-    accountEmail: session.accountEmail,
-    accountFirstName: session.accountFirstName,
-    accountLastName: session.accountLastName,
+    role: accountRole,
+    accountRole,
+    linkedMemberId: trainerAccount.linked_member_id ?? null,
+    accountEmail: trainerAccount.email,
+    accountFirstName: trainerAccount.first_name,
+    accountLastName: trainerAccount.last_name,
   })
 }
 

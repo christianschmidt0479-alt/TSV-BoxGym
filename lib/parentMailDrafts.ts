@@ -100,7 +100,7 @@ export async function getParentFamilyMailRows() {
 }
 
 export function getParentFamilyLink(row: ParentFamilyMailRow, baseUrl: string) {
-  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "") || "https://www.tsvboxgym.de"
+  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "") || "http://localhost:3000"
   const firstChildId = row.children[0]?.member_id || ""
   const params = new URLSearchParams({
     view: "parent",

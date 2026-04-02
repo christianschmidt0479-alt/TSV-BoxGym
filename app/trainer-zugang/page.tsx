@@ -3,7 +3,6 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { ChevronLeft, Lock } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -13,8 +12,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TrainerLogoutButton } from "@/components/trainer-logout-button"
 import { validateEmail, validateName, validatePhone } from "@/lib/formValidation"
-import { clearTrainerAccessSession, persistTrainerAccess, readTrainerAccess } from "@/lib/trainerAccess"
+import { clearTrainerAccess, persistTrainerAccess, readTrainerAccess } from "@/lib/trainerAccess"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 
 const TRAINER_VERIFY_PARAM = "trainer_verify"
@@ -31,8 +31,22 @@ type TrainerAuthSuccessPayload = {
   sessionUntil: number
 }
 
+function mapTrainerAuthErrorMessage(message: string) {
+  const trimmed = message.trim()
+  if (!trimmed) return "Fehler beim Trainer-Login."
+
+  if (trimmed.startsWith("<!DOCTYPE html>") || trimmed.startsWith("<html")) {
+    if (trimmed.includes("NEXT_PUBLIC_SUPABASE_URL") || trimmed.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY") || trimmed.includes("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")) {
+      return "Lokal fehlen Supabase-Zugangsdaten in .env.local. Bitte NEXT_PUBLIC_SUPABASE_URL und NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY setzen und den Dev-Server neu starten."
+    }
+
+    return "Der lokale Server hat eine HTML-Fehlerseite statt einer API-Antwort geliefert. Bitte Dev-Server-Log pruefen."
+  }
+
+  return trimmed
+}
+
 export default function TrainerZugangPage() {
-  const router = useRouter()
   const [trainerAuthView, setTrainerAuthView] = useState<"login" | "register">("login")
   const [trainerLoginEmail, setTrainerLoginEmail] = useState("")
   const [trainerPinInput, setTrainerPinInput] = useState("")
@@ -120,7 +134,7 @@ export default function TrainerZugangPage() {
         })
 
         if (!response.ok) {
-          await clearTrainerAccessSession()
+          clearTrainerAccess()
           setActiveRole("")
           return
         }
@@ -185,7 +199,7 @@ export default function TrainerZugangPage() {
         showAuthError(message || "Zu viele Fehlversuche. Bitte später erneut versuchen.")
         return
       }
-      throw new Error((await response.text()) || "Fehler beim Trainer-Login.")
+      throw new Error(mapTrainerAuthErrorMessage(await response.text()))
     }
 
     const payload = (await response.json()) as TrainerAuthSuccessPayload
@@ -289,26 +303,29 @@ export default function TrainerZugangPage() {
     }
   }
 
-  async function handleLogout() {
-    await clearTrainerAccessSession()
-    setAuthFeedback(null)
-    setActiveRole("")
-    setTrainerPinInput("")
-    router.replace("/trainer-zugang")
-    router.refresh()
-  }
-
   return (
     <div className="min-h-screen bg-zinc-50 px-4 py-5 text-zinc-900 md:px-6 md:py-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] bg-white p-3 shadow-sm">
           <div className="rounded-2xl bg-[#154c83] px-4 py-2 text-sm font-semibold text-white">Trainerzugang</div>
-          <Button asChild variant="outline" className="rounded-2xl">
-            <Link href="/">
-              <ChevronLeft className="mr-2 h-4 w-4" />
-              Zurück zur Startseite
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            {activeRole ? (
+              <TrainerLogoutButton
+                className="rounded-2xl border-zinc-300"
+                onLoggedOut={() => {
+                  setAuthFeedback(null)
+                  setActiveRole("")
+                  setTrainerPinInput("")
+                }}
+              />
+            ) : null}
+            <Button asChild variant="outline" className="rounded-2xl">
+              <Link href="/">
+                <ChevronLeft className="mr-2 h-4 w-4" />
+                Zurück zur Startseite
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-[24px] shadow-xl md:rounded-[28px]">
@@ -316,7 +333,7 @@ export default function TrainerZugangPage() {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(230,51,42,0.25),transparent_35%)]" />
             <div className="relative flex items-center gap-3">
               <Image
-                src="/BoxGym Kompakt.png"
+                src="/boxgym-headline-old.png"
                 alt="TSV Falkensee BoxGym"
                 width={192}
                 height={128}
@@ -346,9 +363,6 @@ export default function TrainerZugangPage() {
                   <Link href={activeRole === "admin" ? "/verwaltung" : "/trainer"}>
                     {activeRole === "admin" ? "Zur Verwaltung" : "Zum Trainerbereich"}
                   </Link>
-                </Button>
-                <Button variant="outline" className="rounded-2xl" onClick={handleLogout}>
-                  Abmelden
                 </Button>
               </div>
             </CardContent>

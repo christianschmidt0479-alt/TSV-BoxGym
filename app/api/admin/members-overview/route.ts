@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
@@ -105,7 +105,7 @@ export async function GET(request: Request) {
       return jsonError("Unauthorized", 401)
     }
 
-    const rateLimit = checkRateLimit(`admin-members-overview:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`admin-members-overview:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return jsonError("Too many requests", 429)
     }

@@ -215,7 +215,7 @@ export default function MailVerwaltungPage() {
         }))
 
   function getParentFamilyLink(row: ParentFamilyMailRow) {
-    const baseUrl = mailConfig?.app_base_url || "https://www.tsvboxgym.de"
+    const baseUrl = mailConfig?.app_base_url || "http://localhost:3000"
     const firstChildId = row.children[0]?.member_id || ""
     const params = new URLSearchParams({
       view: "parent",

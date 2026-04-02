@@ -127,7 +127,8 @@ for (const group of Array.from(groupedByEmail.values()).sort((a, b) => a.email.l
   })
 
   const firstChildId = sortedChildren[0]?.id || ""
-  const link = `${"https://www.tsvboxgym.de"}/mein-bereich?${new URLSearchParams({
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_BASE_URL || process.env.APP_BASE_URL || "http://localhost:3000"
+  const link = `${appBaseUrl.replace(/\/+$/, "")}/mein-bereich?${new URLSearchParams({
     view: "parent",
     email: group.email,
     child: firstChildId,

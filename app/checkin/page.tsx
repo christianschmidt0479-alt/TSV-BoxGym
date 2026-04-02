@@ -8,14 +8,11 @@ import { Clock3, UserPlus, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { sessions } from "@/lib/boxgymSessions"
+import { getActiveCheckinSession, getSessionCheckinWindow } from "@/lib/checkinWindow"
+import { formatDisplayDate } from "@/lib/utils"
 
 function dateLabel(date: Date) {
-  return date.toLocaleDateString("de-DE", {
-    weekday: "long",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  })
+  return formatDisplayDate(date)
 }
 
 function timeLabel(date: Date) {
@@ -25,33 +22,16 @@ function timeLabel(date: Date) {
   })
 }
 
-function parseTimeToDate(time: string, referenceDate: Date) {
-  const [hours, minutes] = time.split(":").map(Number)
-  const parsed = new Date(referenceDate)
-  parsed.setHours(hours, minutes, 0, 0)
-  return parsed
-}
+function checkinWindowLabel(referenceDate: Date, dailySessions: (typeof sessions)[number][], disableCheckinTimeWindow: boolean) {
+  if (disableCheckinTimeWindow) {
+    return dailySessions.length > 0 ? "Heute ganztägig freigegeben" : "Heute keine Einheit"
+  }
 
-function getActiveCheckinSession(referenceDate: Date, dailySessions: (typeof sessions)[number][]) {
-  const sessionWithTimes = dailySessions
-    .map((session) => {
-      const startDate = parseTimeToDate(session.start, referenceDate)
-      return {
-        session,
-        windowStart: new Date(startDate.getTime() - 30 * 60 * 1000),
-        windowEnd: new Date(startDate.getTime() + 30 * 60 * 1000),
-      }
-    })
-    .sort((left, right) => left.windowStart.getTime() - right.windowStart.getTime())
-
-  return sessionWithTimes.find(({ windowStart, windowEnd }) => referenceDate.getTime() >= windowStart.getTime() && referenceDate.getTime() <= windowEnd.getTime()) ?? null
-}
-
-function checkinWindowLabel(referenceDate: Date, dailySessions: (typeof sessions)[number][]) {
   const activeSession = getActiveCheckinSession(referenceDate, dailySessions)
   if (!activeSession) return "Aktuell kein Check-in möglich"
 
-  return `${timeLabel(activeSession.windowStart)} - ${timeLabel(activeSession.windowEnd)}`
+  const { windowStart, windowEnd } = getSessionCheckinWindow(activeSession, referenceDate)
+  return `${timeLabel(windowStart)} - ${timeLabel(windowEnd)}`
 }
 
 function getDayKey(date: Date) {
@@ -75,6 +55,7 @@ function getDayKey(date: Date) {
 
 export default function CheckinLandingPage() {
   const [now, setNow] = useState<Date | null>(null)
+  const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
 
   useEffect(() => {
     const sync = () => setNow(new Date())
@@ -83,7 +64,21 @@ export default function CheckinLandingPage() {
     return () => window.clearInterval(interval)
   }, [])
 
-  const currentDate = now ?? new Date()
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch("/api/public/checkin-settings", { cache: "no-store" })
+        if (!response.ok) return
+
+        const result = (await response.json()) as { disableCheckinTimeWindow?: boolean }
+        setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
+      } catch (error) {
+        console.error("checkin settings loading failed", error)
+      }
+    })()
+  }, [])
+
+  const currentDate = useMemo(() => now ?? new Date(), [now])
   const displayDate = dateLabel(currentDate)
   const displayTime = timeLabel(currentDate)
   const todaysSessions = useMemo(() => {
@@ -91,8 +86,21 @@ export default function CheckinLandingPage() {
     return sessions.filter((session) => session.dayKey === dayKey)
   }, [currentDate])
   const activeCheckinSession = useMemo(() => getActiveCheckinSession(currentDate, todaysSessions), [currentDate, todaysSessions])
-  const possibleCheckinWindow = useMemo(() => checkinWindowLabel(currentDate, todaysSessions), [currentDate, todaysSessions])
-  const checkinEnabled = Boolean(activeCheckinSession)
+  const possibleCheckinWindow = useMemo(
+    () => checkinWindowLabel(currentDate, todaysSessions, disableCheckinTimeWindow),
+    [currentDate, disableCheckinTimeWindow, todaysSessions]
+  )
+  const checkinEnabled = disableCheckinTimeWindow ? todaysSessions.length > 0 : Boolean(activeCheckinSession)
+  const statusTitle = disableCheckinTimeWindow
+    ? "Ferienmodus aktiv"
+    : checkinEnabled
+      ? "Check-in offen"
+      : "Check-in geschlossen"
+  const statusDescription = disableCheckinTimeWindow
+    ? "Die 30-Minuten-Regel ist voruebergehend aufgehoben."
+    : checkinEnabled
+      ? "Check-ins sind im aktuellen Zeitfenster möglich."
+      : "Aktuell ist kein Check-in-Zeitfenster aktiv."
 
   return (
     <div className="min-h-screen bg-zinc-50 px-4 py-2 text-zinc-900 md:px-6 md:py-8">
@@ -100,7 +108,39 @@ export default function CheckinLandingPage() {
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2 rounded-[22px] bg-white p-2 shadow-sm">
           <div className="rounded-2xl bg-[#154c83] px-3 py-1.5 text-xs font-semibold text-white sm:text-sm">BoxGym Check-in</div>
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-600 sm:px-4 sm:py-2 sm:text-sm">
-            QR-Zugang aktiv
+            QR-Zugang aktiv{disableCheckinTimeWindow ? " · Ferienmodus" : ""}
+          </div>
+        </div>
+
+        <div
+          className={`rounded-[22px] border px-4 py-4 shadow-sm sm:px-5 ${
+            disableCheckinTimeWindow
+              ? "border-amber-200 bg-amber-50"
+              : checkinEnabled
+                ? "border-green-200 bg-green-50"
+                : "border-zinc-200 bg-white"
+          }`}
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+                  disableCheckinTimeWindow
+                    ? "bg-amber-100 text-amber-900"
+                    : checkinEnabled
+                      ? "bg-green-100 text-green-900"
+                      : "bg-zinc-100 text-zinc-700"
+                }`}
+              >
+                Status
+              </div>
+              <div className="mt-2 text-lg font-semibold text-zinc-900">{statusTitle}</div>
+              <div className="mt-1 text-sm text-zinc-600">{statusDescription}</div>
+            </div>
+            <div className="rounded-2xl bg-white/70 px-4 py-3 text-sm text-zinc-700 sm:min-w-64">
+              <div className="text-zinc-500">Heute</div>
+              <div className="mt-1 font-semibold text-zinc-900">{possibleCheckinWindow}</div>
+            </div>
           </div>
         </div>
 
@@ -114,7 +154,7 @@ export default function CheckinLandingPage() {
                 </div>
                 <div className="flex items-center gap-3 sm:gap-4">
                   <Image
-                    src="/BoxGym Kompakt.png"
+                    src="/boxgym-headline-old.png"
                     alt="TSV Falkensee BoxGym"
                     width={192}
                     height={128}

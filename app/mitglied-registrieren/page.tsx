@@ -225,7 +225,7 @@ export default function MitgliedRegistrierenPage() {
                 </div>
                 <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
                   <Image
-                    src="/BoxGym Kompakt.png"
+                    src="/boxgym-headline-old.png"
                     alt="TSV Falkensee BoxGym"
                     width={192}
                     height={128}
@@ -249,12 +249,6 @@ export default function MitgliedRegistrierenPage() {
               <div className="flex items-center gap-2">
                 <span className="font-semibold">Nur für TSV-Mitglieder.</span>
                 <InfoHint text="Der Boxbereich ist ein Angebot innerhalb des TSV. Diese Seite ist für Personen gedacht, die bereits TSV-Mitglied sind oder parallel TSV-Mitglied werden." />
-              </div>
-            </div>
-            <div className="mb-4 rounded-2xl border border-[#cfd9e4] bg-[#f7fbff] p-4 text-sm text-zinc-800">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-[#154c83]">Probetraining vorher abschließen.</span>
-                <InfoHint text="Wenn 3 Probetrainings verbraucht sind, erfolgt eine Mitteilung per Mail. Den TSV-Mitgliedsantrag gibt es über www.tsv-falkensee.de. Wenn die Registrierung erledigt ist, teile es mir bitte mit." />
               </div>
             </div>
             <form

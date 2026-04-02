@@ -8,18 +8,38 @@ Copy `.env.example` into your local environment and fill in the required values.
 cp .env.example .env.local
 ```
 
+For local development, these keys are mandatory before login and API routes can work:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `TRAINER_SESSION_SECRET`
+
+If any of the public Supabase keys are missing, local API requests can fail with a rendered HTML 500 page instead of JSON.
+
 Important variables for production:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `NEXT_PUBLIC_APP_URL=https://tsvboxgym.de`
+- `NEXT_PUBLIC_APP_BASE_URL=https://tsvboxgym.de`
 - `APP_BASE_URL=https://tsvboxgym.de`
+- `TRAINER_SESSION_SECRET`
+- `PUBLIC_AREA_SESSION_SECRET`
+- `MEMBER_DEVICE_SESSION_SECRET` (optional, otherwise `TRAINER_SESSION_SECRET` is used)
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL=TSV BoxGym <noreply@tsvboxgym.de>`
 - `RESEND_REPLY_TO_EMAIL=info@tsvboxgym.de`
 - `ADMIN_NOTIFICATION_EMAIL=info@tsvboxgym.de`
 - `CRON_SECRET`
-- `ADMIN_LOGIN_PASSWORD`
+- `QR_ACCESS_TOKEN`
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for distributed rate limiting
+
+Optional / legacy only:
+
+- `ADMIN_LOGIN_PASSWORD` for the standalone `/api/admin-auth` password endpoint
+- `NEXT_PUBLIC_RESEND_API_KEY` only as local-development fallback
 
 ## Mail Domain
 
@@ -59,9 +79,11 @@ To enable this in production:
 
 Trainer logins now use their own registration flow with:
 
-- registration via E-Mail and password
+- registration via E-Mail and PIN
 - E-Mail verification
 - admin approval before access is granted
+
+The trainer session itself is signed with `TRAINER_SESSION_SECRET`. Do not reuse unrelated passwords as a session secret.
 
 Before this can work in Supabase, run the SQL in `supabase/trainer_accounts.sql` to create the `trainer_accounts` table and its indexes.
 
@@ -101,6 +123,14 @@ yarn dev
 pnpm dev
 # or
 bun dev
+```
+
+Useful checks before deployment:
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.

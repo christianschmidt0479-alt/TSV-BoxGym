@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { buildPersonRoleProfiles, type RoleMemberRecord } from "@/lib/personRoles"
+import { type RoleMemberRecord } from "@/lib/personRoles"
 import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { type TrainerAccountRecord } from "@/lib/trainerDb"
 import { trainerLicenseOptions } from "@/lib/trainerLicense"
 import { compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -19,6 +20,15 @@ function getMemberDisplayName(member?: Partial<RoleMemberRecord> | null) {
   const full = `${first} ${last}`.trim()
   return full || member?.name || "—"
 }
+
+function getEditableBoxClass(isActive: boolean) {
+  return isActive
+    ? "rounded-2xl border border-[#154c83]/30 bg-[#154c83]/[0.05] p-3 shadow-sm"
+    : "rounded-2xl border border-amber-300 bg-amber-50 p-3 shadow-sm"
+}
+
+const inputClassName =
+  "w-full rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-zinc-900 shadow-sm outline-none transition focus:border-[#154c83] focus:ring-4 focus:ring-[#154c83]/10"
 
 export default function TrainerAnlegenPage() {
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
@@ -35,14 +45,17 @@ export default function TrainerAnlegenPage() {
       setLoadError("")
       const response = await fetch("/api/admin/person-roles", { cache: "no-store" })
       if (!response.ok) throw new Error("Mitgliederdaten konnten nicht geladen werden.")
-      const payload = await response.json()
+      const payload = (await response.json()) as {
+        members?: RoleMemberRecord[]
+        trainers?: Array<Pick<TrainerAccountRecord, "linked_member_id" | "email">>
+      }
       const membersPayload = Array.isArray(payload.members) ? payload.members : []
       const trainers = Array.isArray(payload.trainers) ? payload.trainers : []
 
       const trainerCandidates = membersPayload.filter((member: RoleMemberRecord) => {
         if (!member.email?.trim()) return false
         return !trainers.some(
-          (trainer: any) =>
+          (trainer) =>
             trainer.linked_member_id === member.id || (trainer.email ?? "").trim().toLowerCase() === member.email!.trim().toLowerCase()
         )
       })
@@ -105,8 +118,8 @@ export default function TrainerAnlegenPage() {
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Keine weiteren Mitglieder mit E-Mail ohne verknüpftes Trainerkonto gefunden.</div>
           ) : (
             members.map((member) => (
-              <div key={member.id} className="rounded-3xl border border-zinc-200 bg-white p-5">
-                <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr_1fr_auto] xl:items-end">
+              <div key={member.id} className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+                <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr_1fr_auto] xl:items-end">
                   <div className="space-y-2 text-sm text-zinc-600">
                     <div className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
                     <div>E-Mail: {member.email || "—"}</div>
@@ -114,10 +127,13 @@ export default function TrainerAnlegenPage() {
                     <div className="text-xs text-zinc-500">Das Trainerkonto wird mit den vorhandenen Mitgliedsdaten vorbereitet.</div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Lizenz</Label>
+                  <div className={getEditableBoxClass(Boolean(licenseDrafts[member.id]))}>
+                    <Label className="flex items-center justify-between text-zinc-900">
+                      <span>DOSB-Lizenz</span>
+                      <span className="text-xs font-normal text-zinc-500">Auswahlfeld</span>
+                    </Label>
                     <Select value={licenseDrafts[member.id] ?? trainerLicenseOptions[0]} onValueChange={(value) => setLicenseDrafts((c) => ({ ...c, [member.id]: value }))}>
-                      <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
+                      <SelectTrigger className={`${inputClassName} mt-2`}>
                         <SelectValue placeholder="Lizenz auswählen" />
                       </SelectTrigger>
                       <SelectContent>
@@ -128,12 +144,16 @@ export default function TrainerAnlegenPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <div className="mt-2 text-xs text-zinc-500">Falls noch keine DOSB-Lizenz vorliegt, kann der Standardwert stehen bleiben.</div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Start-PIN</Label>
-                    <PasswordInput value={pinDrafts[member.id] ?? ""} onChange={(e) => setPinDrafts((c) => ({ ...c, [member.id]: e.target.value }))} placeholder="6 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                    <div className="text-xs text-zinc-500">{PIN_HINT}</div>
+                  <div className={getEditableBoxClass(Boolean((pinDrafts[member.id] ?? "").trim()))}>
+                    <Label className="flex items-center justify-between text-zinc-900">
+                      <span>Start-PIN *</span>
+                      <span className="text-xs font-semibold text-amber-700">Pflichtfeld</span>
+                    </Label>
+                    <PasswordInput value={pinDrafts[member.id] ?? ""} onChange={(e) => setPinDrafts((c) => ({ ...c, [member.id]: e.target.value }))} placeholder="6 bis 16 Zeichen" className={`${inputClassName} mt-2`} />
+                    <div className="mt-2 text-xs text-zinc-500">{PIN_HINT}</div>
                   </div>
 
                   <Button

@@ -12,7 +12,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ChevronDown, ChevronUp } from "lucide-react"
-import { compareTrainingGroupOrder, normalizeTrainingGroup, normalizeTrainingGroupOrFallback } from "@/lib/trainingGroups"
+import { buildTrainingGroupOptions, compareTrainingGroupOrder, normalizeTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -38,6 +38,19 @@ type MemberRecord = {
   is_trial?: boolean
   is_approved?: boolean
   base_group?: string | null
+}
+
+async function copyTextToClipboard(value: string) {
+  if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+    return false
+  }
+
+  try {
+    await navigator.clipboard.writeText(value)
+    return true
+  } catch {
+    return false
+  }
 }
 
 type CheckinSummaryRow = {
@@ -68,7 +81,7 @@ type MemberStatusFilter =
   | "registriert"
   | "freigegeben"
 
-const memberGroupOptions = ["Basic 10 - 14 Jahre", "Basic 15 - 18 Jahre", "Basic Ü18", "L-Gruppe", "Boxzwerge"] as const
+const memberGroupOptions = TRAINING_GROUPS
 
 function getMemberDisplayName(member?: Partial<MemberRecord> | null) {
   const first = member?.first_name ?? ""
@@ -306,13 +319,7 @@ export default function MitgliederverwaltungPage() {
   }, [authResolved, trainerRole])
 
   const groupOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        members
-          .map((member) => getMemberGroupValue(member.base_group))
-          .filter((group): group is string => !!group)
-      )
-    ).sort(compareMemberGroupNames)
+    return buildTrainingGroupOptions(members.map((member) => getMemberGroupValue(member.base_group))).sort(compareMemberGroupNames)
   }, [members])
 
   const filteredMembers = useMemo(() => {
@@ -411,38 +418,22 @@ export default function MitgliederverwaltungPage() {
         }),
       })
       if (!response.ok) throw new Error(await response.text())
-      alert("Bestätigungs-Mail wurde erneut versendet.")
+      const result = (await response.json()) as {
+        verificationLink?: string
+        delivery?: { messageId?: string | null }
+      }
+      const copied = result.verificationLink ? await copyTextToClipboard(result.verificationLink) : false
+      const providerSuffix = result.delivery?.messageId ? ` Provider-ID: ${result.delivery.messageId}` : ""
+      alert(
+        copied
+          ? `Bestätigungs-Mail wurde an den Mail-Dienst übergeben.${providerSuffix} Der Bestätigungslink wurde zusätzlich in die Zwischenablage kopiert.`
+          : `Bestätigungs-Mail wurde an den Mail-Dienst übergeben.${providerSuffix}`
+      )
     } catch (error) {
       console.error(error)
       alert(getErrorMessage(error, "Bestätigungs-Mail konnte nicht versendet werden."))
     } finally {
       setResendingVerificationMemberId(null)
-    }
-  }
-
-  async function resendVerificationEmailsToAll() {
-    try {
-      const unverifiedMembers = members.filter((member) => !member.email_verified && member.email);
-
-      if (unverifiedMembers.length === 0) {
-        alert("Es gibt keine unbestätigten Mitglieder mit E-Mail-Adressen.");
-        return;
-      }
-
-      const confirmation = window.confirm(
-        `Möchten Sie Bestätigungs-E-Mails an ${unverifiedMembers.length} unbestätigte Mitglieder senden?`
-      );
-
-      if (!confirmation) return;
-
-      for (const member of unverifiedMembers) {
-        await resendVerificationEmail(member);
-      }
-
-      alert("Bestätigungs-E-Mails wurden an alle unbestätigten Mitglieder gesendet.");
-    } catch (error) {
-      console.error(error);
-      alert("Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.");
     }
   }
 
@@ -463,8 +454,16 @@ export default function MitgliederverwaltungPage() {
     if (!editingMemberId || !members.length) return
     const member = members.find((entry) => entry.id === editingMemberId)
     if (!member) return
-    openMemberEditor(member)
-  }, [editingMemberId, members])
+    const isBoxzwerge = isBoxzwergeMember(member)
+    setEditEmail(member.email || "")
+    setEditPhone(member.phone || "")
+    setEditGuardianName(isBoxzwerge ? member.guardian_name || "" : "")
+    setEditParentName(isBoxzwerge ? parentLinksByMember[member.id]?.parent_name || member.guardian_name || "" : "")
+    setEditParentEmail(isBoxzwerge ? parentLinksByMember[member.id]?.email || member.email || "" : "")
+    setEditParentPhone(isBoxzwerge ? parentLinksByMember[member.id]?.phone || member.phone || "" : "")
+    setEditParentAccessCode("")
+    setEditMemberAccessCode("")
+  }, [editingMemberId, members, parentLinksByMember])
 
   function toggleMemberEditor(member: MemberRecord) {
     if (editingMemberId === member.id) {

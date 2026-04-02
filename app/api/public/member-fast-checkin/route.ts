@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, findMemberById } from "@/lib/boxgymDb"
+import { readCheckinSettings } from "@/lib/checkinSettingsDb"
+import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
 import {
   applyMemberDeviceCookie,
   clearMemberDeviceCookie,
@@ -9,6 +11,7 @@ import {
   readMemberDeviceTokenFromHeaders,
   verifyMemberDeviceToken,
 } from "@/lib/memberDeviceSession"
+import { readQrAccessFromHeaders } from "@/lib/qrAccess"
 import { sessions } from "@/lib/boxgymSessions"
 import { supabase } from "@/lib/supabaseClient"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
@@ -100,6 +103,11 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
+    const qrAccess = await readQrAccessFromHeaders(request)
+    if (!qrAccess || qrAccess.panel !== "member") {
+      return new NextResponse("QR-Zugang erforderlich.", { status: 403 })
+    }
+
     const rateLimit = await checkRateLimitAsync(`public-member-fast-checkin:${getRequestIp(request)}`, 25, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
@@ -131,9 +139,13 @@ export async function POST(request: Request) {
     const todaysSessions = sessions.filter((session) => session.dayKey === getDayKey(liveDate))
     const selectedSession = todaysSessions.find((session) => session.id === body.sessionId) ?? null
 
-    // TESTPHASE: Zeitfenster fuer Mitglieder-Check-ins spaeter wieder aktivieren.
     if (!selectedSession) {
       return new NextResponse("Bitte eine Trainingsgruppe auswaehlen.", { status: 400 })
+    }
+
+    const checkinSettings = await readCheckinSettings()
+    if (!checkinSettings.disableCheckinTimeWindow && !isSessionOpenForCheckin(selectedSession, now)) {
+      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.", { status: 400 })
     }
 
     if (member.is_competition_member) {
@@ -202,6 +214,11 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   if (!isAllowedOrigin(request)) {
     return new NextResponse("Forbidden", { status: 403 })
+  }
+
+  const qrAccess = await readQrAccessFromHeaders(request)
+  if (!qrAccess || qrAccess.panel !== "member") {
+    return new NextResponse("QR-Zugang erforderlich.", { status: 403 })
   }
 
   const token = readMemberDeviceTokenFromHeaders(request)

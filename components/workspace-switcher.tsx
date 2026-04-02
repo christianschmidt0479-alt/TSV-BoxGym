@@ -2,9 +2,10 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ShieldCheck, UserCircle2, Users } from "lucide-react"
+import { useEffect, useState } from "react"
+import { LogOut, ShieldCheck, UserCircle2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { persistTrainerAccess, readTrainerAccess } from "@/lib/trainerAccess"
+import { clearTrainerAccessSession, persistTrainerAccess, readTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 function getWorkspace(pathname: string) {
@@ -18,11 +19,51 @@ export function WorkspaceSwitcher() {
   const pathname = usePathname()
   const router = useRouter()
   const { resolved, role, accountRole, linkedMemberId } = useTrainerAccess()
+  const [logoutPending, setLogoutPending] = useState(false)
+  const [hasMemberSession, setHasMemberSession] = useState(false)
+  const [hasParentSession, setHasParentSession] = useState(false)
 
   const currentWorkspace = getWorkspace(pathname)
   const hasTrainerAccess = Boolean(role)
   const hasAdminAccess = accountRole === "admin"
   const sportlerHref = linkedMemberId ? "/mein-bereich?trainer_access=1" : "/mein-bereich"
+  const showLogoutButton = hasTrainerAccess || hasMemberSession || hasParentSession
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSessionState() {
+      try {
+        const [memberResponse, parentResponse] = await Promise.allSettled([
+          fetch("/api/public/member-area", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "member_session" }),
+          }),
+          fetch("/api/public/member-area", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "parent_session" }),
+          }),
+        ])
+
+        if (cancelled) return
+
+        setHasMemberSession(memberResponse.status === "fulfilled" && memberResponse.value.ok)
+        setHasParentSession(parentResponse.status === "fulfilled" && parentResponse.value.ok)
+      } catch {
+        if (cancelled) return
+        setHasMemberSession(false)
+        setHasParentSession(false)
+      }
+    }
+
+    void loadSessionState()
+
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
 
   function switchWorkspace(nextWorkspace: "trainer" | "admin") {
     if (typeof window === "undefined") return
@@ -43,6 +84,38 @@ export function WorkspaceSwitcher() {
     )
 
     router.push(nextWorkspace === "admin" ? "/verwaltung" : "/trainer")
+  }
+
+  async function handleLogout() {
+    try {
+      setLogoutPending(true)
+
+      await Promise.allSettled([
+        clearTrainerAccessSession({ logErrors: false }),
+        fetch("/api/public/member-area", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "logout_member_session" }),
+        }),
+        fetch("/api/public/member-area", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "logout_parent_session" }),
+        }),
+      ])
+
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("tsv_member_area_email")
+        window.localStorage.removeItem("tsv_parent_area_email")
+        window.localStorage.removeItem("tsv_parent_area_first_name")
+        window.localStorage.removeItem("tsv_parent_area_last_name")
+      }
+
+      router.replace("/")
+      router.refresh()
+    } finally {
+      setLogoutPending(false)
+    }
   }
 
   return (
@@ -87,6 +160,20 @@ export function WorkspaceSwitcher() {
             <ShieldCheck className="mr-2 h-4 w-4" />
             Admin
           </Button>
+
+          {showLogoutButton ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="rounded-xl"
+              disabled={logoutPending}
+              onClick={() => void handleLogout()}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              {logoutPending ? "Loggt aus..." : "Ausloggen"}
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

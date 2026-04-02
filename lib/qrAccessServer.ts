@@ -9,6 +9,16 @@ export function getQrAccessToken() {
 
 export function buildQrAccessUrl(origin: string, panel: "member" | "trial" = "member") {
   const token = getQrAccessToken()
-  const query = `?gym=${encodeURIComponent(token)}&panel=${panel}`
-  return `${origin.replace(/\/+$/, "")}/${query}`
+  const path = panel === "trial" ? "/checkin/probetraining" : "/checkin/mitglied"
+  return `${origin.replace(/\/+$/, "")}${path}?gym=${encodeURIComponent(token)}`
+}
+
+export function tryBuildQrAccessUrl(origin: string, panel: "member" | "trial" = "member") {
+  const token = process.env.QR_ACCESS_TOKEN?.trim()
+  if (!token) {
+    return ""
+  }
+
+  const path = panel === "trial" ? "/checkin/probetraining" : "/checkin/mitglied"
+  return `${origin.replace(/\/+$/, "")}${path}?gym=${encodeURIComponent(token)}`
 }

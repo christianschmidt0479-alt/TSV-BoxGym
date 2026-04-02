@@ -9,6 +9,7 @@ import { ArrowRight, Lock, ShieldCheck, UserRoundPlus, Users } from "lucide-reac
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { formatDisplayDate } from "@/lib/utils"
 
 const brand = {
   dark: "bg-[#0f2740]",
@@ -97,7 +98,7 @@ function getNextCheckinTime(referenceDate: Date, sessions: HeroSession[]) {
 
 function liveDateString(date: Date | null) {
   if (!date) return "—"
-  return date.toLocaleDateString("de-DE")
+  return formatDisplayDate(date)
 }
 
 function liveTimeString(date: Date | null) {
@@ -235,8 +236,8 @@ export default function Home() {
                 <div className="flex items-center gap-4 sm:gap-5">
                   <div className="rounded-2xl bg-white/90 p-2 shadow-sm">
                     <Image
-                      src="/BoxGym Kompakt.png"
-                      alt="TSV BoxGym"
+                      src="/boxgym-headline-old.png"
+                      alt="TSV Falkensee BoxGym"
                       width={144}
                       height={144}
                       className="h-14 w-auto object-contain sm:h-20"

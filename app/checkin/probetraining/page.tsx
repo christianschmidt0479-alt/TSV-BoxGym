@@ -12,7 +12,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { sessions } from "@/lib/boxgymSessions"
-import { QR_ACCESS_MINUTES, QR_ACCESS_STORAGE_KEY } from "@/lib/qrAccess"
+import { getActiveCheckinSession, parseTimeToDate } from "@/lib/checkinWindow"
+import { buildQrAccessHeaders, clearStoredQrAccess, readStoredQrAccess, storeQrAccess } from "@/lib/qrAccessClient"
+import { QR_ACCESS_PARAM } from "@/lib/qrAccess"
 
 function todayString() {
   const today = new Date()
@@ -42,20 +44,15 @@ function getDayKey(dateString: string) {
   }
 }
 
-function parseTimeToDate(time: string, referenceDate: Date) {
-  const [hours, minutes] = time.split(":").map(Number)
-  const parsed = new Date(referenceDate)
-  parsed.setHours(hours, minutes, 0, 0)
-  return parsed
-}
-
 function isNowBetween(now: Date, start: Date, end: Date) {
   return now.getTime() >= start.getTime() && now.getTime() < end.getTime()
 }
 
 export default function TrialCheckinPage() {
   const [now, setNow] = useState<Date | null>(null)
+  const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
   const [dbLoading, setDbLoading] = useState(false)
+  const [qrAccessToken, setQrAccessToken] = useState("")
   const [trialFirstName, setTrialFirstName] = useState("")
   const [trialLastName, setTrialLastName] = useState("")
   const [trialBirthDate, setTrialBirthDate] = useState("")
@@ -68,9 +65,53 @@ export default function TrialCheckinPage() {
   const liveDate = now ? todayStringFromDate(now) : todayString()
   useEffect(() => {
     setNow(new Date())
-    window.localStorage.setItem(QR_ACCESS_STORAGE_KEY, String(Date.now() + QR_ACCESS_MINUTES * 60 * 1000))
     const params = new URLSearchParams(window.location.search)
     setRequestedGroup(params.get("group")?.trim() ?? "")
+    const storedQrAccess = readStoredQrAccess("trial")
+
+    const qrToken = params.get(QR_ACCESS_PARAM)?.trim() ?? ""
+    const initialQrAccessToken = qrToken || storedQrAccess?.token || ""
+    setQrAccessToken(initialQrAccessToken)
+
+    if (qrToken) {
+      void (async () => {
+        try {
+          const response = await fetch(`/api/qr-access?panel=trial&${QR_ACCESS_PARAM}=${encodeURIComponent(qrToken)}`)
+          if (!response.ok) {
+            clearStoredQrAccess("trial")
+            setQrAccessToken("")
+            console.error("trial qr access validation failed", response.status)
+            return
+          }
+
+          const result = (await response.json()) as { accessUntil?: number }
+          const accessUntil = result.accessUntil ?? Date.now()
+          storeQrAccess("trial", qrToken, accessUntil)
+          setQrAccessToken(qrToken)
+
+          params.delete(QR_ACCESS_PARAM)
+          params.delete("panel")
+          const nextQuery = params.toString()
+          window.history.replaceState(null, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`)
+        } catch (error) {
+          clearStoredQrAccess("trial")
+          setQrAccessToken("")
+          console.error("trial qr access validation failed", error)
+        }
+      })()
+    }
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/public/checkin-settings", { cache: "no-store" })
+        if (!response.ok) return
+
+        const result = (await response.json()) as { disableCheckinTimeWindow?: boolean }
+        setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
+      } catch (error) {
+        console.error("trial checkin settings loading failed", error)
+      }
+    })()
   }, [])
 
   const todaysSessions = useMemo(() => {
@@ -85,14 +126,9 @@ export default function TrialCheckinPage() {
 
   const activeSession = useMemo(() => {
     if (!now) return null
-    return (
-      displaySessions.find((session) => {
-        const start = parseTimeToDate(session.start, now)
-        const end = parseTimeToDate(session.end, now)
-        return isNowBetween(now, start, end)
-      }) ?? null
-    )
-  }, [displaySessions, now])
+    if (disableCheckinTimeWindow) return null
+    return getActiveCheckinSession(now, displaySessions)
+  }, [disableCheckinTimeWindow, displaySessions, now])
 
   const nextSession = useMemo(() => {
     if (!now) return null
@@ -110,6 +146,7 @@ export default function TrialCheckinPage() {
   const autoSession = activeSession ?? nextSession
   const selectedSession =
     displaySessions.find((session) => session.id === selectedSessionId) ?? autoSession ?? displaySessions[0] ?? null
+  const checkinAllowed = disableCheckinTimeWindow ? displaySessions.length > 0 : Boolean(activeSession)
 
   useEffect(() => {
     if (displaySessions.length === 0) {
@@ -160,11 +197,19 @@ export default function TrialCheckinPage() {
       return
     }
 
+    if (!checkinAllowed) {
+      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.")
+      return
+    }
+
     try {
       setDbLoading(true)
       const response = await fetch("/api/public/trial-checkin", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...buildQrAccessHeaders(qrAccessToken),
+        },
         body: JSON.stringify({
           firstName,
           lastName,
@@ -177,6 +222,10 @@ export default function TrialCheckinPage() {
 
       if (!response.ok) {
         const message = await response.text()
+        if (response.status === 403) {
+          clearStoredQrAccess("trial")
+          setQrAccessToken("")
+        }
         alert(message || "Fehler beim Speichern des Probetrainings.")
         return
       }
@@ -219,7 +268,7 @@ export default function TrialCheckinPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Image
-                    src="/BoxGym Kompakt.png"
+                    src="/boxgym-headline-old.png"
                     alt="TSV Falkensee BoxGym"
                     width={192}
                     height={128}
@@ -230,6 +279,9 @@ export default function TrialCheckinPage() {
                     <p className="mt-1 text-[11px] leading-4 text-blue-50/85 sm:mt-2 sm:text-base sm:leading-6">
                       Neue Gäste direkt für die aktuelle Einheit anmelden.
                     </p>
+                    {disableCheckinTimeWindow ? (
+                      <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-200">Ferienmodus aktiv</p>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -253,6 +305,12 @@ export default function TrialCheckinPage() {
             <CardTitle>Probetraining</CardTitle>
           </CardHeader>
           <CardContent>
+            {!checkinAllowed ? (
+              <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                Check-in ist aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.
+              </div>
+            ) : null}
+
             <div className="mb-4 rounded-2xl border border-[#cfd9e4] bg-[#f7fbff] p-4 text-sm text-zinc-800">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-[#154c83]">Nach dem Probetraining im Boxbereich bleiben?</span>
@@ -336,7 +394,7 @@ export default function TrialCheckinPage() {
 
 
               <div className="sticky bottom-3 -mx-1 rounded-[24px] border border-[#d8e3ee] bg-white/95 p-2 shadow-lg backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none">
-                <Button type="submit" className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={dbLoading || !selectedSession}>
+                <Button type="submit" className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={dbLoading || !selectedSession || !checkinAllowed}>
                   {dbLoading ? "Speichert..." : "Probetraining anmelden"}
                 </Button>
               </div>

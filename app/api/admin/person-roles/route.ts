@@ -22,10 +22,48 @@ type PersonRolesActionBody =
     }
 
 const MEMBER_ROLE_SELECT =
-  "id, name, first_name, last_name, email, base_group, is_approved, is_competition_member"
+  "id, name, first_name, last_name, birthdate, email, base_group, is_approved, is_competition_member, has_competition_pass, competition_license_number, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws"
 const TRAINER_ROLE_BASE_SELECT =
   "id, first_name, last_name, email, email_verified, email_verified_at, is_approved, approved_at, created_at"
-const TRAINER_ROLE_OPTIONAL_COLUMNS = ["phone", "trainer_license", "role", "linked_member_id", "trainer_license_renewals"] as const
+const TRAINER_ROLE_OPTIONAL_COLUMNS = [
+  "phone",
+  "trainer_license",
+  "role",
+  "linked_member_id",
+  "trainer_license_renewals",
+  "lizenzart",
+  "lizenznummer",
+  "lizenz_gueltig_bis",
+  "lizenz_verband",
+  "bemerkung",
+] as const
+
+type ErrorWithDetails = {
+  message?: string
+  details?: string | null
+}
+
+type TrainerRoleRow = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  email_verified: boolean | null
+  email_verified_at: string | null
+  is_approved: boolean | null
+  approved_at: string | null
+  created_at: string | null
+  phone: string | null
+  trainer_license: string | null
+  linked_member_id: string | null
+  trainer_license_renewals: string[]
+  lizenzart: string | null
+  lizenznummer: string | null
+  lizenz_gueltig_bis: string | null
+  lizenz_verband: string | null
+  bemerkung: string | null
+  role: "trainer" | "admin"
+}
 
 function jsonError(message: string, status: number, details?: string) {
   return NextResponse.json({ ok: false, error: message, ...(details ? { details } : {}) }, { status })
@@ -71,19 +109,23 @@ function isMissingColumnError(error: { message?: string } | null) {
   )
 }
 
-function findMissingColumn(error: { message?: string } | null) {
+function findMissingColumn(error: ErrorWithDetails | null) {
   const message = error?.message?.toLowerCase() ?? ""
   // try simple match first
   const simple = TRAINER_ROLE_OPTIONAL_COLUMNS.find((column) => message.includes(column))
   if (simple) return simple
 
   // more robust checks: message may include table-qualified names or different phrasing
-  const details = `${error?.message ?? ""} ${(error as any)?.details ?? ""}`.toLowerCase()
+  const details = `${error?.message ?? ""} ${error?.details ?? ""}`.toLowerCase()
   for (const column of TRAINER_ROLE_OPTIONAL_COLUMNS) {
     if (details.includes(`.${column}`) || details.includes(` ${column}`) || details.includes(`${column} `)) return column
   }
 
   return null
+}
+
+function getNullableString(row: Record<string, unknown>, key: string) {
+  return typeof row[key] === "string" ? row[key] : null
 }
 
 async function loadTrainerRowsWithFallback(supabase: ReturnType<typeof getServerSupabase>) {
@@ -100,18 +142,31 @@ async function loadTrainerRowsWithFallback(supabase: ReturnType<typeof getServer
       const rows = (response.data ?? []) as unknown as Array<Record<string, unknown>>
       return {
         data: rows
-          .map((row) => ({
+          .map((row): TrainerRoleRow => ({
             ...row,
+            id: typeof row.id === "string" ? row.id : "",
+            first_name: typeof row.first_name === "string" ? row.first_name : null,
+            last_name: typeof row.last_name === "string" ? row.last_name : null,
             email: "email" in row ? (typeof row.email === "string" ? row.email : null) : null,
-            phone: "phone" in row ? row.phone ?? null : null,
-            trainer_license: "trainer_license" in row ? row.trainer_license ?? null : null,
-            linked_member_id: "linked_member_id" in row ? row.linked_member_id ?? null : null,
+            email_verified: typeof row.email_verified === "boolean" ? row.email_verified : null,
+            email_verified_at: typeof row.email_verified_at === "string" ? row.email_verified_at : null,
+            is_approved: typeof row.is_approved === "boolean" ? row.is_approved : null,
+            approved_at: typeof row.approved_at === "string" ? row.approved_at : null,
+            created_at: typeof row.created_at === "string" ? row.created_at : null,
+            phone: getNullableString(row, "phone"),
+            trainer_license: getNullableString(row, "trainer_license"),
+            linked_member_id: getNullableString(row, "linked_member_id"),
+            lizenzart: getNullableString(row, "lizenzart"),
+            lizenznummer: getNullableString(row, "lizenznummer"),
+            lizenz_gueltig_bis: getNullableString(row, "lizenz_gueltig_bis"),
+            lizenz_verband: getNullableString(row, "lizenz_verband"),
+            bemerkung: getNullableString(row, "bemerkung"),
             trainer_license_renewals: Array.isArray(row.trainer_license_renewals)
               ? row.trainer_license_renewals.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
               : [],
             role: row.role === "admin" ? "admin" : "trainer",
           }))
-          .filter((row) => !isInternalTrainerTestEmail((row as any).email ?? null)),
+          .filter((row) => !isInternalTrainerTestEmail(row.email)),
         error: null,
       }
     }

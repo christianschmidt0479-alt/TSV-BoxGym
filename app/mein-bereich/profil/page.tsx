@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react"
 import Image from "next/image"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ShieldCheck } from "lucide-react"
+import Link from "next/link"
+import { ShieldCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -220,7 +220,7 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
           <div className="h-2 bg-[#154c83]" />
           <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
             <div className="flex items-center gap-4">
-              <Image src="/BoxGym Kompakt.png" alt="TSV Falkensee BoxGym" width={104} height={70} className="h-auto w-[46px] md:w-[92px]" priority />
+              <Image src="/boxgym-headline-old.png" alt="TSV Falkensee BoxGym" width={104} height={70} className="h-auto w-[46px] md:w-[92px]" priority />
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#154c83]">
                   Mein Bereich
@@ -228,68 +228,45 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                 <h1 className="mt-2 text-2xl font-bold text-[#154c83]">Sportlerprofil</h1>
               </div>
             </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Button asChild variant="outline" className="rounded-2xl border-[#c8d8ea] text-[#154c83]">
-                <Link href="/mein-bereich">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Zur Anmeldung
-                </Link>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-2xl border-zinc-300"
-                onClick={() => {
-                  localStorage.removeItem("tsv_member_area_email")
-                  void fetch("/api/public/member-area", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "logout_member_session" }),
-                  })
-                  router.replace("/mein-bereich")
-                }}
-              >
-                Abmelden
-              </Button>
-            </div>
           </div>
         </div>
 
-        <div className="mb-6 flex flex-wrap gap-2.5 rounded-[22px] border border-[#d8e3ee] bg-white p-4 shadow-[0_10px_24px_rgba(15,39,64,0.06)]">
-          <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-            Bereiche
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-[#d8e3ee] bg-white p-4 shadow-[0_10px_24px_rgba(15,39,64,0.06)]">
+          <div className="flex flex-wrap gap-2.5">
+            <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
+              Bereiche
+            </div>
+            <Link
+              href="/mein-bereich/profil/wettkampf"
+              className={
+                profileSection === "wettkampf"
+                  ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
+                  : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
+              }
+            >
+              Digitaler Wettkampfbereich
+            </Link>
+            <Link
+              href="/mein-bereich/profil/gewicht"
+              className={
+                profileSection === "gewicht"
+                  ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
+                  : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
+              }
+            >
+              Gewichtsdaten
+            </Link>
+            <Link
+              href="/mein-bereich/profil/einstellungen"
+              className={
+                profileSection === "einstellungen"
+                  ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
+                  : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
+              }
+            >
+              Einstellungen
+            </Link>
           </div>
-          <Link
-            href="/mein-bereich/profil/wettkampf"
-            className={
-              profileSection === "wettkampf"
-                ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
-                : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-            }
-          >
-            Digitaler Wettkampfbereich
-          </Link>
-          <Link
-            href="/mein-bereich/profil/gewicht"
-            className={
-              profileSection === "gewicht"
-                ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
-                : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-            }
-          >
-            Gewichtsdaten
-          </Link>
-          <Link
-            href="/mein-bereich/profil/einstellungen"
-            className={
-              profileSection === "einstellungen"
-                ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
-                : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-            }
-          >
-            Einstellungen
-          </Link>
         </div>
 
         <Card className="rounded-[24px] border-0 shadow-sm">

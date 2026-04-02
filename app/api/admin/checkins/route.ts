@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
@@ -15,11 +15,11 @@ export async function GET(request: Request) {
     }
 
     const session = await readTrainerSessionFromHeaders(request)
-    if (!session) {
+    if (!session || session.accountRole !== "admin") {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`admin-checkins:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`admin-checkins:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
@@ -65,7 +65,7 @@ export async function DELETE(request: Request) {
     }
 
     const session = await readTrainerSessionFromHeaders(request)
-    if (!session) {
+    if (!session || session.accountRole !== "admin") {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
