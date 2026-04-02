@@ -86,6 +86,34 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;")
 }
 
+function renderTextLineToHtml(line: string) {
+  const urlPattern = /(https?:\/\/[^\s<]+)/g
+  let lastIndex = 0
+  let html = ""
+
+  for (const match of line.matchAll(urlPattern)) {
+    const matchedUrl = match[0]
+    const matchIndex = match.index ?? 0
+
+    html += escapeHtml(line.slice(lastIndex, matchIndex))
+    html += `<a href="${escapeHtml(matchedUrl)}" style="color: #154c83; word-break: break-all;">${escapeHtml(matchedUrl)}</a>`
+    lastIndex = matchIndex + matchedUrl.length
+  }
+
+  html += escapeHtml(line.slice(lastIndex))
+  return html
+}
+
+function renderPlainTextEmailHtml(text: string) {
+  return text
+    .split(/\n\n+/)
+    .map((paragraph) => {
+      const renderedLines = paragraph.split("\n").map((line) => renderTextLineToHtml(line))
+      return `<p style="margin: 0 0 16px; white-space: normal;">${renderedLines.join("<br />")}</p>`
+    })
+    .join("")
+}
+
 function getResendApiKey() {
   const serverKey = process.env.RESEND_API_KEY
   const devFallback = process.env.NODE_ENV !== "production" ? process.env.NEXT_PUBLIC_RESEND_API_KEY : undefined
@@ -148,10 +176,7 @@ export async function sendCustomEmail(input: {
   text: string
   replyTo?: string
 }): Promise<ResendEmailDeliveryResult> {
-  const htmlBody = input.text
-    .split(/\n\n+/)
-    .map((paragraph) => `<p style="margin: 0 0 16px; white-space: pre-wrap;">${escapeHtml(paragraph)}</p>`)
-    .join("")
+  const htmlBody = renderPlainTextEmailHtml(input.text)
 
   return sendMailWithResend({
     to: input.to,
