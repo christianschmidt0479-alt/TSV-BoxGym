@@ -3,6 +3,8 @@ import { isAllowedOrigin } from "@/lib/apiSecurity"
 import { verifyGsMembershipConfirmationToken } from "@/lib/gsMembershipConfirmation"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
+const GS_CONFIRMATION_TOKEN_PREFIX = "gs_confirmed:"
+
 function isMissingAuditLogTableError(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
   return error?.code === "PGRST205" || message.includes("admin_audit_log")
@@ -33,7 +35,7 @@ export async function POST(request: Request) {
     const supabase = createServerSupabaseServiceClient()
     const { data: member, error: memberError } = await supabase
       .from("members")
-      .select("id, first_name, last_name, name")
+      .select("id, first_name, last_name, name, email_verified, email_verification_token")
       .eq("id", payload.memberId)
       .maybeSingle()
 
@@ -43,6 +45,25 @@ export async function POST(request: Request) {
 
     if (!member) {
       return NextResponse.json({ ok: false, error: "Mitglied nicht gefunden." }, { status: 404 })
+    }
+
+    if (!member.email_verified) {
+      return NextResponse.json({ ok: false, error: "Mitglied muss zuerst die E-Mail bestätigen." }, { status: 400 })
+    }
+
+    const existingToken = typeof member.email_verification_token === "string" ? member.email_verification_token : ""
+    const existingTokenConfirmation = existingToken.startsWith(GS_CONFIRMATION_TOKEN_PREFIX)
+    const confirmationStamp = existingTokenConfirmation ? existingToken.slice(GS_CONFIRMATION_TOKEN_PREFIX.length) : new Date().toISOString()
+
+    if (!existingTokenConfirmation) {
+      const { error: updateMemberError } = await supabase
+        .from("members")
+        .update({ email_verification_token: `${GS_CONFIRMATION_TOKEN_PREFIX}${confirmationStamp}` })
+        .eq("id", payload.memberId)
+
+      if (updateMemberError) {
+        throw updateMemberError
+      }
     }
 
     const { data: existingLog, error: existingLogError } = await supabase
@@ -81,8 +102,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      alreadyConfirmed: !!existingConfirmation,
+      alreadyConfirmed: existingTokenConfirmation || !!existingConfirmation,
       memberId: payload.memberId,
+      confirmedAt: confirmationStamp,
     })
   } catch (error) {
     console.error("public gs membership confirm failed", error)

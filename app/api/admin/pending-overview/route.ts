@@ -4,6 +4,8 @@ import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
+const GS_CONFIRMATION_TOKEN_PREFIX = "gs_confirmed:"
+
 function isMissingAuditLogTableError(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
   return error?.code === "PGRST205" || message.includes("admin_audit_log")
@@ -33,7 +35,7 @@ export async function GET(request: Request) {
     const [pendingMembersResponse, checkinsResponse] = await Promise.all([
       supabase
         .from("members")
-        .select("id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, phone, guardian_name, is_trial, is_approved, base_group")
+        .select("id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group")
         .eq("is_approved", false)
         .order("created_at", { ascending: false }),
       supabase.from("checkins").select("member_id"),
@@ -43,7 +45,17 @@ export async function GET(request: Request) {
     if (checkinsResponse.error) throw checkinsResponse.error
 
     const pendingMemberIds = (pendingMembersResponse.data ?? []).map((row) => row.id).filter(Boolean)
-    let gsConfirmedAtByMemberId: Record<string, string> = {}
+    const gsConfirmedAtByMemberId: Record<string, string> = {}
+
+    for (const row of pendingMembersResponse.data ?? []) {
+      if (typeof row.email_verification_token !== "string") {
+        continue
+      }
+
+      if (row.email_verification_token.startsWith(GS_CONFIRMATION_TOKEN_PREFIX)) {
+        gsConfirmedAtByMemberId[row.id] = row.email_verification_token.slice(GS_CONFIRMATION_TOKEN_PREFIX.length)
+      }
+    }
 
     if (pendingMemberIds.length > 0) {
       const { data: confirmationLogs, error: confirmationLogsError } = await supabase
@@ -68,10 +80,15 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({
-      pendingMembers: (pendingMembersResponse.data ?? []).map((row) => ({
-        ...row,
-        base_group: normalizeTrainingGroup(row.base_group) || row.base_group,
-      })),
+      pendingMembers: (pendingMembersResponse.data ?? []).map((row) => {
+        const normalizedRow = {
+          ...row,
+          base_group: normalizeTrainingGroup(row.base_group) || row.base_group,
+        }
+
+        delete normalizedRow.email_verification_token
+        return normalizedRow
+      }),
       checkinRows: checkinsResponse.data ?? [],
       gsConfirmedAtByMemberId,
     })
