@@ -595,23 +595,7 @@ export default function FreigabenPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        className="rounded-2xl border-amber-200 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
-                        onClick={() =>
-                          void sendGsRequest(member, {
-                            recipientEmail: "christian.schmidt0479@gmail.com",
-                            subject: `Test Mitgliedsabgleich ${getMemberDisplayName(member)}`,
-                            athleteLabel: member.gender === "weiblich" ? "Sportlerin" : "Sportler",
-                          })
-                        }
-                        disabled={deletingMemberId === member.id}
-                      >
-                        Test an Christian senden
-                      </Button>
-
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-2xl border-zinc-300 text-zinc-800 hover:bg-zinc-50"
+                        className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
                         onClick={() => (isEditing ? closePendingEditor() : openPendingEditor(member))}
                         disabled={savingEditMemberId === member.id || deletingMemberId === member.id}
                       >
@@ -715,7 +699,7 @@ export default function FreigabenPage() {
                         {gsConfirmedAt ? "Freigeben (GS bestätigt)" : gsRejectedAt ? "Freigeben (GS verneint)" : "Freigeben"}
                       </Button>
 
-                      {!member.email_verified && (
+                      {!member.email_verified && member.email?.trim() && (
                         <>
                           <Button
                             variant="outline"
