@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server"
-import { checkRateLimit, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+
+function isMissingAuditLogTableError(error: { message?: string; code?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  return error?.code === "PGRST205" || message.includes("admin_audit_log")
+}
 
 function getServerSupabase() {
   return createServerSupabaseServiceClient()
@@ -19,7 +24,7 @@ export async function GET(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const rateLimit = checkRateLimit(`admin-pending-overview:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`admin-pending-overview:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
@@ -37,12 +42,38 @@ export async function GET(request: Request) {
     if (pendingMembersResponse.error) throw pendingMembersResponse.error
     if (checkinsResponse.error) throw checkinsResponse.error
 
+    const pendingMemberIds = (pendingMembersResponse.data ?? []).map((row) => row.id).filter(Boolean)
+    let gsConfirmedAtByMemberId: Record<string, string> = {}
+
+    if (pendingMemberIds.length > 0) {
+      const { data: confirmationLogs, error: confirmationLogsError } = await supabase
+        .from("admin_audit_log")
+        .select("target_id, created_at")
+        .eq("action", "member_gs_confirmation_confirmed")
+        .eq("target_type", "member")
+        .in("target_id", pendingMemberIds)
+        .order("created_at", { ascending: false })
+
+      if (confirmationLogsError && !isMissingAuditLogTableError(confirmationLogsError)) {
+        throw confirmationLogsError
+      }
+
+      for (const row of confirmationLogs ?? []) {
+        if (!row.target_id || gsConfirmedAtByMemberId[row.target_id]) {
+          continue
+        }
+
+        gsConfirmedAtByMemberId[row.target_id] = row.created_at as string
+      }
+    }
+
     return NextResponse.json({
       pendingMembers: (pendingMembersResponse.data ?? []).map((row) => ({
         ...row,
         base_group: normalizeTrainingGroup(row.base_group) || row.base_group,
       })),
       checkinRows: checkinsResponse.data ?? [],
+      gsConfirmedAtByMemberId,
     })
   } catch (error) {
     console.error("admin pending overview failed", error)

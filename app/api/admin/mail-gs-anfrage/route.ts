@@ -2,9 +2,12 @@ import { NextResponse } from "next/server"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { createGsMembershipConfirmationToken } from "@/lib/gsMembershipConfirmation"
+import { getAppBaseUrl } from "@/lib/mailConfig"
 import { sendGsMembershipCheckEmail } from "@/lib/resendClient"
 
 type RequestBody = {
+  memberId?: string
   firstName?: string
   lastName?: string
   birthdate?: string
@@ -79,6 +82,7 @@ export async function POST(request: Request) {
     const firstName = body?.firstName?.trim() ?? ""
     const lastName = body?.lastName?.trim() ?? ""
     const birthdate = body?.birthdate?.trim() ?? ""
+    const memberId = body?.memberId?.trim() ?? ""
     const recipientEmail = body?.recipientEmail?.trim() ?? ""
     const subject = body?.subject?.trim() ?? ""
     const confirmationLink = body?.confirmationLink?.trim() ?? ""
@@ -93,13 +97,17 @@ export async function POST(request: Request) {
       return jsonError("Geburtsdatum ist ungültig.", 400)
     }
 
+    const resolvedConfirmationLink = confirmationLink || (memberId
+      ? `${getAppBaseUrl().replace(/\/+$/, "")}/mitgliedschaft-bestaetigen?token=${createGsMembershipConfirmationToken(memberId)}`
+      : undefined)
+
     const delivery = await sendGsMembershipCheckEmail({
       firstName,
       lastName,
       birthdateLabel,
       recipientEmail: recipientEmail || undefined,
       subject: subject || undefined,
-      confirmationLink: confirmationLink || undefined,
+      confirmationLink: resolvedConfirmationLink,
       athleteLabel: athleteLabel || undefined,
     })
 
@@ -111,7 +119,7 @@ export async function POST(request: Request) {
       details: `GS-Anfrage gesendet an ${recipientEmail || "gs@tsv-falkensee.de"} fuer Geburtsdatum ${birthdateLabel}${delivery.messageId ? ` · Resend ${delivery.messageId}` : ""}`,
     })
 
-    return NextResponse.json({ ok: true, delivery })
+    return NextResponse.json({ ok: true, delivery, confirmationLink: resolvedConfirmationLink ?? null })
   } catch (error) {
     console.error(error)
     const message = error instanceof Error ? error.message : "GS-Anfrage konnte nicht versendet werden."
