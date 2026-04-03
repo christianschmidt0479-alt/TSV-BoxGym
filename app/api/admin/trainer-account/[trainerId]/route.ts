@@ -307,28 +307,28 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
     const bemerkung = body.bemerkung?.trim() ?? null
 
     if (!firstName || !lastName || !email) {
-      return jsonError("Bitte Vorname, Nachname und E-Mail ausfuellen.", 400)
+      return jsonError("Bitte Vorname, Nachname und E-Mail ausfüllen.", 400)
     }
 
     const emailValidation = validateEmail(email)
     if (!emailValidation.valid) {
-      return jsonError(emailValidation.error || "Bitte eine gueltige E-Mail-Adresse eingeben.", 400)
+      return jsonError(emailValidation.error || "Bitte eine gültige E-Mail-Adresse eingeben.", 400)
     }
 
     if (trainerLicenseInput && !trainerLicense) {
-      return jsonError("Ungueltige Trainerlizenz.", 400)
+      return jsonError("Ungültige Trainerlizenz.", 400)
     }
 
     if (Array.isArray(body.trainerLicenseRenewals) && trainerLicenseRenewals.length !== body.trainerLicenseRenewals.filter((entry) => typeof entry === "string" && entry.trim().length > 0).length) {
-      return jsonError("Lizenzverlaengerungen muessen als Datum im Format TT.MM.JJJJ gespeichert werden.", 400)
+      return jsonError("Lizenzverlängerungen müssen als Datum im Format TT.MM.JJJJ gespeichert werden.", 400)
     }
 
     if (lizenzGueltigBisInput && !lizenzGueltigBis) {
-      return jsonError("'gueltig bis' muss im Format TT.MM.JJJJ sein.", 400)
+      return jsonError("'gültig bis' muss im Format TT.MM.JJJJ sein.", 400)
     }
 
     if (memberBirthdateInput && !memberBirthdate) {
-      return jsonError("Geburtsdatum fuer das Mitglied muss im Format TT.MM.JJJJ sein.", 400)
+      return jsonError("Geburtsdatum für das Mitglied muss im Format TT.MM.JJJJ sein.", 400)
     }
 
     const supabase = getServerSupabase()
@@ -355,7 +355,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
         resolvedLinkedMemberId = matchedMember.id
       } else {
         if (!memberBirthdate) {
-          return jsonError("Bitte ein Geburtsdatum fuer das neue Mitglied eingeben.", 400)
+          return jsonError("Bitte ein Geburtsdatum für das neue Mitglied eingeben.", 400)
         }
 
         const memberPayload: Record<string, unknown> = {
@@ -383,7 +383,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
             if (duplicateMember?.id) {
               resolvedLinkedMemberId = duplicateMember.id
             } else {
-              return jsonError("Zur E-Mail existiert bereits ein Mitglied. Bitte bestehendes Mitglied pruefen und erneut speichern.", 409)
+              return jsonError("Zur E-Mail existiert bereits ein Mitglied. Bitte bestehendes Mitglied prüfen und erneut speichern.", 409)
             }
           } else {
             throw createdMemberError
@@ -435,7 +435,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
       targetType: "trainer",
       targetId: trainer.id,
       targetName: `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim() || trainer.email || "—",
-      details: `E-Mail: ${trainer.email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${trainerLicenseRenewals.length ? `, Verlängerungen: ${trainerLicenseRenewals.join(", ")}` : ""}${lizenzart ? `, lizenzart: ${lizenzart}` : ""}${lizenznummer ? `, lizenznr: ${lizenznummer}` : ""}${lizenzGueltigBis ? `, gueltig_bis: ${lizenzGueltigBis}` : ""}${resolvedLinkedMemberId ? `, Mitglied verknuepft: ${resolvedLinkedMemberId}` : ""}${autoCreatedMemberId ? `, Mitglied automatisch angelegt` : ""}`,
+      details: `E-Mail: ${trainer.email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${trainerLicenseRenewals.length ? `, Verlängerungen: ${trainerLicenseRenewals.join(", ")}` : ""}${lizenzart ? `, lizenzart: ${lizenzart}` : ""}${lizenznummer ? `, lizenznr: ${lizenznummer}` : ""}${lizenzGueltigBis ? `, gueltig_bis: ${lizenzGueltigBis}` : ""}${resolvedLinkedMemberId ? `, Mitglied verknüpft: ${resolvedLinkedMemberId}` : ""}${autoCreatedMemberId ? `, Mitglied automatisch angelegt` : ""}`,
     })
 
     return NextResponse.json({ ok: true, trainer, linkedMemberId: resolvedLinkedMemberId, autoCreatedMemberId })

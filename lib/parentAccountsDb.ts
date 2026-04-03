@@ -91,7 +91,7 @@ export async function upsertParentAccount(input: {
   }
 
   if (!input.access_code_hash) {
-    throw new Error("Für neue Elternkonten wird ein Zugangscode benötigt.")
+    throw new Error("Für neue Elternkonten wird ein Passwort benötigt.")
   }
 
   const { data, error } = await supabase

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { formatDateInputForDisplay } from "@/lib/dateFormat"
 import { createGsMembershipConfirmationLinks } from "@/lib/gsMembershipConfirmation"
 import { getAppBaseUrl } from "@/lib/mailConfig"
 import { sendGsMembershipCheckEmail } from "@/lib/resendClient"
@@ -24,38 +25,7 @@ function jsonError(message: string, status: number) {
 }
 
 function formatBirthdateForMail(value: string) {
-  const trimmedValue = value.trim()
-
-  if (!trimmedValue) {
-    return null
-  }
-
-  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmedValue)) {
-    return trimmedValue
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
-    const [year, month, day] = trimmedValue.split("-").map(Number)
-    const date = new Date(Date.UTC(year, month - 1, day))
-
-    if (
-      Number.isNaN(date.getTime()) ||
-      date.getUTCFullYear() !== year ||
-      date.getUTCMonth() !== month - 1 ||
-      date.getUTCDate() !== day
-    ) {
-      return null
-    }
-
-    return new Intl.DateTimeFormat("de-DE", { timeZone: "UTC" }).format(date)
-  }
-
-  const parsed = new Date(trimmedValue)
-  if (Number.isNaN(parsed.getTime())) {
-    return null
-  }
-
-  return new Intl.DateTimeFormat("de-DE", { timeZone: "UTC" }).format(parsed)
+  return formatDateInputForDisplay(value)
 }
 
 export async function POST(request: Request) {
@@ -122,7 +92,7 @@ export async function POST(request: Request) {
       action: "member_gs_request_sent",
       targetType: "member",
       targetName: `${firstName} ${lastName}`.trim(),
-      details: `GS-Anfrage gesendet an ${recipientEmail || "gs@tsv-falkensee.de"} fuer Geburtsdatum ${birthdateLabel}${delivery.messageId ? ` · Resend ${delivery.messageId}` : ""}`,
+      details: `GS-Anfrage gesendet an ${recipientEmail || "gs@tsv-falkensee.de"} für Geburtsdatum ${birthdateLabel}${delivery.messageId ? ` · Resend ${delivery.messageId}` : ""}`,
     })
 
     return NextResponse.json({

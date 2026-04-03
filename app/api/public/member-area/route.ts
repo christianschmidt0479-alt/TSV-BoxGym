@@ -1,6 +1,16 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import {
+  checkRateLimitAsync,
+  clearLoginFailuresAsync,
+  delayFailedLogin,
+  getLoginLockStateAsync,
+  getRequestIp,
+  isAllowedOrigin,
+  isWithinMaxLength,
+  registerLoginFailureAsync,
+  sanitizeTextInput,
+} from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import {
   findMemberByEmail,
@@ -9,6 +19,8 @@ import {
   findMemberById,
   updateMemberProfile,
 } from "@/lib/boxgymDb"
+import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
+import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
 import {
   getChildrenForParent,
   getParentAccountByEmail,
@@ -17,7 +29,6 @@ import {
   type ParentAccountRow,
 } from "@/lib/parentAccountsDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
-import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import {
   applyMemberAreaSessionCookie,
   applyParentAreaSessionCookie,
@@ -28,8 +39,10 @@ import {
   readParentAreaSessionFromHeaders,
 } from "@/lib/publicAreaSession"
 import { sendVerificationEmail } from "@/lib/resendClient"
-import { supabase } from "@/lib/supabaseClient"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+
+const supabase = createServerSupabaseServiceClient()
 
 type CheckinRow = {
   id: string
@@ -52,6 +65,7 @@ type MemberRecord = {
   email?: string | null
   email_verified?: boolean
   email_verified_at?: string | null
+  privacy_accepted_at?: string | null
   email_verification_token?: string | null
   phone?: string | null
   guardian_name?: string | null
@@ -67,6 +81,9 @@ type MemberRecord = {
   is_trial?: boolean
   is_approved?: boolean
   base_group?: string | null
+  office_list_status?: string | null
+  office_list_group?: string | null
+  office_list_checked_at?: string | null
 }
 
 type ParentChildRow = {
@@ -85,6 +102,7 @@ type MemberAreaBody =
   | {
       action: "member_login"
       email?: string
+      password?: string
       pin?: string
     }
   | {
@@ -118,8 +136,10 @@ type MemberAreaBody =
       memberId?: string
       email?: string
       phone?: string
+      newPassword?: string
       newPin?: string
       loginEmail?: string
+      password?: string
       pin?: string
     }
   | {
@@ -127,11 +147,19 @@ type MemberAreaBody =
       memberId?: string
       email?: string
       loginEmail?: string
+      password?: string
       pin?: string
     }
+  | {
+      action: "accept_privacy_consent"
+      email?: string
+      password?: string
+      pin?: string
+      consent?: boolean
+    }
 
-const MEMBER_LOGIN_ERROR_MESSAGE = "Mitglied nicht gefunden oder PIN nicht korrekt."
-const PARENT_LOGIN_ERROR_MESSAGE = "Elternkonto nicht gefunden oder Zugangscode nicht korrekt."
+const MEMBER_LOGIN_ERROR_MESSAGE = "Mitglied nicht gefunden oder Passwort nicht korrekt."
+const PARENT_LOGIN_ERROR_MESSAGE = "Elternkonto nicht gefunden oder Passwort nicht korrekt."
 
 function getMonthKey(dateString: string) {
   return dateString.slice(0, 7)
@@ -177,6 +205,46 @@ function sanitizeMemberForClient(member: MemberRecord & Record<string, unknown>)
   delete sanitized.member_pin
   delete sanitized.email_verification_token
   return sanitized as MemberRecord
+}
+
+function hasAcceptedPrivacy(member: MemberRecord | null | undefined) {
+  if (!member) return false
+  if (!("privacy_accepted_at" in member)) return true
+  return Boolean(member.privacy_accepted_at)
+}
+
+function privacyConsentRequiredResponse() {
+  return NextResponse.json(
+    {
+      code: "privacy_consent_required",
+      message: "Bitte Datenschutz akzeptieren",
+    },
+    { status: 409 }
+  )
+}
+
+function sanitizeMemberAreaEmail(value: unknown) {
+  return sanitizeTextInput(value, { lowercase: true, maxLength: 254 })
+}
+
+function sanitizeMemberAreaPassword(value: unknown) {
+  return sanitizeTextInput(value, { maxLength: 64 })
+}
+
+function sanitizeParentAccessCode(value: unknown) {
+  return sanitizeTextInput(value, { maxLength: 64 })
+}
+
+function sanitizeMemberId(value: unknown) {
+  return sanitizeTextInput(value, { maxLength: 64 })
+}
+
+function sanitizePhone(value: unknown) {
+  return sanitizeTextInput(value, { maxLength: 40 })
+}
+
+function sanitizeToken(value: unknown) {
+  return sanitizeTextInput(value, { maxLength: 200 })
 }
 
 function toSafeParentAccount(parent: ParentAccountRow): SafeParentAccountRow {
@@ -323,7 +391,7 @@ async function resolveTrainerLinkedMember(request: Request) {
   return null
 }
 
-async function resolveEditableMember(request: Request, body: { memberId?: string; loginEmail?: string; pin?: string }) {
+async function resolveEditableMember(request: Request, body: { memberId?: string; loginEmail?: string; password?: string; pin?: string }) {
   const memberSession = await readMemberAreaSessionFromHeaders(request)
   if (memberSession && body.memberId) {
     const sessionMember = (await findMemberById(memberSession.memberId)) as MemberRecord | null
@@ -337,14 +405,14 @@ async function resolveEditableMember(request: Request, body: { memberId?: string
     return sessionMember
   }
 
-  const loginEmail = body.loginEmail?.trim().toLowerCase() ?? ""
-  const pin = body.pin?.trim() ?? ""
+  const loginEmail = sanitizeMemberAreaEmail(body.loginEmail)
+  const password = sanitizeMemberAreaPassword(body.password ?? body.pin)
 
-  if (!loginEmail || !isValidPin(pin)) {
+  if (!loginEmail || !password) {
     return null
   }
 
-  const memberMatch = await findMemberByEmailAndPin(loginEmail, pin)
+  const memberMatch = await findMemberByEmailAndPin(loginEmail, password)
   if (!memberMatch || memberMatch.status !== "success") {
     return null
   }
@@ -352,6 +420,31 @@ async function resolveEditableMember(request: Request, body: { memberId?: string
   const member = memberMatch.member as MemberRecord
   if (!member || member.id !== body.memberId) return null
   return member
+}
+
+async function resolveMemberFromSessionOrCredentials(
+  request: Request,
+  body: { email?: string; password?: string; pin?: string }
+) {
+  const memberSession = await readMemberAreaSessionFromHeaders(request)
+  if (memberSession) {
+    const sessionMember = (await findMemberById(memberSession.memberId)) as MemberRecord | null
+    if (sessionMember) return sessionMember
+  }
+
+  const email = sanitizeMemberAreaEmail(body.email)
+  const password = sanitizeMemberAreaPassword(body.password ?? body.pin)
+
+  if (!email || !password) {
+    return null
+  }
+
+  const memberMatch = await findMemberByEmailAndPin(email, password)
+  if (!memberMatch || memberMatch.status !== "success") {
+    return null
+  }
+
+  return memberMatch.member as MemberRecord
 }
 
 export async function POST(request: Request) {
@@ -363,11 +456,11 @@ export async function POST(request: Request) {
     const body = (await request.json()) as MemberAreaBody
     const normalizedIdentifier =
       body.action === "member_login"
-        ? body.email?.trim().toLowerCase() ?? ""
+        ? sanitizeMemberAreaEmail(body.email)
         : body.action === "parent_login"
-          ? body.email?.trim().toLowerCase() ?? ""
+          ? sanitizeMemberAreaEmail(body.email)
           : body.action === "update_profile" || body.action === "resend_verification"
-            ? body.memberId?.trim() || body.loginEmail?.trim().toLowerCase() || body.email?.trim().toLowerCase() || ""
+            ? sanitizeMemberId(body.memberId) || sanitizeMemberAreaEmail(body.loginEmail) || sanitizeMemberAreaEmail(body.email) || ""
             : body.action
     const rateLimit = await checkRateLimitAsync(
       `public-member-area:${getRequestIp(request)}:${body.action}:${normalizedIdentifier || "__subject__"}`,
@@ -379,25 +472,48 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "member_login") {
-      const email = body.email?.trim().toLowerCase() ?? ""
-      const pin = body.pin?.trim() ?? ""
-
-      if (!email || !pin) {
-        return new NextResponse("Bitte E-Mail und PIN eingeben.", { status: 400 })
+      const email = sanitizeMemberAreaEmail(body.email)
+      const password = sanitizeMemberAreaPassword(body.password ?? body.pin)
+      const requestIp = getRequestIp(request)
+      const rateLimit = await checkRateLimitAsync(`member-login:${requestIp}`, 5, 15 * 60 * 1000)
+      if (!rateLimit.ok) {
+        return new NextResponse("Too many requests", { status: 429 })
       }
 
-      if (!isValidPin(pin)) {
-        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+      const loginKey = `member:${email || "__email__"}`
+      const lockState = await getLoginLockStateAsync(loginKey, 10)
+      if (lockState.blocked) {
+        await delayFailedLogin()
+        const minutes = Math.max(1, Math.ceil((lockState.retryAfterMs ?? 0) / 60000))
+        return new NextResponse(`Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.`, { status: 429 })
       }
 
-      const memberMatch = await findMemberByEmailAndPin(email, pin)
+      if (!email || !password) {
+        return new NextResponse("Bitte E-Mail und Passwort eingeben.", { status: 400 })
+      }
+
+      if (!isWithinMaxLength(email, 254) || !isWithinMaxLength(password, 64)) {
+        return new NextResponse("Ungültige Anmeldedaten.", { status: 400 })
+      }
+
+      const memberMatch = await findMemberByEmailAndPin(email, password)
       if (memberMatch?.status === "missing_email") {
+        await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
+        await delayFailedLogin()
         return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
       }
 
       const member = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
       if (!member) {
+        await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
+        await delayFailedLogin()
         return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
+      }
+
+      await clearLoginFailuresAsync(loginKey)
+
+      if (!hasAcceptedPrivacy(member)) {
+        return privacyConsentRequiredResponse()
       }
 
       const response = NextResponse.json(await buildMemberSnapshot(member))
@@ -416,6 +532,11 @@ export async function POST(request: Request) {
       const member = (await findMemberById(session.memberId)) as MemberRecord | null
       if (!member) {
         const response = new NextResponse("Unauthorized", { status: 401 })
+        return clearMemberAreaSessionCookie(response)
+      }
+
+      if (!hasAcceptedPrivacy(member)) {
+        const response = privacyConsentRequiredResponse()
         return clearMemberAreaSessionCookie(response)
       }
 
@@ -457,11 +578,15 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "parent_login") {
-      const email = body.email?.trim().toLowerCase() ?? ""
-      const accessCode = body.accessCode?.trim() ?? ""
+      const email = sanitizeMemberAreaEmail(body.email)
+      const accessCode = sanitizeParentAccessCode(body.accessCode)
 
       if (!email || !accessCode) {
-        return new NextResponse("Bitte Eltern-E-Mail und Eltern-Zugangscode eingeben.", { status: 400 })
+        return new NextResponse("Bitte Eltern-E-Mail und Eltern-Passwort eingeben.", { status: 400 })
+      }
+
+      if (!isWithinMaxLength(email, 254) || !isWithinMaxLength(accessCode, 64)) {
+        return new NextResponse("Ungültige Zugangsdaten.", { status: 400 })
       }
 
       const existingParent = await getParentAccountByEmail(email)
@@ -483,9 +608,9 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "verify_email") {
-      const token = body.token?.trim() ?? ""
+      const token = sanitizeToken(body.token)
       if (!token) {
-        return new NextResponse("Bestaetigungslink ungueltig oder bereits verwendet.", { status: 400 })
+        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 400 })
       }
 
       const { data, error } = await supabase
@@ -501,7 +626,7 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!data) {
-        return new NextResponse("Bestaetigungslink ungueltig oder bereits verwendet.", { status: 404 })
+        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
       }
 
       return NextResponse.json({ ok: true })
@@ -513,21 +638,34 @@ export async function POST(request: Request) {
         return new NextResponse("Unauthorized", { status: 401 })
       }
 
-      const email = body.email?.trim() ?? ""
+      const email = sanitizeTextInput(body.email, { maxLength: 254 })
       if (!email) {
         return new NextResponse("Bitte eine E-Mail-Adresse angeben.", { status: 400 })
       }
 
-      const newPin = body.newPin?.trim() ?? ""
-      if (newPin && !isValidPin(newPin)) {
-        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+      if (!isWithinMaxLength(email, 254)) {
+        return new NextResponse("E-Mail-Adresse ist zu lang.", { status: 400 })
+      }
+
+      const newPassword = sanitizeMemberAreaPassword(body.newPassword ?? body.newPin)
+      if (newPassword && !isValidMemberPassword(newPassword)) {
+        return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
       const updated = await updateMemberProfile(member.id, {
         email,
-        phone: body.phone?.trim() ?? "",
-        member_pin: newPin || undefined,
+        phone: sanitizePhone(body.phone),
+        member_pin: newPassword || undefined,
       })
+
+      if (newPassword || (updated.email ?? "") !== (member.email ?? "")) {
+        await ensureMemberAuthUserLink({
+          memberId: member.id,
+          email: typeof updated.email === "string" ? updated.email : null,
+          password: newPassword || null,
+          emailVerified: Boolean(updated.email_verified),
+        })
+      }
 
       return NextResponse.json({ ok: true, member: sanitizeMemberForClient(updated as MemberRecord & Record<string, unknown>) })
     }
@@ -538,7 +676,7 @@ export async function POST(request: Request) {
         return new NextResponse("Unauthorized", { status: 401 })
       }
 
-      const targetEmail = body.email?.trim() || member.email || ""
+      const targetEmail = sanitizeTextInput(body.email, { maxLength: 254 }) || member.email || ""
       if (!targetEmail) {
         return new NextResponse("Bitte eine E-Mail-Adresse angeben.", { status: 400 })
       }
@@ -568,6 +706,54 @@ export async function POST(request: Request) {
         ok: true,
         verificationLink,
         delivery,
+      })
+    }
+
+    if (body.action === "accept_privacy_consent") {
+      const requestIp = getRequestIp(request)
+      const rateLimit = await checkRateLimitAsync(`member-login:${requestIp}`, 5, 15 * 60 * 1000)
+      if (!rateLimit.ok) {
+        return new NextResponse("Too many requests", { status: 429 })
+      }
+
+      if (body.consent !== true) {
+        return new NextResponse("Bitte Datenschutz akzeptieren", { status: 400 })
+      }
+
+      const loginKey = `member:${sanitizeMemberAreaEmail(body.email) || "__email__"}`
+      const lockState = await getLoginLockStateAsync(loginKey, 10)
+      if (lockState.blocked) {
+        await delayFailedLogin()
+        const minutes = Math.max(1, Math.ceil((lockState.retryAfterMs ?? 0) / 60000))
+        return new NextResponse(`Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.`, { status: 429 })
+      }
+
+      const member = await resolveMemberFromSessionOrCredentials(request, body)
+      if (!member) {
+        await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
+        await delayFailedLogin()
+        return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
+      }
+
+      await clearLoginFailuresAsync(loginKey)
+
+      const { data, error } = await supabase
+        .from("members")
+        .update({ privacy_accepted_at: new Date().toISOString() })
+        .eq("id", member.id)
+        .select("*")
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) {
+        return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
+      }
+
+      const acceptedMember = data as MemberRecord
+      const response = NextResponse.json(await buildMemberSnapshot(acceptedMember))
+      return await applyMemberAreaSessionCookie(response, {
+        memberId: acceptedMember.id,
+        email: sanitizeMemberAreaEmail(acceptedMember.email || body.email || ""),
       })
     }
 

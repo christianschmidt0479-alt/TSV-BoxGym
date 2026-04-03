@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TrainerLogoutButton } from "@/components/trainer-logout-button"
 import { validateEmail, validateName, validatePhone } from "@/lib/formValidation"
 import { clearTrainerAccess, persistTrainerAccess, readTrainerAccess } from "@/lib/trainerAccess"
-import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { isTrainerPinCompliant, TRAINER_PIN_HINT, TRAINER_PIN_REQUIREMENTS_MESSAGE } from "@/lib/trainerPin"
 
 const TRAINER_VERIFY_PARAM = "trainer_verify"
 const TRAINER_LOGIN_EMAIL_PARAM = "email"
@@ -40,7 +40,7 @@ function mapTrainerAuthErrorMessage(message: string) {
       return "Lokal fehlen Supabase-Zugangsdaten in .env.local. Bitte NEXT_PUBLIC_SUPABASE_URL und NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY setzen und den Dev-Server neu starten."
     }
 
-    return "Der lokale Server hat eine HTML-Fehlerseite statt einer API-Antwort geliefert. Bitte Dev-Server-Log pruefen."
+    return "Der lokale Server hat eine HTML-Fehlerseite statt einer API-Antwort geliefert. Bitte Dev-Server-Log prüfen."
   }
 
   return trimmed
@@ -107,7 +107,7 @@ export default function TrainerZugangPage() {
             }
 
             const result = (await response.json()) as { email?: string }
-            showAuthSuccess("Trainer-E-Mail erfolgreich bestaetigt. Der Admin kann den Zugang jetzt freigeben.")
+            showAuthSuccess("Trainer-E-Mail erfolgreich bestätigt. Der Admin kann den Zugang jetzt freigeben.")
             setTrainerRegisterErrors({})
             setTrainerAuthView("login")
             setTrainerLoginEmail(result.email ?? "")
@@ -208,7 +208,7 @@ export default function TrainerZugangPage() {
 
   async function handleTrainerLogin() {
     if (!trainerLoginEmail.trim() || !trainerPinInput.trim()) {
-      showAuthError("Bitte E-Mail und PIN eingeben.")
+      showAuthError("Bitte E-Mail und Passwort eingeben.")
       return
     }
 
@@ -250,17 +250,17 @@ export default function TrainerZugangPage() {
       fieldErrors.phone = phoneValidation.error || ""
     }
 
-    if (!isValidPin(pin)) {
-      fieldErrors.pin = PIN_REQUIREMENTS_MESSAGE
+    if (!isTrainerPinCompliant(pin)) {
+      fieldErrors.pin = TRAINER_PIN_REQUIREMENTS_MESSAGE
     }
 
     if (pin !== trainerRegisterPinConfirm.trim()) {
-      fieldErrors.pinConfirm = "Die PINs stimmen nicht ueberein."
+      fieldErrors.pinConfirm = "Die Passwörter stimmen nicht überein."
     }
 
     if (Object.keys(fieldErrors).length > 0) {
       setTrainerRegisterErrors(fieldErrors)
-      showAuthError("Bitte alle Pflichtfelder korrekt ausfuellen.")
+      showAuthError("Bitte alle Pflichtfelder korrekt ausfüllen.")
       return
     }
 
@@ -285,7 +285,7 @@ export default function TrainerZugangPage() {
         throw new Error(message || "Trainerregistrierung fehlgeschlagen.")
       }
 
-      showAuthSuccess("Trainerregistrierung erfasst. Bitte E-Mail bestaetigen und danach auf die Admin-Freigabe warten.")
+      showAuthSuccess("Trainerregistrierung erfasst. Bitte E-Mail bestätigen und danach auf die Admin-Freigabe warten.")
       setTrainerRegisterErrors({})
       setTrainerAuthView("login")
       setTrainerLoginEmail(email)
@@ -423,14 +423,14 @@ export default function TrainerZugangPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>PIN</Label>
+                        <Label>Passwort</Label>
                         <PasswordInput
                           value={trainerPinInput}
                           onChange={(e) => setTrainerPinInput(e.target.value)}
-                          placeholder="PIN eingeben"
+                          placeholder="Passwort eingeben"
                           className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                         />
-                        <div className="text-xs text-zinc-500">{PIN_HINT}</div>
+                        <div className="text-xs text-zinc-500">Bestehende Zugänge bleiben gültig. Für neue oder geänderte Passwörter gelten mindestens 8 Zeichen.</div>
                       </div>
                     </div>
 
@@ -485,19 +485,19 @@ export default function TrainerZugangPage() {
                         {trainerRegisterErrors.phone ? <p className="mt-1 text-sm text-red-500">{trainerRegisterErrors.phone}</p> : null}
                       </div>
                       <div className="space-y-2">
-                        <Label>PIN <span className="ml-1 text-red-500">*</span></Label>
+                        <Label>Passwort <span className="ml-1 text-red-500">*</span></Label>
                         <PasswordInput
                           value={trainerRegisterPin}
                           onChange={(e) => setTrainerRegisterPin(e.target.value)}
-                          placeholder="6 bis 16 Zeichen"
+                          placeholder="8 bis 64 Zeichen"
                           className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                         />
                         {trainerRegisterErrors.pin ? <p className="mt-1 text-sm text-red-500">{trainerRegisterErrors.pin}</p> : null}
-                        <div className="text-xs text-zinc-500">{PIN_HINT}</div>
+                        <div className="text-xs text-zinc-500">{TRAINER_PIN_HINT}</div>
                       </div>
                       <div className="space-y-2 md:col-span-2">
-                        <Label>PIN wiederholen <span className="ml-1 text-red-500">*</span></Label>
-                        <PasswordInput value={trainerRegisterPinConfirm} onChange={(e) => setTrainerRegisterPinConfirm(e.target.value)} placeholder="PIN wiederholen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                        <Label>Passwort wiederholen <span className="ml-1 text-red-500">*</span></Label>
+                        <PasswordInput value={trainerRegisterPinConfirm} onChange={(e) => setTrainerRegisterPinConfirm(e.target.value)} placeholder="Passwort wiederholen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                         {trainerRegisterErrors.pinConfirm ? <p className="mt-1 text-sm text-red-500">{trainerRegisterErrors.pinConfirm}</p> : null}
                       </div>
                     </div>

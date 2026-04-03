@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import React from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { type TrainerAccountRecord } from "@/lib/trainerDb"
 import { normalizeTrainerLicense, trainerLicenseOptions } from "@/lib/trainerLicense"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -65,8 +66,7 @@ function formatDateForDisplay(value: string | null | undefined) {
   const isoDate = typeof value === "string" ? parseDateInput(value) : null
   if (!isoDate) return value ?? ""
 
-  const [year, month, day] = isoDate.split("-")
-  return `${day}.${month}.${year}`
+  return formatIsoDateForDisplay(isoDate) ?? (value ?? "")
 }
 
 function normalizeRenewalsText(text: string) {
@@ -216,7 +216,7 @@ export default function TrainerBearbeitenPage() {
         throw new Error("Geburtsdatum muss im Format TT.MM.JJJJ eingegeben werden.")
       }
       if (isSportler && !linkedMember && !normalizedMemberBirthdate) {
-        throw new Error("Bitte ein Geburtsdatum fuer das neue Sportlerkonto eingeben.")
+        throw new Error("Bitte ein Geburtsdatum für das neue Sportlerkonto eingeben.")
       }
 
       const response = await fetch(`/api/admin/trainer-account/${trainerId}`, {
@@ -404,7 +404,7 @@ export default function TrainerBearbeitenPage() {
                       </div>
                       {isSportler && !linkedMember ? (
                         <div>
-                          <Label>Geburtsdatum fuer neues Mitglied *</Label>
+                          <Label>Geburtsdatum für neues Mitglied *</Label>
                           <input
                             className={emphasizedFieldClassName}
                             value={memberBirthdate}

@@ -90,6 +90,18 @@ export default function MailVerfassenPage() {
 
   const returnTo = payload?.returnTo?.trim() || "/verwaltung/mail"
 
+  useEffect(() => {
+    if (!success) return
+
+    const timeoutId = window.setTimeout(() => {
+      router.push(returnTo)
+    }, 1800)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [returnTo, router, success])
+
   async function sendDrafts() {
     try {
       setSending(true)

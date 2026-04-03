@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type CompetitionMemberRow = {
@@ -245,7 +246,7 @@ export default function TrainerWettkampfPage() {
             {member.has_competition_pass ? (
               <>
                 <div>Lizenznummer: {member.competition_license_number || "—"}</div>
-                <div>Untersuchung: {member.last_medical_exam_date || "—"}</div>
+                <div>Untersuchung: {formatIsoDateForDisplay(member.last_medical_exam_date) || "—"}</div>
                 <div>
                   Bilanz: {member.competition_fights ?? 0} Kämpfe · {member.competition_wins ?? 0} Siege · {member.competition_losses ?? 0} Niederlagen · {member.competition_draws ?? 0} Unentschieden
                 </div>

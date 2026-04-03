@@ -10,8 +10,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ChevronDown, ChevronUp } from "lucide-react"
 import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
-import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { formatDateInputForDisplay, formatDisplayDateTime } from "@/lib/dateFormat"
+import { MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, isValidMemberPassword } from "@/lib/memberPassword"
+import { getOfficeListStatusBadgeClass, getOfficeListStatusLabel } from "@/lib/officeListStatus"
 import { getRecommendedTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -30,6 +33,9 @@ type PendingMemberRecord = {
   is_trial?: boolean
   is_approved?: boolean
   base_group?: string | null
+  office_list_status?: string | null
+  office_list_group?: string | null
+  office_list_checked_at?: string | null
 }
 
 type CheckinCountRow = {
@@ -59,20 +65,35 @@ type PendingEditDraft = {
   memberPin: string
 }
 
-const groupOptions = [...TRAINING_GROUPS]
+type OfficeRunRow = {
+  memberId: string | null
+  status: "green" | "yellow" | "red" | "gray"
+  note: string
+  source: string
+  groupExcel: string
+}
 
-async function copyTextToClipboard(value: string) {
-  if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-    return false
-  }
+type OfficeRunMemberInfo = {
+  status: "green" | "yellow" | "red" | "gray"
+  note: string
+  source: string
+  groupExcel: string
+}
 
-  try {
-    await navigator.clipboard.writeText(value)
-    return true
-  } catch {
-    return false
+function getOfficeRunPriority(status: OfficeRunMemberInfo["status"]) {
+  switch (status) {
+    case "yellow":
+      return 3
+    case "red":
+      return 2
+    case "gray":
+      return 1
+    case "green":
+      return 0
   }
 }
+
+const groupOptions = [...TRAINING_GROUPS]
 
 function getMemberDisplayName(member?: Partial<PendingMemberRecord> | null) {
   const first = member?.first_name ?? ""
@@ -82,36 +103,16 @@ function getMemberDisplayName(member?: Partial<PendingMemberRecord> | null) {
 }
 
 function formatBirthdateLabel(value?: string) {
-  const trimmedValue = value?.trim()
+  return formatDateInputForDisplay(value) || value?.trim() || "—"
+}
 
-  if (!trimmedValue) {
-    return "—"
-  }
+function getOfficeDifferenceParts(note?: string | null) {
+  if (!note || note === "Excel und DB stimmen überein") return []
 
-  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmedValue)) {
-    return trimmedValue
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
-    const [year, month, day] = trimmedValue.split("-").map(Number)
-    const date = new Date(Date.UTC(year, month - 1, day))
-
-    if (
-      !Number.isNaN(date.getTime()) &&
-      date.getUTCFullYear() === year &&
-      date.getUTCMonth() === month - 1 &&
-      date.getUTCDate() === day
-    ) {
-      return new Intl.DateTimeFormat("de-DE", { timeZone: "UTC" }).format(date)
-    }
-  }
-
-  const parsed = new Date(trimmedValue)
-  if (Number.isNaN(parsed.getTime())) {
-    return trimmedValue
-  }
-
-  return new Intl.DateTimeFormat("de-DE", { timeZone: "UTC" }).format(parsed)
+  return note
+    .split(" · ")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
 }
 
 export default function FreigabenPage() {
@@ -129,9 +130,11 @@ export default function FreigabenPage() {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [gsConfirmedAtByMemberId, setGsConfirmedAtByMemberId] = useState<Record<string, string>>({})
   const [gsRejectedAtByMemberId, setGsRejectedAtByMemberId] = useState<Record<string, string>>({})
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null)
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<PendingEditDraft | null>(null)
   const [savingEditMemberId, setSavingEditMemberId] = useState<string | null>(null)
+  const [officeRunInfoByMember, setOfficeRunInfoByMember] = useState<Record<string, OfficeRunMemberInfo>>({})
 
   function showToast(message: string, variant: ToastState["variant"]) {
     setToast({ message, variant })
@@ -168,6 +171,57 @@ export default function FreigabenPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!authResolved || trainerRole !== "admin") return
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/admin/excel-abgleich", { method: "GET", cache: "no-store" })
+
+        if (response.status === 204) {
+          if (!cancelled) setOfficeRunInfoByMember({})
+          return
+        }
+
+        if (!response.ok) {
+          return
+        }
+
+        const payload = (await response.json()) as { rows?: OfficeRunRow[] }
+        const nextMap: Record<string, OfficeRunMemberInfo> = {}
+
+        for (const row of Array.isArray(payload.rows) ? payload.rows : []) {
+          if (!row.memberId) continue
+          const nextInfo = {
+            status: row.status,
+            note: row.note,
+            source: row.source,
+            groupExcel: row.groupExcel,
+          }
+          const currentInfo = nextMap[row.memberId]
+
+          if (!currentInfo || getOfficeRunPriority(nextInfo.status) > getOfficeRunPriority(currentInfo.status)) {
+            nextMap[row.memberId] = nextInfo
+          }
+        }
+
+        if (!cancelled) {
+          setOfficeRunInfoByMember(nextMap)
+        }
+      } catch {
+        if (!cancelled) {
+          setOfficeRunInfoByMember({})
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [authResolved, trainerRole])
 
   async function resendVerification(member: PendingMemberRecord) {
     if (!member.id || !member.email) {
@@ -225,6 +279,7 @@ export default function FreigabenPage() {
   }
 
   function openPendingEditor(member: PendingMemberRecord) {
+    setExpandedMemberId(member.id)
     setEditingMemberId(member.id)
     setEditDraft({
       firstName: member.first_name ?? "",
@@ -242,6 +297,14 @@ export default function FreigabenPage() {
   function closePendingEditor() {
     setEditingMemberId(null)
     setEditDraft(null)
+  }
+
+  function togglePendingCard(memberId: string) {
+    setExpandedMemberId((current) => (current === memberId ? null : memberId))
+
+    if (editingMemberId === memberId) {
+      closePendingEditor()
+    }
   }
 
   async function savePendingEditor(member: PendingMemberRecord) {
@@ -271,8 +334,8 @@ export default function FreigabenPage() {
       return
     }
 
-    if (memberPin && !isValidPin(memberPin)) {
-      alert(PIN_REQUIREMENTS_MESSAGE)
+    if (memberPin && !isValidMemberPassword(memberPin)) {
+      alert(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -500,14 +563,21 @@ export default function FreigabenPage() {
               const gsConfirmedAt = gsConfirmedAtByMemberId[member.id] ?? ""
               const gsRejectedAt = gsRejectedAtByMemberId[member.id] ?? ""
               const isEditing = editingMemberId === member.id && editDraft
+              const isExpanded = expandedMemberId === member.id || isEditing
+              const officeRunInfo = officeRunInfoByMember[member.id] ?? null
+              const officeDifferences = getOfficeDifferenceParts(officeRunInfo?.note)
               const selectedGroup =
                 groupDrafts[member.id] ??
                 normalizeTrainingGroupOrFallback(member.base_group, getRecommendedTrainingGroup(member.birthdate))
 
               return (
                 <div key={member.id} className="rounded-3xl border border-zinc-200 bg-white p-5">
-                  <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr_1fr_auto] xl:items-end">
-                    <div className="space-y-2 text-sm">
+                  <button
+                    type="button"
+                    className="flex w-full items-start justify-between gap-4 text-left"
+                    onClick={() => togglePendingCard(member.id)}
+                  >
+                    <div className="min-w-0 space-y-2 text-sm">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
                         <Badge
@@ -520,18 +590,20 @@ export default function FreigabenPage() {
                         >
                           {member.email_verified ? "E-Mail bestätigt" : "Wartet auf E-Mail"}
                         </Badge>
+                        {member.office_list_status ? (
+                          <Badge variant="outline" className={getOfficeListStatusBadgeClass(member.office_list_status)}>
+                            GS-Abgleich: {getOfficeListStatusLabel(member.office_list_status)}
+                          </Badge>
+                        ) : null}
                       </div>
-                      <div className="text-zinc-600">Geburtsdatum: {formatBirthdateLabel(member.birthdate)}</div>
-                      <div className="text-zinc-600">E-Mail: {member.email || "—"}</div>
-                      <div className="text-zinc-600">Telefon: {member.phone || "—"}</div>
-                      {member.base_group === "Boxzwerge" ? (
-                        <div className="text-zinc-600">Eltern / Notfallkontakt: {member.guardian_name || "—"}</div>
-                      ) : null}
-                      <div className="text-zinc-600">Geschlecht: {member.gender || "—"}</div>
-                      <div className="text-zinc-600">Stammgruppe: {member.base_group || "—"}</div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-zinc-600">
+                        <span>Geburtsdatum: {formatBirthdateLabel(member.birthdate)}</span>
+                        <span>Stammgruppe: {member.base_group || "—"}</span>
+                        <span>E-Mail: {member.email || "—"}</span>
+                      </div>
                       {member.email_verified_at && (
                         <div className="text-xs text-zinc-500">
-                          Bestätigt am: {new Date(member.email_verified_at).toLocaleString("de-DE")}
+                          Bestätigt am: {formatDisplayDateTime(new Date(member.email_verified_at))}
                         </div>
                       )}
                       <div className="text-xs text-blue-700">
@@ -539,12 +611,33 @@ export default function FreigabenPage() {
                       </div>
                       {gsConfirmedAt ? (
                         <div className="text-xs font-medium text-emerald-700">
-                          TSV-Mitgliedschaft bestätigt am {new Date(gsConfirmedAt).toLocaleString("de-DE")}
+                          TSV-Mitgliedschaft bestätigt am {formatDisplayDateTime(new Date(gsConfirmedAt))}
                         </div>
                       ) : null}
                       {gsRejectedAt ? (
                         <div className="text-xs font-medium text-red-700">
-                          TSV-Mitgliedschaft verneint am {new Date(gsRejectedAt).toLocaleString("de-DE")}
+                          TSV-Mitgliedschaft verneint am {formatDisplayDateTime(new Date(gsRejectedAt))}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="shrink-0 rounded-full border border-zinc-200 p-2 text-zinc-500">
+                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </div>
+                  </button>
+
+                  {isExpanded ? (
+                    <div className="mt-5 grid gap-5 border-t border-zinc-200 pt-5 xl:grid-cols-[1.5fr_1fr_1fr_auto] xl:items-end">
+                    <div className="space-y-2 text-sm">
+                      <div className="text-zinc-600">Telefon: {member.phone || "—"}</div>
+                      {member.base_group === "Boxzwerge" ? (
+                        <div className="text-zinc-600">Eltern / Notfallkontakt: {member.guardian_name || "—"}</div>
+                      ) : null}
+                      <div className="text-zinc-600">Geschlecht: {member.gender || "—"}</div>
+                      {member.office_list_checked_at ? (
+                        <div className="text-xs text-zinc-500">
+                          GS-Abgleich: {formatDisplayDateTime(new Date(member.office_list_checked_at))}
+                          {member.office_list_group ? ` · ${member.office_list_group}` : ""}
                         </div>
                       ) : null}
                     </div>
@@ -569,16 +662,16 @@ export default function FreigabenPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Neuer Zugangscode</Label>
+                      <Label>Neues Passwort</Label>
                       <PasswordInput
                         value={pinDrafts[member.id] ?? ""}
                         onChange={(event) =>
                           setPinDrafts((prev) => ({ ...prev, [member.id]: event.target.value }))
                         }
-                        placeholder="optional, 6 bis 16 Zeichen"
+                        placeholder="optional, 8 bis 64 Zeichen"
                         className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                       />
-                      <div className="text-xs text-zinc-500">{PIN_HINT}</div>
+                      <div className="text-xs text-zinc-500">{MEMBER_PASSWORD_HINT}</div>
                     </div>
 
                     <div className="flex flex-col gap-2">
@@ -618,8 +711,8 @@ export default function FreigabenPage() {
                           }
 
                           const newPin = (pinDrafts[member.id] ?? "").trim()
-                          if (newPin && !isValidPin(newPin)) {
-                            alert(PIN_REQUIREMENTS_MESSAGE)
+                          if (newPin && !isValidMemberPassword(newPin)) {
+                            alert(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE)
                             return
                           }
 
@@ -721,7 +814,8 @@ export default function FreigabenPage() {
                         </>
                       )}
                     </div>
-                  </div>
+                    </div>
+                  ) : null}
 
                   {isEditing ? (
                     <form
@@ -731,6 +825,21 @@ export default function FreigabenPage() {
                         await savePendingEditor(member)
                       }}
                     >
+                      {officeRunInfo && officeDifferences.length > 0 ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 md:col-span-2 xl:col-span-3">
+                          <div className="font-semibold">GS-Abweichungen</div>
+                          <div className="mt-1 text-xs text-amber-800">
+                            {getOfficeListStatusLabel(officeRunInfo.status)}
+                            {officeRunInfo.groupExcel && officeRunInfo.groupExcel !== "—" ? ` · GS-Liste: ${officeRunInfo.groupExcel}` : ""}
+                            {officeRunInfo.source && officeRunInfo.source !== "—" ? ` · Datei: ${officeRunInfo.source}` : ""}
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {officeDifferences.map((entry) => (
+                              <div key={entry}>• {entry}</div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="space-y-2">
                         <Label>Vorname</Label>
                         <Input
@@ -805,13 +914,14 @@ export default function FreigabenPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Zugangscode</Label>
+                        <Label>Passwort</Label>
                         <PasswordInput
                           value={editDraft.memberPin}
                           onChange={(event) => setEditDraft((current) => (current ? { ...current, memberPin: event.target.value } : current))}
-                          placeholder="optional, 6 bis 16 Zeichen"
+                          placeholder="optional, 8 bis 64 Zeichen"
                           className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                         />
+                        <div className="text-xs text-zinc-500">{MEMBER_PASSWORD_HINT}</div>
                       </div>
 
                       <div className="space-y-2">

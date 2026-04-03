@@ -20,7 +20,11 @@ type QrEntry = {
 
 export default function VerwaltungQrCodesPage() {
   const router = useRouter()
-  const [resolvedBaseUrl, setResolvedBaseUrl] = useState(() => {
+  const [resolvedBaseUrl] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.location.origin.replace(/\/+$/, "")
+    }
+
     const appBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
     return appBaseUrl.replace(/\/+$/, "")
   })
@@ -28,10 +32,6 @@ export default function VerwaltungQrCodesPage() {
   const [trialQrUrl, setTrialQrUrl] = useState("")
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setResolvedBaseUrl(window.location.origin.replace(/\/+$/, ""))
-    }
-
     void (async () => {
       try {
         const [memberResponse, trialResponse] = await Promise.all([
@@ -64,27 +64,27 @@ export default function VerwaltungQrCodesPage() {
   const qrEntries: QrEntry[] = [
     {
       title: "TSV Boxbereiche Mitglieder registrieren",
-      description: "Der zentrale QR-Code fuer die Registrierung im Boxbereich. Geeignet fuer Handyansicht, Aushang und direkte Ausgabe im Gym.",
+      description: "Der zentrale QR-Code für die Registrierung im Boxbereich. Geeignet für Handyansicht, Aushang und direkte Ausgabe im Gym.",
       url: `${resolvedBaseUrl}/tsv-mitglied-registrieren`,
       alt: "QR-Code TSV Boxbereiche Mitglieder registrieren",
       eyebrow: "Registrierung",
-      helper: "Fuer TSV-Mitglieder oder Personen, die parallel die TSV-Mitgliedschaft beantragen.",
+      helper: "Für TSV-Mitglieder oder Personen, die parallel die TSV-Mitgliedschaft beantragen.",
     },
     {
       title: "Mitglieder Check-in",
-      description: "Fuehrt direkt zum QR-Zugang fuer regulaere Mitglieder im Trainingsbetrieb.",
+      description: "Führt direkt zum QR-Zugang für reguläre Mitglieder im Trainingsbetrieb.",
       url: memberQrUrl,
       alt: "QR-Code Mitglieder Check-in",
       eyebrow: "Check-in",
-      helper: "Fuer den regulaeren Zugang im Mitgliedsbereich.",
+      helper: "Für den regulären Zugang im Mitgliedsbereich.",
     },
     {
       title: "Probetraining Check-in",
-      description: "Direkter Zugang zum Probetraining-Panel fuer neue Sportler und Testtermine.",
+      description: "Direkter Zugang zum Probetraining-Panel für neue Sportler und Testtermine.",
       url: trialQrUrl,
       alt: "QR-Code Probetraining Check-in",
       eyebrow: "Check-in",
-      helper: "Nur fuer Probetraining und entsprechende Trainerbegleitung.",
+      helper: "Nur für Probetraining und entsprechende Trainerbegleitung.",
     },
   ]
 
@@ -107,7 +107,7 @@ export default function VerwaltungQrCodesPage() {
             Zentraler QR-Bereich
           </div>
           <h1 className="mt-3 text-2xl font-bold text-[#154c83]">QR-Codes</h1>
-          <p className="text-sm text-zinc-600">Drei gleich grosse QR-Karten fuer Registrierung, Mitglieder-Check-in und Probetraining.</p>
+          <p className="text-sm text-zinc-600">Drei gleich grosse QR-Karten für Registrierung, Mitglieder-Check-in und Probetraining.</p>
         </div>
         <Button variant="outline" className="rounded-2xl" onClick={() => window.print()}>
           <Printer className="mr-2 h-4 w-4" />
@@ -134,7 +134,7 @@ export default function VerwaltungQrCodesPage() {
                   <Button asChild className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={!entry.url}>
                     <a href={entry.url || "#"} target="_blank" rel="noreferrer">
                       <ExternalLink className="mr-2 h-4 w-4" />
-                      Oeffnen
+                      Öffnen
                     </a>
                   </Button>
                   <Button variant="outline" className="rounded-2xl" onClick={() => copyUrl(entry.url, entry.title)} disabled={!entry.url}>
@@ -170,7 +170,7 @@ export default function VerwaltungQrCodesPage() {
       </div>
 
       <div className="rounded-xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-500">
-        Info: Fuer einen DIN-A4-Druck nutze Hochformat und entferne Kopf- und Fusszeilen im Druckdialog, damit die QR-Codes sauber lesbar bleiben.
+        Info: Für einen DIN-A4-Druck nutze Hochformat und entferne Kopf- und Fusszeilen im Druckdialog, damit die QR-Codes sauber lesbar bleiben.
       </div>
     </div>
   )

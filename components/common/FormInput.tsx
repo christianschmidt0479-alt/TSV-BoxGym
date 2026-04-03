@@ -163,7 +163,7 @@ export function FormInput({
         {showPasswordToggle && (
           <button
             type="button"
-            aria-label={showPassword ? "PIN ausblenden" : "PIN anzeigen"}
+            aria-label={showPassword ? "Passwort ausblenden" : "Passwort anzeigen"}
             aria-pressed={showPassword}
             className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full p-1 text-zinc-500 transition-colors hover:text-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#154c83]/30"
             onClick={() => setShowPassword((prev) => !prev)}

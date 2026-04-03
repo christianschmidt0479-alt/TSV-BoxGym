@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getGroupBySlug, sessions } from "@/lib/boxgymSessions"
+import { formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -211,7 +212,7 @@ export default function GruppeDetailPage({ params }: { params: Promise<{ slug: s
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell>{member.birthdate || "—"}</TableCell>
+                    <TableCell>{formatIsoDateForDisplay(member.birthdate) || "—"}</TableCell>
                     {trainerRole === "admin" ? <TableCell>{member.email || "—"}</TableCell> : null}
                   </TableRow>
                 ))

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { formatDisplayDateTime } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type AuditLogRow = {
@@ -139,7 +140,7 @@ export default function SicherheitPage() {
                   Durch: {row.actor_name || row.actor_email || row.actor_role}
                 </div>
                 {row.details ? <div className="mt-1 text-zinc-600">{row.details}</div> : null}
-                <div className="mt-1 text-xs text-zinc-500">{new Date(row.created_at).toLocaleString("de-DE")}</div>
+                <div className="mt-1 text-xs text-zinc-500">{formatDisplayDateTime(new Date(row.created_at))}</div>
               </div>
             ))
           )}

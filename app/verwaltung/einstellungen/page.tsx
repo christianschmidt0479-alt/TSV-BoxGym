@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/ui/password-input"
 import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
+import { ADMIN_PASSWORD_HINT, ADMIN_PASSWORD_REQUIREMENTS_MESSAGE, isTrainerPinCompliant } from "@/lib/trainerPin"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type MailConfigResponse = {
@@ -26,7 +28,7 @@ type CheckinSettingsResponse = {
 
 export default function EinstellungenPage() {
   const router = useRouter()
-  const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
+  const { resolved: authResolved, role: trainerRole, accountEmail } = useTrainerAccess()
   const [mailTestEmail, setMailTestEmail] = useState("")
   const [mailTestName, setMailTestName] = useState("Testmitglied")
   const [mailTestSending, setMailTestSending] = useState(false)
@@ -39,6 +41,11 @@ export default function EinstellungenPage() {
   const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
   const [checkinSettingsLoading, setCheckinSettingsLoading] = useState(true)
   const [checkinSettingsSaving, setCheckinSettingsSaving] = useState(false)
+  const [currentAdminPassword, setCurrentAdminPassword] = useState("")
+  const [newAdminPassword, setNewAdminPassword] = useState("")
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState("")
+  const [adminPasswordSaving, setAdminPasswordSaving] = useState(false)
+  const [adminPasswordFeedback, setAdminPasswordFeedback] = useState<{ tone: "error" | "success"; message: string } | null>(null)
 
   useEffect(() => {
     if (!authResolved || trainerRole !== "admin") return
@@ -200,7 +207,7 @@ export default function EinstellungenPage() {
           >
             {mailConfigured
               ? `Mailversand konfiguriert${mailConfigSource ? ` via ${mailConfigSource}` : ""}${mailFromAddress ? ` · Absender: ${mailFromAddress}` : ""}`
-              : "Mailversand ist aktuell nicht vollstaendig konfiguriert. Bitte RESEND_API_KEY und RESEND_FROM_EMAIL pruefen."}
+              : "Mailversand ist aktuell nicht vollständig konfiguriert. Bitte RESEND_API_KEY und RESEND_FROM_EMAIL prüfen."}
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
@@ -220,7 +227,7 @@ export default function EinstellungenPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>Empfaenger</Label>
+              <Label>Empfänger</Label>
               <Input
                 type="email"
                 value={mailTestEmail}
@@ -246,7 +253,7 @@ export default function EinstellungenPage() {
             disabled={mailTestSending}
             onClick={async () => {
               if (!mailTestEmail.trim()) {
-                alert("Bitte eine Empfaenger-E-Mail angeben.")
+                alert("Bitte eine Empfänger-E-Mail angeben.")
                 return
               }
 
@@ -294,8 +301,8 @@ export default function EinstellungenPage() {
             }`}
           >
             {disableCheckinTimeWindow
-              ? "Ferienmodus ist aktiv. Die 30-Minuten-Regel ist ausser Kraft und Check-ins sind fuer heutige Einheiten ganztägig moeglich."
-              : "Standard aktiv: Check-ins sind nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich."}
+              ? "Ferienmodus ist aktiv. Die 30-Minuten-Regel ist ausser Kraft und Check-ins sind für heutige Einheiten ganztägig möglich."
+              : "Standard aktiv: Check-ins sind nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich."}
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
@@ -338,6 +345,121 @@ export default function EinstellungenPage() {
               : disableCheckinTimeWindow
                 ? "Ferienmodus beenden"
                 : "Ferienmodus aktivieren"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>Admin-Passwort</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+            Angemeldet als <span className="font-semibold text-zinc-900">{accountEmail || "Admin"}</span>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+            Das Passwort für den Admin-Zugang kann hier direkt geändert werden. Es gelten weiterhin dieselben Regeln wie beim Login.
+            <div className="mt-2 text-xs text-zinc-500">{ADMIN_PASSWORD_HINT}</div>
+          </div>
+
+          {adminPasswordFeedback ? (
+            <div
+              className={`rounded-2xl border p-4 text-sm ${
+                adminPasswordFeedback.tone === "success"
+                  ? "border-green-200 bg-green-50 text-green-800"
+                  : "border-rose-200 bg-rose-50 text-rose-800"
+              }`}
+            >
+              {adminPasswordFeedback.message}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Aktuelles Passwort</Label>
+              <PasswordInput
+                value={currentAdminPassword}
+                onChange={(event) => setCurrentAdminPassword(event.target.value)}
+                placeholder="Aktuelles Passwort"
+                className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Neues Passwort</Label>
+              <PasswordInput
+                value={newAdminPassword}
+                onChange={(event) => setNewAdminPassword(event.target.value)}
+                placeholder="Neues Passwort"
+                className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Neues Passwort wiederholen</Label>
+              <PasswordInput
+                value={confirmAdminPassword}
+                onChange={(event) => setConfirmAdminPassword(event.target.value)}
+                placeholder="Passwort wiederholen"
+                className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
+              />
+            </div>
+          </div>
+
+          <Button
+            className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+            disabled={adminPasswordSaving}
+            onClick={async () => {
+              const currentPassword = currentAdminPassword.trim()
+              const nextPassword = newAdminPassword.trim()
+              const nextPasswordConfirm = confirmAdminPassword.trim()
+
+              if (!currentPassword || !nextPassword || !nextPasswordConfirm) {
+                setAdminPasswordFeedback({ tone: "error", message: "Bitte alle Passwort-Felder ausfüllen." })
+                return
+              }
+
+              if (!isTrainerPinCompliant(nextPassword)) {
+                setAdminPasswordFeedback({ tone: "error", message: ADMIN_PASSWORD_REQUIREMENTS_MESSAGE })
+                return
+              }
+
+              if (nextPassword !== nextPasswordConfirm) {
+                setAdminPasswordFeedback({ tone: "error", message: "Die neuen Passwörter stimmen nicht überein." })
+                return
+              }
+
+              try {
+                setAdminPasswordSaving(true)
+                setAdminPasswordFeedback(null)
+
+                const response = await fetch("/api/admin/account-password", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    currentPassword,
+                    newPassword: nextPassword,
+                  }),
+                })
+
+                if (!response.ok) {
+                  const message = await response.text()
+                  throw new Error(message || "Passwort konnte nicht geändert werden.")
+                }
+
+                setCurrentAdminPassword("")
+                setNewAdminPassword("")
+                setConfirmAdminPassword("")
+                setAdminPasswordFeedback({ tone: "success", message: "Admin-Passwort wurde aktualisiert." })
+              } catch (error) {
+                console.error(error)
+                const message = error instanceof Error ? error.message : "Passwort konnte nicht geändert werden."
+                setAdminPasswordFeedback({ tone: "error", message })
+              } finally {
+                setAdminPasswordSaving(false)
+              }
+            }}
+          >
+            {adminPasswordSaving ? "Speichert..." : "Passwort ändern"}
           </Button>
         </CardContent>
       </Card>

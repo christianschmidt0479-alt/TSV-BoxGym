@@ -1,4 +1,5 @@
 import { createGsMembershipConfirmationLinks } from "@/lib/gsMembershipConfirmation"
+import { formatDateInputForDisplay } from "@/lib/dateFormat"
 import { getAppBaseUrl, getReplyToAddress } from "@/lib/mailConfig"
 
 type MailKind = "member" | "trainer" | "boxzwerge"
@@ -73,38 +74,7 @@ function escapeName(value?: string) {
 }
 
 function formatBirthdateLabel(value: string) {
-  const trimmedValue = value.trim()
-
-  if (!trimmedValue) {
-    return null
-  }
-
-  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmedValue)) {
-    return trimmedValue
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
-    const [year, month, day] = trimmedValue.split("-").map(Number)
-    const date = new Date(Date.UTC(year, month - 1, day))
-
-    if (
-      Number.isNaN(date.getTime()) ||
-      date.getUTCFullYear() !== year ||
-      date.getUTCMonth() !== month - 1 ||
-      date.getUTCDate() !== day
-    ) {
-      return null
-    }
-
-    return new Intl.DateTimeFormat("de-DE", { timeZone: "UTC" }).format(date)
-  }
-
-  const parsed = new Date(trimmedValue)
-  if (Number.isNaN(parsed.getTime())) {
-    return null
-  }
-
-  return new Intl.DateTimeFormat("de-DE", { timeZone: "UTC" }).format(parsed)
+  return formatDateInputForDisplay(value)
 }
 
 function getVerificationCopy(targetKind: MailKind | undefined, name?: string, link?: string) {
@@ -114,14 +84,14 @@ function getVerificationCopy(targetKind: MailKind | undefined, name?: string, li
 
   if (targetKind === "trainer") {
     return {
-      subject: "TSV BoxGym: Bitte Trainer-E-Mail bestaetigen",
-      body: `Trainerzugang bestaetigen
+      subject: "TSV BoxGym: Bitte Trainer-E-Mail bestätigen",
+      body: `Trainerzugang bestätigen
 
 Hallo${name ? ` ${name}` : ""},
 
-bitte bestaetige deine E-Mail-Adresse fuer deinen TSV BoxGym Trainerzugang.
+bitte bestätige deine E-Mail-Adresse für deinen TSV BoxGym Trainerzugang.
 
-1. Bestaetigungslink in dieser E-Mail oeffnen
+1. Bestätigungslink in dieser E-Mail öffnen
 2. Danach wartet dein Konto auf die finale Freigabe
 3. Erst nach der Freigabe ist der Trainerzugang aktiv
 
@@ -135,16 +105,16 @@ TSV BoxGym`,
 
   if (targetKind === "boxzwerge") {
     return {
-      subject: "TSV BoxGym: Bitte Eltern-E-Mail bestaetigen",
-      body: `Boxzwerge-Registrierung bestaetigen
+      subject: "TSV BoxGym: Bitte Eltern-E-Mail bestätigen",
+      body: `Boxzwerge-Registrierung bestätigen
 
 Hallo${name ? ` ${name}` : ""},
 
-bitte bestaetige die hinterlegte E-Mail-Adresse fuer die Boxzwerge-Registrierung. So koennen Rueckfragen, Trainingsinfos und wichtige Hinweise sicher zugestellt werden.
+bitte bestätige die hinterlegte E-Mail-Adresse für die Boxzwerge-Registrierung. So können Rückfragen, Trainingsinfos und wichtige Hinweise sicher zugestellt werden.
 
-1. Bestaetigungslink oeffnen
-2. Die Registrierung wird danach als bestaetigt markiert
-3. Der weitere Ablauf laeuft anschliessend ueber TSV BoxGym
+1. Bestätigungslink öffnen
+2. Die Registrierung wird danach als bestätigt markiert
+3. Der weitere Ablauf läuft anschliessend über TSV BoxGym
 
 Link: ${link}
 
@@ -155,14 +125,14 @@ TSV BoxGym`,
   }
 
   return {
-    subject: "TSV BoxGym: Bitte E-Mail fuer dein Mitgliedskonto bestaetigen",
-    body: `Mitgliedskonto bestaetigen
+    subject: "TSV BoxGym: Bitte E-Mail für dein Mitgliedskonto bestätigen",
+    body: `Mitgliedskonto bestätigen
 
 Hallo${name ? ` ${name}` : ""},
 
-bitte bestaetige deine E-Mail-Adresse fuer dein TSV BoxGym Mitgliedskonto.
+bitte bestätige deine E-Mail-Adresse für dein TSV BoxGym Mitgliedskonto.
 
-1. Bestaetigungslink oeffnen
+1. Bestätigungslink öffnen
 2. Danach kann dein Konto vom Admin final freigegeben werden
 3. Bis dahin bleibt dein Status im System sichtbar
 
@@ -194,7 +164,7 @@ function getApprovalCopy(request: Extract<AdminMailDraftRequest, { kind: "approv
       : "dein Zugang zum Boxbereich wurde vom Admin freigegeben und kann jetzt genutzt werden."
   const details = isTrainer
     ? ["Trainerbereich kann jetzt genutzt werden", "Login weiter mit E-Mail und Passwort"]
-    : [`Stammgruppe: ${request.group || "noch offen"}`, "Check-in und Mein Bereich koennen jetzt normal genutzt werden"]
+    : [`Stammgruppe: ${request.group || "noch offen"}`, "Check-in und Mein Bereich können jetzt normal genutzt werden"]
 
   return {
     subject,
@@ -206,7 +176,7 @@ ${intro}
 
 ${details.map((detail, index) => `${index + 1}. ${detail}`).join("\n")}
 
-Bei Rueckfragen antworte einfach auf diese E-Mail.
+Bei Rückfragen antworte einfach auf diese E-Mail.
 
 TSV BoxGym`,
   }
@@ -215,18 +185,18 @@ TSV BoxGym`,
 function getAccessCodeChangedCopy(request: Extract<AdminMailDraftRequest, { kind: "access_code_changed" }>) {
   const isBoxzwerge = request.targetKind === "boxzwerge"
   const subject = isBoxzwerge
-    ? "TSV BoxGym: Zugangscode fuer den Boxzwerge-Bereich wurde geaendert"
-    : "TSV BoxGym: Dein Zugangscode wurde geaendert"
+    ? "TSV BoxGym: Passwort für den Boxzwerge-Bereich wurde geändert"
+    : "TSV BoxGym: Dein Passwort wurde geändert"
 
   return {
     subject,
-    body: `Zugangscode aktualisiert
+    body: `Passwort aktualisiert
 
 Hallo${request.name ? ` ${request.name}` : ""},
 
-${isBoxzwerge ? "der Zugangscode fuer den Boxzwerge-Bereich wurde im System aktualisiert." : "dein Zugangscode fuer den Boxbereich wurde im System aktualisiert."}
+${isBoxzwerge ? "das Passwort für den Boxzwerge-Bereich wurde im System aktualisiert." : "dein Passwort für den Boxbereich wurde im System aktualisiert."}
 
-Falls du den neuen Zugangscode nicht kennst oder Rueckfragen hast, antworte bitte direkt auf diese E-Mail.
+Falls du das neue Passwort nicht kennst oder Rückfragen hast, antworte bitte direkt auf diese E-Mail.
 
 TSV BoxGym`,
   }
@@ -349,7 +319,7 @@ export function buildAdminMailDraftPreview(request: AdminMailDraftRequest): Admi
       subject: copy.subject,
       body: copy.body,
       replyTo: getReplyToAddress(),
-      successMessage: "Zugangscode-Mail versendet",
+      successMessage: "Passwort-Mail versendet",
       auditAction: "access_code_changed_notice_sent",
       auditTargetType: request.targetKind,
       auditTargetName: escapeName(request.name) || request.email.trim().toLowerCase(),

@@ -10,7 +10,14 @@ function getServerSupabase() {
 
 const MEMBER_OVERVIEW_BASE_SELECT =
   "id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group"
-const MEMBER_OVERVIEW_OPTIONAL_COLUMNS = ["competition_target_weight", "needs_trainer_assist_checkin"] as const
+const MEMBER_OVERVIEW_OPTIONAL_COLUMNS = [
+  "gender",
+  "office_list_status",
+  "office_list_group",
+  "office_list_checked_at",
+  "competition_target_weight",
+  "needs_trainer_assist_checkin",
+] as const
 const TRAINER_LINK_OPTIONAL_COLUMNS = ["linked_member_id", "role"] as const
 const TRAINER_LINK_BASE_SELECT = "id, email, is_approved"
 
@@ -44,6 +51,10 @@ async function loadMembersWithFallback(supabase: ReturnType<typeof getServerSupa
       return {
         data: rows.map((row) => ({
           ...row,
+          gender: "gender" in row ? row.gender ?? null : null,
+          office_list_status: "office_list_status" in row ? row.office_list_status ?? null : null,
+          office_list_group: "office_list_group" in row ? row.office_list_group ?? null : null,
+          office_list_checked_at: "office_list_checked_at" in row ? row.office_list_checked_at ?? null : null,
           competition_target_weight: "competition_target_weight" in row ? row.competition_target_weight ?? null : null,
           needs_trainer_assist_checkin: "needs_trainer_assist_checkin" in row ? row.needs_trainer_assist_checkin ?? false : false,
         })),

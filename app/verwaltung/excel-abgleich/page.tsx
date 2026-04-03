@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AlertCircle, FileSpreadsheet, Upload } from "lucide-react"
@@ -12,73 +12,76 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
-import { TRAINING_GROUPS } from "@/lib/trainingGroups"
+import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { getOfficeListStatusBadgeClass, getOfficeListStatusLabel, type OfficeListResultStatus } from "@/lib/officeListStatus"
+import { isCompatibleOfficeListGroup, normalizeTrainingGroup, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
-type ResultStatus = "green" | "yellow" | "red" | "gray"
-
-type FilterValue = "all" | "yellow" | "red" | "gray" | "green"
+type FilterValue = "all" | OfficeListResultStatus
 
 type ReconcileMetricSummary = {
   excelTotal: number
   foundInDb: number
-  notFound: number
-  tsvOk: number
-  deviations: number
-  onlyDb: number
-  onlyExcel: number
+  green: number
+  yellow: number
+  red: number
+  gray: number
+}
+
+type FileSummary = {
+  fileName: string
+  group: string
+  rowCount: number
 }
 
 type ReconcileRow = {
   id: string
+  memberId: string | null
+  isTrainerLinked?: boolean
   firstName: string
   lastName: string
   birthdate: string
+  source: string
   excel: "Ja" | "Nein"
   db: "Ja" | "Nein"
   tsvMember: "Ja" | "Nein" | "—"
+  groupExcel: string
   groupDb: string
-  status: ResultStatus
+  status: OfficeListResultStatus
   statusLabel: string
   note: string
 }
 
-type ReconcileResponse = {
-  group: string
-  fileName: string
+type RunHistoryEntry = {
+  id: string
+  checkedAt: string
+  isActive: boolean
+  runStatus: "green" | "gray"
+  fileCount: number
   metrics: ReconcileMetricSummary
+}
+
+type ReconcileResponse = {
+  runId: string | null
+  runStatus: "green" | "gray"
+  isActive: boolean
+  storageAvailable: boolean
+  checkedAt: string
+  fileCount: number
+  files: FileSummary[]
+  metrics: ReconcileMetricSummary
+  history: RunHistoryEntry[]
   rows: ReconcileRow[]
 }
 
-function getStatusBadgeClass(status: ResultStatus) {
-  switch (status) {
-    case "green":
-      return "border-emerald-200 bg-emerald-100 text-emerald-800"
-    case "yellow":
-      return "border-amber-200 bg-amber-100 text-amber-800"
-    case "red":
-      return "border-red-200 bg-red-100 text-red-800"
-    case "gray":
-      return "border-zinc-200 bg-zinc-100 text-zinc-700"
-  }
-}
-
-function getStatusLabel(status: ResultStatus) {
-  switch (status) {
-    case "green":
-      return "OK"
-    case "yellow":
-      return "Abweichung"
-    case "red":
-      return "Nur Excel"
-    case "gray":
-      return "Nur DB"
-  }
+type UploadDraft = {
+  file: File
+  group: string
 }
 
 function compareRows(a: ReconcileRow, b: ReconcileRow) {
-  const statusOrder: Record<ResultStatus, number> = {
+  const statusOrder: Record<OfficeListResultStatus, number> = {
     yellow: 0,
     red: 1,
     gray: 2,
@@ -87,6 +90,9 @@ function compareRows(a: ReconcileRow, b: ReconcileRow) {
 
   const statusCompare = statusOrder[a.status] - statusOrder[b.status]
   if (statusCompare !== 0) return statusCompare
+
+  const groupCompare = a.groupExcel.localeCompare(b.groupExcel, "de")
+  if (groupCompare !== 0) return groupCompare
 
   const lastNameCompare = a.lastName.localeCompare(b.lastName, "de")
   if (lastNameCompare !== 0) return lastNameCompare
@@ -98,11 +104,10 @@ function buildMetrics(rows: ReconcileRow[]): ReconcileMetricSummary {
   return {
     excelTotal: rows.filter((row) => row.excel === "Ja").length,
     foundInDb: rows.filter((row) => row.excel === "Ja" && row.db === "Ja").length,
-    notFound: rows.filter((row) => row.status === "red").length,
-    tsvOk: rows.filter((row) => row.tsvMember === "Ja").length,
-    deviations: rows.filter((row) => row.status === "yellow").length,
-    onlyDb: rows.filter((row) => row.status === "gray").length,
-    onlyExcel: rows.filter((row) => row.status === "red").length,
+    green: rows.filter((row) => row.status === "green").length,
+    yellow: rows.filter((row) => row.status === "yellow").length,
+    red: rows.filter((row) => row.status === "red").length,
+    gray: rows.filter((row) => row.status === "gray").length,
   }
 }
 
@@ -114,17 +119,30 @@ function getNoteParts(note: string) {
 }
 
 function getPreferredFilter(metrics: ReconcileMetricSummary): FilterValue {
-  if (metrics.deviations > 0) return "yellow"
-  if (metrics.onlyExcel > 0) return "red"
-  if (metrics.onlyDb > 0) return "gray"
+  if (metrics.yellow > 0) return "yellow"
+  if (metrics.red > 0) return "red"
+  if (metrics.gray > 0) return "gray"
   return "all"
+}
+
+function inferGroupFromFileName(fileName: string) {
+  const withoutExtension = fileName.replace(/\.[^.]+$/, "")
+  const sanitized = withoutExtension.replace(/[_-]+/g, " ")
+  return normalizeTrainingGroup(sanitized)
+}
+
+function formatCheckedAt(value: string) {
+  return formatDisplayDateTime(new Date(value))
+}
+
+function formatHistorySummary(metrics: ReconcileMetricSummary) {
+  return `${metrics.green} grün · ${metrics.yellow} gelb · ${metrics.red} rot · ${metrics.gray} grau`
 }
 
 export default function ExcelAbgleichPage() {
   const router = useRouter()
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
-  const [group, setGroup] = useState<string>(TRAINING_GROUPS[0] ?? "")
-  const [file, setFile] = useState<File | null>(null)
+  const [uploads, setUploads] = useState<UploadDraft[]>([])
   const [result, setResult] = useState<ReconcileResponse | null>(null)
   const [activeFilter, setActiveFilter] = useState<FilterValue>("all")
   const [nameSearch, setNameSearch] = useState("")
@@ -133,26 +151,78 @@ export default function ExcelAbgleichPage() {
   const [updatingActionKey, setUpdatingActionKey] = useState<string | null>(null)
   const [error, setError] = useState("")
 
+  useEffect(() => {
+    if (!authResolved || trainerRole !== "admin") return
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/admin/excel-abgleich", { method: "GET" })
+
+        if (response.status === 204) {
+          return
+        }
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            clearTrainerAccess()
+          }
+          throw new Error(await response.text())
+        }
+
+        const payload = (await response.json()) as ReconcileResponse
+        if (cancelled) return
+
+        setResult(payload)
+        if (!hasManualFilterSelection) {
+          setActiveFilter(getPreferredFilter(payload.metrics))
+        }
+      } catch (nextError) {
+        if (cancelled) return
+        setError(nextError instanceof Error ? nextError.message : "Gespeicherter Abgleich konnte nicht geladen werden.")
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [authResolved, hasManualFilterSelection, trainerRole])
+
   const summaryCards = useMemo(() => {
     if (!result) return []
     return [
-      { label: "Excel gesamt", value: result.metrics.excelTotal },
-      { label: "in DB gefunden", value: result.metrics.foundInDb },
-      { label: "nicht gefunden", value: result.metrics.notFound },
-      { label: "TSV ok", value: result.metrics.tsvOk },
-      { label: "Abweichungen", value: result.metrics.deviations },
-      { label: "nur DB", value: result.metrics.onlyDb },
-      { label: "nur Excel", value: result.metrics.onlyExcel },
+      {
+        label: "Laufstatus",
+        value: result.isActive ? "Aktiv" : "Archiv",
+        detail: formatCheckedAt(result.checkedAt),
+        badgeClass: getOfficeListStatusBadgeClass(result.runStatus),
+      },
+      {
+        label: "Dateien / Personen",
+        value: `${result.fileCount} / ${result.metrics.excelTotal}`,
+        detail: `${result.metrics.foundInDb} DB-Treffer`,
+      },
+      {
+        label: "Prüfen",
+        value: result.metrics.yellow + result.metrics.gray,
+        detail: `${result.metrics.yellow} gelb · ${result.metrics.gray} grau`,
+      },
+      {
+        label: "Nicht in Liste",
+        value: result.metrics.red,
+        detail: `${result.metrics.green} grün bestätigt`,
+      },
     ]
   }, [result])
 
   const filterOptions = useMemo(
     () => [
       { value: "all" as const, label: "Alle" },
-      { value: "yellow" as const, label: "Abweichungen" },
-      { value: "red" as const, label: "Nur Excel" },
-      { value: "gray" as const, label: "Nur DB" },
-      { value: "green" as const, label: "TSV ok" },
+      { value: "yellow" as const, label: "Gelb" },
+      { value: "red" as const, label: "Rot" },
+      { value: "gray" as const, label: "Grau" },
+      { value: "green" as const, label: "Grün" },
     ],
     [],
   )
@@ -178,11 +248,13 @@ export default function ExcelAbgleichPage() {
     if (!result) return []
 
     return [
-      result.metrics.deviations > 0 ? `${result.metrics.deviations} Abweichungen` : null,
-      result.metrics.onlyExcel > 0 ? `${result.metrics.onlyExcel} nur in Excel` : null,
-      result.metrics.onlyDb > 0 ? `${result.metrics.onlyDb} nur in DB` : null,
+      result.metrics.yellow > 0 ? `${result.metrics.yellow} gelb` : null,
+      result.metrics.red > 0 ? `${result.metrics.red} rot` : null,
+      result.metrics.gray > 0 ? `${result.metrics.gray} grau` : null,
     ].filter((item): item is string => Boolean(item))
   }, [result])
+
+  const hasUploadWithoutGroup = uploads.some((upload) => !upload.group)
 
   const handleExport = () => {
     if (!filteredRows.length) return
@@ -191,10 +263,12 @@ export default function ExcelAbgleichPage() {
       "Vorname",
       "Nachname",
       "Geburtsdatum",
+      "Quelle",
       "Excel",
       "DB",
       "TSV-Mitglied",
-      "Gruppe DB",
+      "Excel-Gruppe",
+      "DB-Gruppe",
       "Status",
       "Hinweis",
     ]
@@ -206,10 +280,12 @@ export default function ExcelAbgleichPage() {
         [
           row.firstName || "—",
           row.lastName || "—",
-          row.birthdate || "—",
+          formatIsoDateForDisplay(row.birthdate) || row.birthdate || "—",
+          row.source,
           row.excel,
           row.db,
           row.tsvMember,
+          row.groupExcel,
           row.groupDb,
           row.statusLabel,
           row.note,
@@ -225,37 +301,40 @@ export default function ExcelAbgleichPage() {
     const fileSuffix = activeFilter === "all" ? "alle" : activeFilter
 
     downloadLink.href = url
-    downloadLink.download = `excel-abgleich-${result?.group ?? "gruppe"}-${fileSuffix}.csv`
+    downloadLink.download = `office-listen-abgleich-${fileSuffix}.csv`
     document.body.appendChild(downloadLink)
     downloadLink.click()
     document.body.removeChild(downloadLink)
     URL.revokeObjectURL(url)
   }
 
-  const getNavigableMemberId = (row: ReconcileRow) => {
-    if (row.db !== "Ja") return null
-    return row.id.startsWith("db-") ? row.id.slice(3) : row.id
-  }
+  const getNavigableMemberId = (row: ReconcileRow) => row.memberId
 
-  const canSetTsvMember = (row: ReconcileRow) =>
-    row.db === "Ja" && row.tsvMember === "Nein" && !row.note.includes("Probemitglied")
+  const getPreferredApprovalGroup = (row: ReconcileRow) => (row.groupExcel !== "—" ? row.groupExcel : row.groupDb)
 
-  const canAdoptGroup = (row: ReconcileRow) => row.db === "Ja" && row.groupDb !== group
+  const canSetTsvMember = (row: ReconcileRow) => row.db === "Ja" && row.excel === "Ja" && row.tsvMember === "Nein"
+
+  const canAdoptGroup = (row: ReconcileRow) =>
+    row.db === "Ja" &&
+    row.excel === "Ja" &&
+    row.groupExcel !== "—" &&
+    row.groupDb !== "—" &&
+    !isCompatibleOfficeListGroup(row.groupDb, row.groupExcel, { isTrainer: Boolean(row.isTrainerLinked) })
 
   const getUpdatedDbRow = (entry: ReconcileRow, nextValues: Partial<ReconcileRow>): ReconcileRow => {
     const nextRow = { ...entry, ...nextValues }
-    const nextStatus =
-      nextRow.db === "Ja" && nextRow.excel === "Ja" && nextRow.tsvMember === "Ja" && getNoteParts(nextRow.note).length === 0
-        ? "green"
-        : nextRow.status === "red" || nextRow.status === "gray"
-          ? nextRow.status
-          : "yellow"
+    if (nextRow.db !== "Ja" || nextRow.excel !== "Ja") {
+      return nextRow
+    }
+
+    const normalizedNotes = getNoteParts(nextRow.note)
+    const nextStatus: OfficeListResultStatus = normalizedNotes.length === 0 ? "green" : "yellow"
 
     return {
       ...nextRow,
       status: nextStatus,
-      statusLabel: getStatusLabel(nextStatus),
-      note: getNoteParts(nextRow.note).join(" · ") || (nextStatus === "green" ? "Excel und DB stimmen ueberein" : nextRow.note),
+      statusLabel: getOfficeListStatusLabel(nextStatus),
+      note: normalizedNotes.join(" · ") || "Excel und DB stimmen überein",
     }
   }
 
@@ -273,7 +352,7 @@ export default function ExcelAbgleichPage() {
         body: JSON.stringify({
           action: "approve",
           memberId,
-          baseGroup: row.groupDb,
+          baseGroup: getPreferredApprovalGroup(row),
         }),
       })
 
@@ -304,7 +383,7 @@ export default function ExcelAbgleichPage() {
             .join(" · ")
 
           return getUpdatedDbRow(entry, {
-            tsvMember: "Ja" as const,
+            tsvMember: "Ja",
             note: nextNote,
           })
         })
@@ -325,9 +404,12 @@ export default function ExcelAbgleichPage() {
               {
                 kind: "approval_notice",
                 email: payload.member.email,
-                name: `${payload.member.first_name ?? ""} ${payload.member.last_name ?? ""}`.trim() || payload.member.name || undefined,
+                name:
+                  `${payload.member.first_name ?? ""} ${payload.member.last_name ?? ""}`.trim() ||
+                  payload.member.name ||
+                  undefined,
                 targetKind: "member",
-                group: row.groupDb,
+                group: getPreferredApprovalGroup(row),
               },
             ],
           })
@@ -354,7 +436,7 @@ export default function ExcelAbgleichPage() {
         body: JSON.stringify({
           action: "change_group",
           memberId,
-          baseGroup: group,
+          baseGroup: row.groupExcel,
         }),
       })
 
@@ -372,11 +454,11 @@ export default function ExcelAbgleichPage() {
           if (entry.id !== row.id) return entry
 
           const nextNote = getNoteParts(entry.note)
-            .filter((part) => !part.startsWith("Gruppe weicht ab ("))
+            .filter((part) => !part.startsWith("Stammgruppe weicht ab (DB:"))
             .join(" · ")
 
           return getUpdatedDbRow(entry, {
-            groupDb: group,
+            groupDb: row.groupExcel,
             note: nextNote,
           })
         })
@@ -388,7 +470,7 @@ export default function ExcelAbgleichPage() {
         }
       })
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Gruppe konnte nicht uebernommen werden.")
+      setError(nextError instanceof Error ? nextError.message : "Gruppe konnte nicht übernommen werden.")
     } finally {
       setUpdatingActionKey(null)
     }
@@ -424,9 +506,9 @@ export default function ExcelAbgleichPage() {
             <FileSpreadsheet className="h-3.5 w-3.5" />
             Admin-Werkzeug
           </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-900">Excel-Abgleich</h1>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-900">GS-Sammelabgleich</h1>
           <p className="mt-2 text-sm text-zinc-500">
-            Gruppenliste aus Excel hochladen und direkt mit der Mitgliederdatenbank abgleichen.
+            Mehrere aktuelle Gruppenlisten gemeinsam hochladen und den Office-Abgleich für offene Freigaben automatisch setzen.
           </p>
         </div>
         <Button asChild variant="outline" className="rounded-2xl">
@@ -439,52 +521,98 @@ export default function ExcelAbgleichPage() {
           <CardTitle>Abgleich starten</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Gruppe</Label>
-              <Select value={group} onValueChange={setGroup}>
-                <SelectTrigger className="rounded-2xl">
-                  <SelectValue placeholder="Gruppe wählen" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TRAINING_GROUPS.map((entry) => (
-                    <SelectItem key={entry} value={entry}>
-                      {entry}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Excel-Datei</Label>
-              <Input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="rounded-2xl"
-                onChange={(event) => {
-                  setFile(event.target.files?.[0] ?? null)
-                }}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label>Excel-Dateien</Label>
+            <Input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              multiple
+              className="rounded-2xl"
+              onChange={(event) => {
+                const selectedFiles = Array.from(event.target.files ?? [])
+                setUploads(
+                  selectedFiles.map((file) => ({
+                    file,
+                    group: inferGroupFromFileName(file.name),
+                  })),
+                )
+                setError("")
+              }}
+            />
+            <div className="text-xs text-zinc-500">Pro Datei bitte die passende aktuelle Trainingsgruppe prüfen.</div>
           </div>
+
+          {uploads.length > 0 ? (
+            <div className="grid gap-3">
+              {uploads.map((upload, index) => (
+                <div
+                  key={`${upload.file.name}-${index}`}
+                  className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 md:grid-cols-[1.6fr_1fr] md:items-end"
+                >
+                  <div>
+                    <div className="font-medium text-zinc-900">{upload.file.name}</div>
+                    <div className="text-xs text-zinc-500">
+                      {(upload.file.size / 1024).toFixed(1).replace(".", ",")} KB
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Gruppe</Label>
+                    <Select
+                      value={upload.group}
+                      onValueChange={(value) =>
+                        setUploads((current) =>
+                          current.map((entry, entryIndex) =>
+                            entryIndex === index
+                              ? {
+                                  ...entry,
+                                  group: value,
+                                }
+                              : entry,
+                          ),
+                        )
+                      }
+                    >
+                      <SelectTrigger className="rounded-2xl bg-white">
+                        <SelectValue placeholder="Gruppe wählen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TRAINING_GROUPS.map((entry) => (
+                          <SelectItem key={entry} value={entry}>
+                            {entry}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
               className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
-              disabled={!group || !file || loading}
+              disabled={uploads.length === 0 || hasUploadWithoutGroup || loading}
               onClick={async () => {
                 try {
-                  if (!file) {
-                    setError("Bitte zuerst eine Excel-Datei auswählen.")
+                  if (uploads.length === 0) {
+                    setError("Bitte zuerst mindestens eine Excel-Datei auswählen.")
+                    return
+                  }
+
+                  if (hasUploadWithoutGroup) {
+                    setError("Bitte jeder Datei eine Gruppe zuordnen.")
                     return
                   }
 
                   setLoading(true)
                   setError("")
                   const formData = new FormData()
-                  formData.set("group", group)
-                  formData.set("file", file)
+                  uploads.forEach((upload) => {
+                    formData.append("files", upload.file)
+                    formData.append("groups", upload.group)
+                  })
 
                   const response = await fetch("/api/admin/excel-abgleich", {
                     method: "POST",
@@ -504,7 +632,6 @@ export default function ExcelAbgleichPage() {
                   }
                   setResult(payload)
                 } catch (nextError) {
-                  setResult(null)
                   setError(nextError instanceof Error ? nextError.message : "Abgleich fehlgeschlagen.")
                 } finally {
                   setLoading(false)
@@ -512,16 +639,23 @@ export default function ExcelAbgleichPage() {
               }}
             >
               <Upload className="mr-2 h-4 w-4" />
-              {loading ? "Abgleich läuft..." : "Abgleich starten"}
+              {loading ? "Abgleich läuft..." : "Sammelabgleich starten"}
             </Button>
 
-            {file ? <div className="text-sm text-zinc-500">Datei: {file.name}</div> : null}
+            {uploads.length > 0 ? <div className="text-sm text-zinc-500">{uploads.length} Datei(en) ausgewählt</div> : null}
           </div>
 
           {error ? (
             <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{error}</span>
+            </div>
+          ) : null}
+
+          {result && !result.storageAvailable ? (
+            <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>Der aktuelle Abgleich wurde ausgeführt, aber die kleine Lauf-Historie wird erst gespeichert, wenn die neue Supabase-SQL eingespielt ist.</span>
             </div>
           ) : null}
         </CardContent>
@@ -534,7 +668,15 @@ export default function ExcelAbgleichPage() {
               <Card key={card.label} className="rounded-[24px] border-0 shadow-sm">
                 <CardContent className="p-5">
                   <div className="text-sm text-zinc-500">{card.label}</div>
-                  <div className="mt-1 text-3xl font-bold text-zinc-900">{card.value}</div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <div className="text-3xl font-bold text-zinc-900">{card.value}</div>
+                    {"badgeClass" in card && card.badgeClass ? (
+                      <Badge variant="outline" className={card.badgeClass}>
+                        {result?.runStatus === "green" ? "Grün" : "Archiv"}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-500">{card.detail}</div>
                 </CardContent>
               </Card>
             ))}
@@ -542,20 +684,77 @@ export default function ExcelAbgleichPage() {
 
           <Card className="rounded-[24px] border-0 shadow-sm">
             <CardHeader>
-              <CardTitle>Ergebnisse für {result.group}</CardTitle>
-              <div className="text-sm text-zinc-500">{result.fileName}</div>
+              <CardTitle>Ergebnisse</CardTitle>
+              <div className="space-y-1 text-sm text-zinc-500">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>{result.fileCount} Datei(en) · Zeitstempel {formatCheckedAt(result.checkedAt)}</span>
+                  <Badge variant="outline" className={getOfficeListStatusBadgeClass(result.runStatus)}>
+                    {result.isActive ? "Aktiver Lauf" : "Archiviert"}
+                  </Badge>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {result.files.map((file) => (
+                    <div key={`${file.fileName}-${file.group}`} className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{file.group}</div>
+                      <div className="truncate text-sm font-medium text-zinc-900">{file.fileName}</div>
+                      <div className="text-xs text-zinc-500">{file.rowCount} Personenzeilen</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-                {problemSummaryItems.length > 0 ? (
-                  <div className="flex flex-wrap gap-x-4 gap-y-2">
-                    {problemSummaryItems.map((item) => (
-                      <span key={item}>{item}</span>
-                    ))}
+              <div className="grid items-stretch gap-4 xl:grid-cols-[1.3fr_1fr]">
+                <div className="h-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+                  <div className="mb-2 font-semibold text-zinc-900">Schnellüberblick</div>
+                  {problemSummaryItems.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-red-700">Rot</div>
+                        <div className="mt-1 text-2xl font-bold text-red-900">{result.metrics.red}</div>
+                        <div className="text-xs text-red-700">Nicht in den hochgeladenen Listen</div>
+                      </div>
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Gelb</div>
+                        <div className="mt-1 text-2xl font-bold text-amber-900">{result.metrics.yellow}</div>
+                        <div className="text-xs text-amber-700">Prüfen oder manuell klären</div>
+                      </div>
+                      <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Grau</div>
+                        <div className="mt-1 text-2xl font-bold text-zinc-900">{result.metrics.gray}</div>
+                        <div className="text-xs text-zinc-500">Nur in Excel gefunden</div>
+                      </div>
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Grün</div>
+                        <div className="mt-1 text-2xl font-bold text-emerald-900">{result.metrics.green}</div>
+                        <div className="text-xs text-emerald-700">Sauber zugeordnet</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-emerald-700">
+                      Keine Problemfälle gefunden. Offene Freigaben und Excel-Listen passen zusammen.
+                    </span>
+                  )}
+                </div>
+
+                <Link
+                  href="/verwaltung/excel-abgleich/laeufe"
+                  className="block self-start rounded-2xl border border-zinc-200 bg-white p-3 transition hover:border-[#154c83] hover:bg-zinc-50"
+                >
+                  <div className="flex flex-col gap-3">
+                    <div className="text-sm font-semibold text-zinc-900">Letzte Läufe</div>
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-700">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-zinc-900">{formatCheckedAt(result.checkedAt)}</span>
+                        <Badge variant="outline" className={getOfficeListStatusBadgeClass(result.runStatus)}>
+                          {result.isActive ? "Aktiv" : "Archiv"}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 text-xs text-zinc-600">{result.fileCount} Datei(en) · {formatHistorySummary(result.metrics)}</div>
+                    </div>
+                    <div className="text-sm font-medium text-[#154c83]">Laufdokumentation öffnen</div>
                   </div>
-                ) : (
-                  <span className="text-emerald-700">Keine Problemfälle gefunden. Excel und DB sind sauber abgeglichen.</span>
-                )}
+                </Link>
               </div>
 
               <div className="flex flex-col gap-3">
@@ -575,12 +774,10 @@ export default function ExcelAbgleichPage() {
                         <Button
                           key={option.value}
                           type="button"
-                        variant={isActive ? "default" : "outline"}
-                        className={
-                          isActive
-                            ? "rounded-full bg-[#154c83] text-white hover:bg-[#123d69]"
-                            : "rounded-full"
-                        }
+                          variant={isActive ? "default" : "outline"}
+                          className={
+                            isActive ? "rounded-full bg-[#154c83] text-white hover:bg-[#123d69]" : "rounded-full"
+                          }
                           onClick={() => {
                             setHasManualFilterSelection(true)
                             setActiveFilter(option.value)
@@ -610,10 +807,12 @@ export default function ExcelAbgleichPage() {
                     <TableHead>Vorname</TableHead>
                     <TableHead>Nachname</TableHead>
                     <TableHead>Geburtsdatum</TableHead>
+                    <TableHead>Quelle</TableHead>
                     <TableHead>Excel</TableHead>
                     <TableHead>DB</TableHead>
                     <TableHead>TSV-Mitglied</TableHead>
-                    <TableHead>Gruppe DB</TableHead>
+                    <TableHead>Excel-Gruppe</TableHead>
+                    <TableHead>DB-Gruppe</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Hinweis</TableHead>
                     <TableHead>Aktion</TableHead>
@@ -632,13 +831,15 @@ export default function ExcelAbgleichPage() {
                     >
                       <TableCell>{row.firstName || "—"}</TableCell>
                       <TableCell>{row.lastName || "—"}</TableCell>
-                      <TableCell>{row.birthdate || "—"}</TableCell>
+                      <TableCell>{formatIsoDateForDisplay(row.birthdate) || row.birthdate || "—"}</TableCell>
+                      <TableCell>{row.source}</TableCell>
                       <TableCell>{row.excel}</TableCell>
                       <TableCell>{row.db}</TableCell>
                       <TableCell>{row.tsvMember}</TableCell>
+                      <TableCell>{row.groupExcel}</TableCell>
                       <TableCell>{row.groupDb}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={getStatusBadgeClass(row.status)}>
+                        <Badge variant="outline" className={getOfficeListStatusBadgeClass(row.status)}>
                           {row.statusLabel}
                         </Badge>
                       </TableCell>

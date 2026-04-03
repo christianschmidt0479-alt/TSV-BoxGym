@@ -5,6 +5,8 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { buildBirthdayOverview } from "@/lib/birthdays"
+import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import type { TrainerAccountRecord } from "@/lib/trainerDb"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -76,6 +78,7 @@ export default function VerwaltungInboxPage() {
   const [members, setMembers] = useState<MemberRow[]>([])
   const [adminQueueRows, setAdminQueueRows] = useState<AdminQueueRow[]>([])
   const [outgoingQueueRows, setOutgoingQueueRows] = useState<OutgoingQueueRow[]>([])
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
   useEffect(() => {
     if (!authResolved || trainerRole !== "admin") {
@@ -134,6 +137,10 @@ export default function VerwaltungInboxPage() {
     }
   }, [adminQueueRows.length, members, outgoingQueueRows.length, pendingMembers, trainers])
 
+  const todayBirthdays = useMemo(() => {
+    return buildBirthdayOverview(members, today, 5).todayBirthdays
+  }, [members, today])
+
   if (!authResolved) {
     return <div className="text-sm text-zinc-500">Zugriff wird geprüft...</div>
   }
@@ -164,6 +171,28 @@ export default function VerwaltungInboxPage() {
           <Link href="/verwaltung">Zurück zur Übersicht</Link>
         </Button>
       </div>
+
+      {todayBirthdays.length > 0 ? (
+        <Link
+          href="/verwaltung/geburtstage"
+          className="block rounded-[24px] border border-amber-200 bg-amber-50 p-5 transition hover:border-amber-300 hover:bg-white"
+        >
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="font-semibold text-amber-950">Heute Geburtstag</div>
+                <Badge variant="outline" className="border-amber-200 bg-white text-amber-800">
+                  {todayBirthdays.length}
+                </Badge>
+              </div>
+              <div className="text-sm text-amber-900">
+                {todayBirthdays.map((entry) => `${entry.display_name}${entry.base_group ? ` · ${entry.base_group}` : ""}`).join(" • ")}
+              </div>
+            </div>
+            <div className="text-sm font-medium text-amber-900">Geburtstagsseite öffnen</div>
+          </div>
+        </Link>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="rounded-[24px] border-0 shadow-sm">
@@ -272,7 +301,7 @@ export default function VerwaltungInboxPage() {
                 <div key={member.id} className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
                   <div className="font-semibold">{getMemberDisplayName(member)}</div>
                   <div className="mt-1">
-                    {member.birthdate || "Geburtsdatum offen"} · {member.age} Jahre
+                    {formatIsoDateForDisplay(member.birthdate) || "Geburtsdatum offen"} · {member.age} Jahre
                   </div>
                 </div>
               ))
@@ -282,7 +311,7 @@ export default function VerwaltungInboxPage() {
               <div key={row.id} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
                 <div className="font-semibold text-zinc-900">{row.member_name}</div>
                 <div className="mt-1">
-                  Admin-Sammelmail · {new Date(row.created_at).toLocaleString("de-DE")}
+                  Admin-Sammelmail · {formatDisplayDateTime(new Date(row.created_at))}
                 </div>
               </div>
             ))}

@@ -1,7 +1,10 @@
-import { supabase } from "./supabaseClient"
+import { createServerSupabaseServiceClient, hasSupabaseServiceRoleKey } from "./serverSupabase"
+import { supabase as anonSupabase } from "./supabaseClient"
 import { hashAuthSecret, isBcryptHash, verifyAuthSecret } from "./authSecret"
 import { verifyTrainerPinHash } from "./trainerPin"
 import { normalizeTrainingGroup } from "./trainingGroups"
+
+const supabase = hasSupabaseServiceRoleKey() ? createServerSupabaseServiceClient() : anonSupabase
 
 function isMissingColumnError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
@@ -14,8 +17,10 @@ function isMissingColumnError(error: { message?: string } | null) {
 
 function withoutOptionalMemberFields<T extends Record<string, unknown>>(payload: T) {
   return Object.fromEntries(
-    Object.entries(payload).filter(([key]) => key !== "guardian_name" && key !== "gender")
-  ) as Omit<T, "guardian_name" | "gender">
+    Object.entries(payload).filter(
+      ([key]) => key !== "guardian_name" && key !== "gender" && key !== "privacy_accepted_at"
+    )
+  ) as Omit<T, "guardian_name" | "gender" | "privacy_accepted_at">
 }
 
 function withNormalizedBaseGroup<T extends { base_group?: string | null }>(row: T): T {
@@ -43,7 +48,7 @@ type MemberInput = {
 }
 
 const SAFE_MEMBER_LIST_SELECT =
-  "id, name, first_name, last_name, birthdate, email, phone, guardian_name, email_verified, email_verified_at, is_trial, is_approved, base_group, is_competition_member, has_competition_pass"
+  "id, name, first_name, last_name, birthdate, email, phone, guardian_name, email_verified, email_verified_at, privacy_accepted_at, is_trial, is_approved, base_group, office_list_status, office_list_group, office_list_checked_at, is_competition_member, has_competition_pass"
 
 export type MemberAuthResult =
   | {
@@ -233,6 +238,7 @@ export async function createMember(input: MemberInput) {
     email: input.email || null,
     phone: input.phone || null,
     guardian_name: input.guardian_name || null,
+    privacy_accepted_at: new Date().toISOString(),
     is_trial: input.is_trial,
     trial_count: input.is_trial ? 1 : 0,
     member_pin: input.member_pin ? await hashMemberPinValue(input.member_pin) : null,
@@ -435,7 +441,7 @@ export async function updateMemberCompetitionData(
   if (error) {
     if (isMissingColumnError(error)) {
       throw new Error(
-        "Die Datenbank kennt die Wettkämpferrolle noch nicht. Bitte fuehre zuerst supabase/member_competition_fields.sql in Supabase aus."
+        "Die Datenbank kennt die Wettkämpferrolle noch nicht. Bitte führe zuerst supabase/member_competition_fields.sql in Supabase aus."
       )
     }
 
@@ -462,7 +468,7 @@ export async function updateMemberTrainerAssistData(
   if (error) {
     if (isMissingColumnError(error)) {
       throw new Error(
-        "Die Datenbank kennt die Sonderoption noch nicht. Bitte fuehre zuerst supabase/member_trainer_assist_fields.sql in Supabase aus."
+        "Die Datenbank kennt die Sonderoption noch nicht. Bitte führe zuerst supabase/member_trainer_assist_fields.sql in Supabase aus."
       )
     }
 

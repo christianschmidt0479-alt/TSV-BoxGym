@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type BoxzwergeMemberRow = {
@@ -334,7 +335,7 @@ export default function TrainerBoxzwergePage() {
                         </Badge>
                       </div>
                       <div className={isAgingWarning ? "font-semibold text-red-700" : undefined}>
-                        Geburtsdatum: {member.birthdate || "—"}{age !== null ? ` · ${age} Jahre` : ""}
+                        Geburtsdatum: {formatIsoDateForDisplay(member.birthdate) || "—"}{age !== null ? ` · ${age} Jahre` : ""}
                       </div>
                       {isAgingWarning ? (
                         <div className="text-xs font-semibold text-red-700">Boxzwerge-Warnung ab 10 Jahren</div>

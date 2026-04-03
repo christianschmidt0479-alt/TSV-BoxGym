@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { sessions } from "@/lib/boxgymSessions"
 import { getActiveCheckinSession, parseTimeToDate } from "@/lib/checkinWindow"
 import { buildQrAccessHeaders, clearStoredQrAccess, readStoredQrAccess, storeQrAccess } from "@/lib/qrAccessClient"
-import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { QR_ACCESS_PARAM } from "@/lib/qrAccess"
 
 function todayString() {
@@ -43,10 +42,6 @@ function getDayKey(dateString: string) {
     default:
       return ""
   }
-}
-
-function isNowBetween(now: Date, start: Date, end: Date) {
-  return now.getTime() >= start.getTime() && now.getTime() < end.getTime()
 }
 
 export default function MemberCheckinPage() {
@@ -233,12 +228,7 @@ export default function MemberCheckinPage() {
     const pin = memberPin.trim()
 
     if (!email || !pin) {
-      alert("Bitte E-Mail und PIN eingeben.")
-      return
-    }
-
-    if (!isValidPin(pin)) {
-      alert(PIN_REQUIREMENTS_MESSAGE)
+      alert("Bitte E-Mail und Passwort eingeben.")
       return
     }
 
@@ -248,7 +238,7 @@ export default function MemberCheckinPage() {
     }
 
     if (!checkinAllowed) {
-      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.")
+      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.")
       return
     }
 
@@ -262,7 +252,7 @@ export default function MemberCheckinPage() {
         },
         body: JSON.stringify({
           email,
-          pin,
+          password: pin,
           weight: memberWeight.trim(),
           sessionId: selectedSession.id,
           rememberDevice,
@@ -309,17 +299,17 @@ export default function MemberCheckinPage() {
 
   async function handleFastCheckin() {
     if (!hasRememberedDevice) {
-      alert("Es ist noch kein Geraet fuer den Schnell-Check-in gespeichert.")
+      alert("Es ist noch kein Gerät für den Schnell-Check-in gespeichert.")
       return
     }
 
     if (!selectedSession) {
-      alert("Bitte eine Trainingsgruppe auswaehlen.")
+      alert("Bitte eine Trainingsgruppe auswählen.")
       return
     }
 
     if (!checkinAllowed) {
-      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.")
+      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.")
       return
     }
 
@@ -434,7 +424,7 @@ export default function MemberCheckinPage() {
           <CardContent>
             {!checkinAllowed ? (
               <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                Check-in ist aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.
+                Check-in ist aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.
               </div>
             ) : null}
 
@@ -449,7 +439,7 @@ export default function MemberCheckinPage() {
                     <div className="mt-3 text-lg font-semibold text-zinc-900">
                       Als {rememberedFirstName} {rememberedLastName} einchecken
                     </div>
-                    <p className="mt-1 text-sm text-zinc-600">Dieses Geraet ist gespeichert. Ein Tap reicht fuer den naechsten Check-in.</p>
+                    <p className="mt-1 text-sm text-zinc-600">Dieses Gerät ist gespeichert. Ein Tap reicht für den nächsten Check-in.</p>
                   </div>
                   <Button type="button" variant="outline" className="rounded-2xl" onClick={forgetRememberedDevice}>
                     Ausloggen
@@ -465,7 +455,7 @@ export default function MemberCheckinPage() {
                       placeholder="z. B. 72,4"
                       className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
                     />
-                    <div className="text-xs text-zinc-500">Fuer Sportler aus der Wettkampfliste bleibt das Gewicht auch im Schnell-Check-in Pflicht.</div>
+                    <div className="text-xs text-zinc-500">Für Sportler aus der Wettkampfliste bleibt das Gewicht auch im Schnell-Check-in Pflicht.</div>
                   </div>
                 ) : null}
 
@@ -497,10 +487,9 @@ export default function MemberCheckinPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>PIN</Label>
+                <Label>Passwort</Label>
                 <>
-                  <PasswordInput value={memberPin} onChange={(e) => setMemberPin(e.target.value)} placeholder="6 bis 16 Zeichen" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                  <div className="text-xs text-zinc-500">{PIN_HINT}</div>
+                  <PasswordInput value={memberPin} onChange={(e) => setMemberPin(e.target.value)} placeholder="Passwort" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                 </>
               </div>
 
@@ -560,8 +549,8 @@ export default function MemberCheckinPage() {
                   className="mt-1 h-4 w-4 rounded border-zinc-300 accent-[#154c83]"
                 />
                 <span>
-                  Dieses Geraet fuer Fast-Check-in merken.
-                  <span className="block text-xs text-zinc-500">Beim naechsten Mal kann das Mitglied direkt mit einem Tap eingecheckt werden.</span>
+                  Dieses Gerät für Fast-Check-in merken.
+                  <span className="block text-xs text-zinc-500">Beim nächsten Mal kann das Mitglied direkt mit einem Tap eingecheckt werden.</span>
                 </span>
               </label>
 

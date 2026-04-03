@@ -1,3 +1,5 @@
+import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
+
 type VerificationMailInput = {
   email: string
   name?: string
@@ -202,57 +204,57 @@ export async function sendCustomEmail(input: {
 function getVerificationMailContent(input: VerificationMailInput) {
   if (input.kind === "trainer") {
     return {
-      subject: "TSV BoxGym: Bitte Trainer-E-Mail bestaetigen",
-      preheader: "Bestaetige deine E-Mail-Adresse fuer deinen Trainerzugang.",
-      headline: "Trainerzugang bestaetigen",
+      subject: "TSV BoxGym: Bitte Trainer-E-Mail bestätigen",
+      preheader: "Bestätige deine E-Mail-Adresse für deinen Trainerzugang.",
+      headline: "Trainerzugang bestätigen",
       greeting: `Hallo${input.name ? ` ${escapeHtml(input.name)}` : ""},`,
       intro:
-        "bitte bestaetige deine E-Mail-Adresse fuer deinen TSV BoxGym Trainerzugang.",
+        "bitte bestätige deine E-Mail-Adresse für deinen TSV BoxGym Trainerzugang.",
       steps: [
-        "Bestaetigungslink in dieser E-Mail oeffnen",
+        "Bestätigungslink in dieser E-Mail öffnen",
         "Danach wartet dein Konto auf die finale Freigabe",
         "Erst nach der Freigabe ist der Trainerzugang aktiv",
       ],
       outro:
         "Falls du diese Registrierung nicht selbst gestartet hast, kannst du diese E-Mail einfach ignorieren.",
-      cta: "Trainer-E-Mail bestaetigen",
+      cta: "Trainer-E-Mail bestätigen",
     }
   }
 
   if (input.kind === "boxzwerge") {
     return {
-      subject: "TSV BoxGym: Bitte Eltern-E-Mail bestaetigen",
-      preheader: "Bestaetige die E-Mail-Adresse fuer die Boxzwerge-Registrierung.",
-      headline: "Boxzwerge-Registrierung bestaetigen",
+      subject: "TSV BoxGym: Bitte Eltern-E-Mail bestätigen",
+      preheader: "Bestätige die E-Mail-Adresse für die Boxzwerge-Registrierung.",
+      headline: "Boxzwerge-Registrierung bestätigen",
       greeting: `Hallo${input.name ? ` ${escapeHtml(input.name)}` : ""},`,
       intro:
-        "bitte bestaetige die hinterlegte E-Mail-Adresse fuer die Boxzwerge-Registrierung. So koennen Rueckfragen, Trainingsinfos und wichtige Hinweise sicher zugestellt werden.",
+        "bitte bestätige die hinterlegte E-Mail-Adresse für die Boxzwerge-Registrierung. So können Rückfragen, Trainingsinfos und wichtige Hinweise sicher zugestellt werden.",
       steps: [
-        "Bestaetigungslink oeffnen",
-        "Die Registrierung wird danach als bestaetigt markiert",
-        "Der weitere Ablauf laeuft anschliessend ueber TSV BoxGym",
+        "Bestätigungslink öffnen",
+        "Die Registrierung wird danach als bestätigt markiert",
+        "Der weitere Ablauf läuft anschliessend über TSV BoxGym",
       ],
       outro:
         "Falls du diese Registrierung nicht selbst vorgenommen hast, melde dich bitte bei TSV BoxGym oder ignoriere diese E-Mail.",
-      cta: "E-Mail bestaetigen",
+      cta: "E-Mail bestätigen",
     }
   }
 
   return {
-    subject: "TSV BoxGym: Bitte E-Mail fuer dein Mitgliedskonto bestaetigen",
-    preheader: "Bestaetige deine E-Mail-Adresse fuer dein Mitgliedskonto.",
-    headline: "Mitgliedskonto bestaetigen",
+    subject: "TSV BoxGym: Bitte E-Mail für dein Mitgliedskonto bestätigen",
+    preheader: "Bestätige deine E-Mail-Adresse für dein Mitgliedskonto.",
+    headline: "Mitgliedskonto bestätigen",
     greeting: `Hallo${input.name ? ` ${escapeHtml(input.name)}` : ""},`,
     intro:
-      "bitte bestaetige deine E-Mail-Adresse fuer dein TSV BoxGym Mitgliedskonto.",
+      "bitte bestätige deine E-Mail-Adresse für dein TSV BoxGym Mitgliedskonto.",
     steps: [
-      "Bestaetigungslink oeffnen",
+      "Bestätigungslink öffnen",
       "Danach kann dein Konto vom Admin final freigegeben werden",
       "Bis dahin bleibt dein Status im System sichtbar",
     ],
     outro:
       "Falls du diese Registrierung nicht selbst gestartet hast, kannst du diese E-Mail ignorieren.",
-    cta: "E-Mail bestaetigen",
+    cta: "E-Mail bestätigen",
   }
 }
 
@@ -299,7 +301,7 @@ TSV BoxGym`,
                   ${content.cta}
                 </a>
               </p>
-              <p style="margin-bottom: 6px;">Falls der Button nicht funktioniert, kannst du diesen Link direkt oeffnen:</p>
+              <p style="margin-bottom: 6px;">Falls der Button nicht funktioniert, kannst du diesen Link direkt öffnen:</p>
               <p style="word-break: break-word; margin-top: 0;"><a href="${input.link}">${input.link}</a></p>
               <p style="margin-bottom: 0;">${content.outro}</p>
             </div>
@@ -424,12 +426,7 @@ Neue Boxzwerge-Registrierungen: ${counts.boxzwerge}
 
 ${input.items
   .map((item, index) => {
-    const timeLabel = item.createdAt
-      ? new Date(item.createdAt).toLocaleString("de-DE", {
-          dateStyle: "short",
-          timeStyle: "short",
-        })
-      : "—"
+    const timeLabel = item.createdAt ? formatDisplayDateTime(new Date(item.createdAt)) : "—"
     return `${index + 1}. ${labels[item.kind]} · ${item.memberName} · ${item.email || "—"} · ${item.group || "—"} · ${timeLabel}`
   })
   .join("\n")}
@@ -478,12 +475,7 @@ TSV BoxGym`,
                   <tbody>
                     ${input.items
                       .map((item) => {
-                        const timeLabel = item.createdAt
-                          ? new Date(item.createdAt).toLocaleString("de-DE", {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })
-                          : "—"
+                        const timeLabel = item.createdAt ? formatDisplayDateTime(new Date(item.createdAt)) : "—"
                         return `
                           <tr>
                             <td style="padding: 12px; border-bottom: 1px solid #f1f5f9;">${escapeHtml(labels[item.kind])}</td>
@@ -541,7 +533,7 @@ export async function sendApprovalEmail(input: ApprovalMailInput) {
 
   const details = isTrainer
     ? ["Trainerbereich kann jetzt genutzt werden", "Login weiter mit E-Mail und Passwort"]
-    : [`Stammgruppe: ${input.group || "noch offen"}`, "Check-in und Mein Bereich koennen jetzt normal genutzt werden"]
+    : [`Stammgruppe: ${input.group || "noch offen"}`, "Check-in und Mein Bereich können jetzt normal genutzt werden"]
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -579,7 +571,7 @@ TSV BoxGym`,
                   ${details.map((detail) => `<li style="margin: 0 0 8px;">${escapeHtml(detail)}</li>`).join("")}
                 </ul>
               </div>
-              <p style="margin-bottom: 0;">Bei Rueckfragen antworte einfach auf diese E-Mail.</p>
+              <p style="margin-bottom: 0;">Bei Rückfragen antworte einfach auf diese E-Mail.</p>
             </div>
           </div>
         </div>
@@ -604,12 +596,12 @@ export async function sendAccessCodeChangedEmail(input: AccessCodeChangedMailInp
 
   const isBoxzwerge = input.kind === "boxzwerge"
   const subject = isBoxzwerge
-    ? "TSV BoxGym: Zugangscode fuer den Boxzwerge-Bereich wurde geaendert"
-    : "TSV BoxGym: Dein Zugangscode wurde geaendert"
-  const headline = "Zugangscode aktualisiert"
+    ? "TSV BoxGym: Passwort für den Boxzwerge-Bereich wurde geändert"
+    : "TSV BoxGym: Dein Passwort wurde geändert"
+  const headline = "Passwort aktualisiert"
   const intro = isBoxzwerge
-    ? "der Zugangscode fuer den Boxzwerge-Bereich wurde im System aktualisiert."
-    : "dein Zugangscode fuer den Boxbereich wurde im System aktualisiert."
+    ? "das Passwort für den Boxzwerge-Bereich wurde im System aktualisiert."
+    : "dein Passwort für den Boxbereich wurde im System aktualisiert."
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -628,7 +620,7 @@ Hallo${input.name ? ` ${input.name}` : ""},
 
 ${intro}
 
-Bitte bei Rueckfragen direkt an TSV BoxGym wenden.
+Bitte bei Rückfragen direkt an TSV BoxGym wenden.
 
 TSV BoxGym`,
       html: `
@@ -641,7 +633,7 @@ TSV BoxGym`,
             <div style="padding: 28px;">
               <p style="margin-top: 0;">Hallo${input.name ? ` ${escapeHtml(input.name)}` : ""},</p>
               <p>${intro}</p>
-              <p>Falls du den neuen Zugangscode nicht kennst oder Rueckfragen hast, antworte bitte direkt auf diese E-Mail.</p>
+              <p>Falls du das neue Passwort nicht kennst oder Rückfragen hast, antworte bitte direkt auf diese E-Mail.</p>
             </div>
           </div>
         </div>
@@ -651,7 +643,7 @@ TSV BoxGym`,
 
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(errorText || "Resend access code update notification failed")
+    throw new Error(errorText || "Resend password update notification failed")
   }
 }
 
@@ -792,9 +784,7 @@ export async function sendMedicalExamReminderEmail(input: MedicalExamReminderMai
     throw new Error("Missing RESEND_API_KEY")
   }
 
-  const dueLabel = input.dueDate
-    ? new Date(`${input.dueDate}T12:00:00`).toLocaleDateString("de-DE")
-    : "in etwa 4 Wochen"
+  const dueLabel = formatIsoDateForDisplay(input.dueDate) || "in etwa 4 Wochen"
   const subject = "TSV BoxGym: Jährliche Untersuchung bitte rechtzeitig erneuern"
   const headline = "Untersuchung läuft bald ab"
 
@@ -952,9 +942,7 @@ export async function sendMedicalExamReminderAdminEmail(input: MedicalExamRemind
     throw new Error("Missing RESEND_API_KEY")
   }
 
-  const dueLabel = input.dueDate
-    ? new Date(`${input.dueDate}T12:00:00`).toLocaleDateString("de-DE")
-    : "in etwa 4 Wochen"
+  const dueLabel = formatIsoDateForDisplay(input.dueDate) || "in etwa 4 Wochen"
   const subject = "TSV BoxGym Admin: Wettkämpfer braucht neue Untersuchung"
   const headline = "Jährliche Untersuchung läuft bald ab"
 

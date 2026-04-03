@@ -3,8 +3,9 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createMember, findMemberByFirstLastAndBirthdate, updateMemberRegistrationData } from "@/lib/boxgymDb"
 import { enqueueAdminNotification } from "@/lib/adminDigestDb"
+import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
+import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
-import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { parseTrainingGroup } from "@/lib/trainingGroups"
 
@@ -13,12 +14,14 @@ type MemberRegisterBody = {
   lastName?: string
   birthDate?: string
   gender?: string
+  password?: string
   pin?: string
   email?: string
   phone?: string
   guardianName?: string
   parentAccessCodeHash?: string
   baseGroup?: string
+  consent?: boolean
 }
 
 function normalizeBirthDateInput(value?: string | null) {
@@ -64,11 +67,12 @@ export async function POST(request: Request) {
     const lastName = body.lastName?.trim() ?? ""
     const birthDate = normalizeBirthDateInput(body.birthDate)
     const gender = body.gender?.trim() ?? ""
-    const pin = body.pin?.trim() ?? ""
+    const password = body.password?.trim() ?? body.pin?.trim() ?? ""
     const email = body.email?.trim() ?? ""
     const phone = body.phone?.trim() ?? ""
     const guardianName = body.guardianName?.trim() ?? ""
     const baseGroup = parseTrainingGroup(body.baseGroup)
+    const consent = body.consent === true
     const rateLimit = await checkRateLimitAsync(
       `public-member-register:${getRequestIp(request)}:${email.toLowerCase() || "__email__"}`,
       12,
@@ -83,15 +87,15 @@ export async function POST(request: Request) {
     }
 
     if (!birthDate) {
-      return new NextResponse("Bitte ein gueltiges Geburtsdatum angeben.", { status: 400 })
+      return new NextResponse("Bitte ein gültiges Geburtsdatum angeben.", { status: 400 })
     }
 
     if (!baseGroup) {
-      return new NextResponse("Bitte Stammgruppe auswaehlen.", { status: 400 })
+      return new NextResponse("Bitte Stammgruppe auswählen.", { status: 400 })
     }
 
-    if (!isValidPin(pin)) {
-      return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+    if (!isValidMemberPassword(password)) {
+      return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
     if (!email) {
@@ -100,6 +104,10 @@ export async function POST(request: Request) {
 
     if (!phone) {
       return new NextResponse("Telefonnummer ist erforderlich.", { status: 400 })
+    }
+
+    if (!consent) {
+      return new NextResponse("Bitte Datenschutz akzeptieren", { status: 400 })
     }
 
     const emailToken = generateEmailVerificationToken()
@@ -114,11 +122,12 @@ export async function POST(request: Request) {
 
     const member = existing
       ? await updateMemberRegistrationData(existing.id, {
-          member_pin: pin,
+          member_pin: password,
           gender: gender || null,
           email,
           phone,
           guardian_name: guardianName || null,
+          privacy_accepted_at: new Date().toISOString(),
           email_verified: false,
           email_verified_at: null,
           email_verification_token: emailToken,
@@ -133,7 +142,7 @@ export async function POST(request: Request) {
           phone,
           guardian_name: guardianName || undefined,
           is_trial: false,
-          member_pin: pin,
+          member_pin: password,
           is_approved: false,
           base_group: baseGroup,
         })
@@ -141,12 +150,20 @@ export async function POST(request: Request) {
     if (!existing) {
       await updateMemberRegistrationData(member.id, {
         gender: gender || null,
+        privacy_accepted_at: new Date().toISOString(),
         email_verified: false,
         email_verified_at: null,
         email_verification_token: emailToken,
         base_group: baseGroup,
       })
     }
+
+    await ensureMemberAuthUserLink({
+      memberId: member.id,
+      email,
+      password,
+      emailVerified: false,
+    })
 
     const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
     const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${emailToken}`

@@ -2,7 +2,6 @@ import Image from "next/image"
 import Link from "next/link"
 import type { ReactNode } from "react"
 import { ChevronLeft, ClipboardCheck } from "lucide-react"
-import { APP_VERSION } from "@/lib/appVersion"
 import { TrainerLogoutButton } from "@/components/trainer-logout-button"
 
 export default function TrainerLayout({ children }: { children: ReactNode }) {
@@ -36,9 +35,6 @@ export default function TrainerLayout({ children }: { children: ReactNode }) {
                     <ChevronLeft className="h-4 w-4" />
                     Startseite
                   </Link>
-                  <div className="rounded-full border border-[#d8e3ee] bg-[#f7fbff] px-3 py-1 text-xs font-semibold text-[#154c83]">
-                    Version {APP_VERSION}
-                  </div>
                 </div>
               </div>
 

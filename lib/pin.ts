@@ -1,7 +1,7 @@
-export const PIN_REGEX = /^[^\s]{6,16}$/
-export const PIN_HINT = "PIN: 6–16 Zeichen, Buchstaben, Zahlen oder Sonderzeichen."
+export const PIN_REGEX = /^[^\s]{8,64}$/
+export const PIN_HINT = "Passwort: 8-64 Zeichen, ohne Leerzeichen. Buchstaben, Zahlen und Sonderzeichen sind erlaubt."
 export const PIN_REQUIREMENTS_MESSAGE =
-  "Die PIN muss 6 bis 16 Zeichen lang sein. Erlaubt sind Buchstaben, Zahlen oder Sonderzeichen."
+  "Das Passwort muss 8 bis 64 Zeichen lang sein und darf keine Leerzeichen enthalten."
 
 export function normalizePin(value: string) {
   return value.trim()

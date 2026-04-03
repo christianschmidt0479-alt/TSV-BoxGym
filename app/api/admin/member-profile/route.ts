@@ -3,8 +3,8 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { hashAuthSecret } from "@/lib/authSecret"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
+import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
 import { hashParentAccessCode } from "@/lib/parentAccountsDb"
-import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup, parseTrainingGroup } from "@/lib/trainingGroups"
 
@@ -138,8 +138,12 @@ export async function POST(request: Request) {
 
     if (body.action === "save_profile") {
       const memberPin = body.memberPin?.trim() || ""
-      if (memberPin && !isValidPin(memberPin)) {
-        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+      if (memberPin && !isValidMemberPassword(memberPin)) {
+        return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
+      }
+      const parentPassword = body.parent?.accessCode?.trim() || ""
+      if (parentPassword && !isValidMemberPassword(parentPassword)) {
+        return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
       const nextFirstName = "firstName" in body ? body.firstName?.trim() || null : undefined
@@ -216,8 +220,8 @@ export async function POST(request: Request) {
         targetName: getMemberDisplayName(member),
         details: [
           "Kontaktdaten oder Elternkonto angepasst",
-          memberPin ? "Mitglieds-PIN aktualisiert" : "",
-          body.parent?.accessCode?.trim() ? "Eltern-Zugangscode aktualisiert" : "",
+          memberPin ? "Mitgliedspasswort aktualisiert" : "",
+          body.parent?.accessCode?.trim() ? "Eltern-Passwort aktualisiert" : "",
         ].filter(Boolean).join(", "),
       })
 

@@ -111,6 +111,20 @@ For `Boxzwerge`, the app now supports a special flow:
 
 Before this can be stored in Supabase, run the SQL in `supabase/member_boxzwerge_fields.sql`.
 
+## GS-Abgleich
+
+The admin office reconciliation stores separate status fields on `members` for the current office lists:
+
+- `office_list_status`
+- `office_list_group`
+- `office_list_checked_at`
+
+It also stores each GS-Sammelabgleich as its own run in `office_reconciliation_runs`, including timestamp, active flag and the saved result snapshot.
+
+Before the GS reconciliation can persist data in Supabase, run the SQL in `supabase/member_office_list_fields.sql`.
+
+If you use `supabase/production_remaining.sql` for manual rollout, the GS fields are included there as well.
+
 ## Getting Started
 
 First, run the development server:

@@ -21,26 +21,65 @@ function getServerSupabase() {
   return createServerSupabaseServiceClient()
 }
 
+type PendingMemberRow = {
+  id: string
+  name?: string | null
+  first_name?: string | null
+  last_name?: string | null
+  birthdate?: string | null
+  gender?: string | null
+  email?: string | null
+  email_verified?: boolean | null
+  email_verified_at?: string | null
+  email_verification_token?: string | null
+  phone?: string | null
+  guardian_name?: string | null
+  is_trial?: boolean | null
+  is_approved?: boolean | null
+  base_group?: string | null
+  office_list_status?: string | null
+  office_list_group?: string | null
+  office_list_checked_at?: string | null
+}
+
 async function loadPendingMembers(supabase: ReturnType<typeof getServerSupabase>) {
-  const withGender = await supabase
-    .from("members")
-    .select("id, name, first_name, last_name, birthdate, gender, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group")
-    .eq("is_approved", false)
-    .order("created_at", { ascending: false })
+  const baseSelect =
+    "id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group"
+  const optionalColumns = ["gender", "office_list_status", "office_list_group", "office_list_checked_at"] as const
+  const selectedOptionalColumns = [...optionalColumns] as string[]
 
-  if (!withGender.error || !isMissingColumnError(withGender.error, "gender")) {
-    return withGender
-  }
+  while (true) {
+    const response = await supabase
+      .from("members")
+      .select([baseSelect, ...selectedOptionalColumns].join(", "))
+      .eq("is_approved", false)
+      .order("created_at", { ascending: false })
 
-  const withoutGender = await supabase
-    .from("members")
-    .select("id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group")
-    .eq("is_approved", false)
-    .order("created_at", { ascending: false })
+    if (!response.error) {
+      const rows = ((response.data ?? []) as unknown) as PendingMemberRow[]
+      return {
+        data: rows.map((row) => ({
+          ...row,
+          gender: row.gender ?? null,
+          office_list_status: row.office_list_status ?? null,
+          office_list_group: row.office_list_group ?? null,
+          office_list_checked_at: row.office_list_checked_at ?? null,
+        })),
+        error: null,
+      }
+    }
 
-  return {
-    data: (withoutGender.data ?? []).map((row) => ({ ...row, gender: null })),
-    error: withoutGender.error,
+    const missingColumn = optionalColumns.find((column) => isMissingColumnError(response.error, column)) ?? null
+    if (!missingColumn) {
+      return response
+    }
+
+    const nextIndex = selectedOptionalColumns.indexOf(missingColumn)
+    if (nextIndex === -1) {
+      return response
+    }
+
+    selectedOptionalColumns.splice(nextIndex, 1)
   }
 }
 

@@ -3,7 +3,6 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 import { cookies } from "next/headers"
 import { ChevronLeft, LayoutPanelLeft, Settings } from "lucide-react"
-import { APP_VERSION } from "@/lib/appVersion"
 import { TRAINER_SESSION_COOKIE, verifyTrainerSessionToken } from "@/lib/authSession"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { AdminMobileNav } from "@/components/admin-mobile-nav"
@@ -27,6 +26,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
   const peopleItems: NavItem[] = [
     { href: "/verwaltung/freigaben", label: "Freigaben" },
     { href: "/verwaltung/mitglieder", label: "Mitglieder" },
+    ...(isAdmin ? [{ href: "/verwaltung/geburtstage", label: "Geburtstage" }] : []),
     ...(isAdmin ? [{ href: "/verwaltung/personen", label: "Rollen" }, { href: "/verwaltung/trainer", label: "Trainer" }] : []),
   ]
   const operationsItems: NavItem[] = [
@@ -89,9 +89,6 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                     <span className="hidden sm:inline">Startseite</span>
                     <span className="sm:hidden">Start</span>
                   </Link>
-                  <div className="hidden rounded-full border border-[#d8e3ee] bg-[#f7fbff] px-3 py-1 text-xs font-semibold text-[#154c83] md:block">
-                    Version {APP_VERSION}
-                  </div>
                 </div>
               </div>
 
@@ -126,6 +123,14 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                 >
                   Mitglieder
                 </Link>
+                {isAdmin ? (
+                  <Link
+                    href="/verwaltung/geburtstage"
+                    className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
+                  >
+                    Geburtstage
+                  </Link>
+                ) : null}
                 {isAdmin ? (
                   <Link
                     href="/verwaltung/personen"

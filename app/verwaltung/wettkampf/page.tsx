@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
+import { formatDisplayDate, formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { buildTrainingGroupOptions, compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -78,10 +79,6 @@ function isBoxzwergeMember(member?: Pick<MemberRecord, "base_group"> | null) {
   return normalizeTrainingGroup(member?.base_group) === "Boxzwerge"
 }
 
-function formatGermanDate(date: Date) {
-  return date.toLocaleDateString("de-DE")
-}
-
 function getMedicalExamStatus(dateString: string | null | undefined) {
   if (!dateString) {
     return {
@@ -104,7 +101,7 @@ function getMedicalExamStatus(dateString: string | null | undefined) {
     return {
       toneClass: "text-red-800",
       boxClass: "rounded-2xl border border-red-200 bg-red-50 p-2 text-xs text-red-800",
-      message: `Abgelaufen seit ${Math.abs(daysUntilExpiry)} Tagen. Gültig war bis einschließlich ${formatGermanDate(expiryDate)}.`,
+      message: `Abgelaufen seit ${Math.abs(daysUntilExpiry)} Tagen. Gültig war bis einschließlich ${formatDisplayDate(expiryDate)}.`,
     }
   }
 
@@ -112,14 +109,14 @@ function getMedicalExamStatus(dateString: string | null | undefined) {
     return {
       toneClass: "text-amber-800",
       boxClass: "rounded-2xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800",
-      message: `Läuft in ${daysUntilExpiry} Tagen ab. Gültig bis einschließlich ${formatGermanDate(expiryDate)}.`,
+      message: `Läuft in ${daysUntilExpiry} Tagen ab. Gültig bis einschließlich ${formatDisplayDate(expiryDate)}.`,
     }
   }
 
   return {
     toneClass: "text-zinc-500",
     boxClass: "rounded-2xl border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-600",
-    message: `Gültig bis einschließlich ${formatGermanDate(expiryDate)}.`,
+    message: `Gültig bis einschließlich ${formatDisplayDate(expiryDate)}.`,
   }
 }
 
@@ -602,9 +599,10 @@ export default function WettkampfPage() {
                       </div>
                       <div className="text-xs text-zinc-500">
                         {latestWeight?.created_at
-                          ? `Erfasst am ${new Date(latestWeight.created_at).toLocaleString("de-DE")}`
+                          ? `Erfasst am ${formatDisplayDateTime(new Date(latestWeight.created_at))}`
                           : "Gewicht wird beim Einloggen übernommen."}
                       </div>
+                      <div>Untersuchung: {formatIsoDateForDisplay(member.last_medical_exam_date) || "—"}</div>
                     </div>
 
                     <div className="space-y-3">

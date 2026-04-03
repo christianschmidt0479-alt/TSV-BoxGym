@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
+import { formatDisplayDate, formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { type TrainerAccountRecord } from "@/lib/trainerDb"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -210,7 +211,7 @@ export default function TrainerverwaltungPage() {
                           <div className="font-medium text-zinc-900">{getTrainerDisplayName(trainer)}</div>
                           <div className="mt-1 text-xs text-zinc-500">{trainer.email}</div>
                           <div className="mt-2 text-xs text-zinc-400">
-                            Freigegeben am {trainer.approved_at ? new Date(trainer.approved_at).toLocaleDateString("de-DE") : "—"}
+                            Freigegeben am {trainer.approved_at ? formatDisplayDate(new Date(trainer.approved_at)) : "—"}
                           </div>
                         </td>
                         <td className="p-3">
@@ -220,7 +221,7 @@ export default function TrainerverwaltungPage() {
                         <td className="p-3">
                           <div className="text-zinc-900">Nr.: {trainer.lizenznummer || "—"}</div>
                           <div className="mt-1 text-zinc-600">
-                            Gültig bis {trainer.lizenz_gueltig_bis ? new Date(trainer.lizenz_gueltig_bis).toLocaleDateString("de-DE") : "—"}
+                            Gültig bis {formatIsoDateForDisplay(trainer.lizenz_gueltig_bis) || "—"}
                           </div>
                         </td>
                         <td className="p-3">
@@ -305,10 +306,10 @@ export default function TrainerverwaltungPage() {
                     </div>
                     <div>E-Mail: {trainer.email}</div>
                     <div>Lizenz: {getDisplayedLicense(trainer)}</div>
-                    <div>Registriert am: {new Date(trainer.created_at).toLocaleString("de-DE")}</div>
+                    <div>Registriert am: {formatDisplayDateTime(new Date(trainer.created_at))}</div>
                     <div>
                       E-Mail-Bestätigung:{" "}
-                      {trainer.email_verified_at ? new Date(trainer.email_verified_at).toLocaleString("de-DE") : "noch offen"}
+                      {trainer.email_verified_at ? formatDisplayDateTime(new Date(trainer.email_verified_at)) : "noch offen"}
                     </div>
                   </div>
 
@@ -388,7 +389,7 @@ export default function TrainerverwaltungPage() {
                 <div className="mt-1">{trainer.email}</div>
                 <div className="mt-1">Lizenz: {getDisplayedLicense(trainer)}</div>
                 <div className="mt-1 text-xs text-red-700">
-                  Freigegeben am: {trainer.approved_at ? new Date(trainer.approved_at).toLocaleString("de-DE") : "—"}
+                  Freigegeben am: {trainer.approved_at ? formatDisplayDateTime(new Date(trainer.approved_at)) : "—"}
                 </div>
                 <div className="mt-3">
                   <Button asChild variant="outline" className="rounded-2xl">

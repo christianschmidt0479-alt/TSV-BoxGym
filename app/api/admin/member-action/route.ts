@@ -5,7 +5,8 @@ import { hashAuthSecret } from "@/lib/authSecret"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
-import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
+import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup, parseTrainingGroup } from "@/lib/trainingGroups"
@@ -179,7 +180,7 @@ export async function POST(request: Request) {
       }
       const approvedGroup = parseTrainingGroup(body.baseGroup)
       if (!approvedGroup) {
-        return jsonError("Bitte eine gueltige Stammgruppe auswaehlen.", 400)
+        return jsonError("Bitte eine gültige Stammgruppe auswählen.", 400)
       }
       const updatePayload: Record<string, unknown> = {
         is_approved: true,
@@ -187,8 +188,8 @@ export async function POST(request: Request) {
       }
 
       if (body.newPin?.trim()) {
-        if (!isValidPin(body.newPin.trim())) {
-          return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+        if (!isValidMemberPassword(body.newPin.trim())) {
+          return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
         }
         updatePayload.member_pin = await hashAuthSecret(body.newPin.trim())
       }
@@ -197,6 +198,13 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!data) return jsonError("Mitglied nicht gefunden", 404)
+
+      await ensureMemberAuthUserLink({
+        memberId: data.id,
+        email: typeof data.email === "string" ? data.email : null,
+        password: body.newPin?.trim() || null,
+        emailVerified: Boolean(data.email_verified),
+      })
 
       await writeAdminAuditLog({
         session,
@@ -276,7 +284,7 @@ export async function POST(request: Request) {
       }
       const nextGroup = parseTrainingGroup(body.baseGroup)
       if (!nextGroup) {
-        return jsonError("Bitte eine gueltige Stammgruppe auswaehlen.", 400)
+        return jsonError("Bitte eine gültige Stammgruppe auswählen.", 400)
       }
       const { data, error } = await updateMemberWithFallback(supabase, body.memberId, { base_group: nextGroup })
 
@@ -295,11 +303,11 @@ export async function POST(request: Request) {
 
     if (body.action === "reset_pin") {
       if (typeof body.memberId !== "string" || typeof body.newPin !== "string") {
-        return jsonError("Invalid reset pin payload", 400)
+        return jsonError("Invalid reset password payload", 400)
       }
       const newPin = body.newPin.trim()
-      if (!isValidPin(newPin)) {
-        return jsonError(PIN_REQUIREMENTS_MESSAGE, 400)
+      if (!isValidMemberPassword(newPin)) {
+        return jsonError(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, 400)
       }
 
       const { data, error } = await updateMemberWithFallback(supabase, body.memberId, {
@@ -315,7 +323,7 @@ export async function POST(request: Request) {
         targetType: "member",
         targetId: data.id,
         targetName: getMemberDisplayName(data),
-        details: "PIN aktualisiert",
+        details: "Passwort aktualisiert",
       })
 
       return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
@@ -328,7 +336,7 @@ export async function POST(request: Request) {
       const firstName = body.firstName.trim()
       const lastName = body.lastName.trim()
       if (!firstName || !lastName) {
-        return jsonError("Vorname und Nachname duerfen nicht leer sein.", 400)
+        return jsonError("Vorname und Nachname dürfen nicht leer sein.", 400)
       }
 
       const { data, error } = await updateMemberWithFallback(supabase, body.memberId, {

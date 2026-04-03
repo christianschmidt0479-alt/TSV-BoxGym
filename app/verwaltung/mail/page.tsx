@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
+import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type MailConfigResponse = {
@@ -237,7 +238,7 @@ export default function MailVerwaltungPage() {
   function getParentFamilyBody(row: ParentFamilyMailRow) {
     const link = getParentFamilyLink(row)
     const childLines = row.children
-      .map((child, index) => `${index + 1}. ${[child.child_name, child.child_birthdate || null, child.child_group || null].filter(Boolean).join(" · ")}`)
+      .map((child, index) => `${index + 1}. ${[child.child_name, formatIsoDateForDisplay(child.child_birthdate), child.child_group || null].filter(Boolean).join(" · ")}`)
       .join("\n")
 
     return `Liebe Eltern,
@@ -254,7 +255,7 @@ Dort findet ihr alle angelegten Kinder direkt im Familienkonto. Die Eltern-E-Mai
 
 Wichtig:
 - Beim ersten Öffnen gebt ihr Vorname und Nachname des Elternteils an.
-- Danach legt ihr euren eigenen Eltern-Zugangscode fest.
+- Danach legt ihr euer eigenes Eltern-Passwort fest.
 - Die Anwesenheit wird künftig vor Ort digital erfasst.
 - Falls sich eure Kontaktdaten geändert haben, gebt uns bitte kurz Bescheid.
 
@@ -437,7 +438,7 @@ TSV BoxGym`
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-700">
               <div className="text-zinc-500">Zuletzt eingegangen</div>
               <div className="mt-1 text-sm font-semibold text-zinc-900">
-                {adminDigestSummary.latest ? new Date(adminDigestSummary.latest.created_at).toLocaleString("de-DE") : "—"}
+                {adminDigestSummary.latest ? formatDisplayDateTime(new Date(adminDigestSummary.latest.created_at)) : "—"}
               </div>
             </div>
           </div>
@@ -456,7 +457,7 @@ TSV BoxGym`
                   </div>
                   <div className="mt-1">{row.email || "Keine E-Mail gespeichert"}</div>
                   <div className="mt-1 text-xs text-zinc-500">
-                    {row.group_name || "Ohne Gruppe"} · {new Date(row.created_at).toLocaleString("de-DE")}
+                    {row.group_name || "Ohne Gruppe"} · {formatDisplayDateTime(new Date(row.created_at))}
                   </div>
                 </div>
               ))
@@ -597,7 +598,7 @@ TSV BoxGym`
                         <div className="text-lg font-semibold text-zinc-900">{row.parent_name}</div>
                         <div className="text-sm text-zinc-600">{row.parent_email}</div>
                         <div className="text-sm text-zinc-500">{row.parent_phone || "Telefon offen"}</div>
-                        <div className="text-xs text-zinc-500">Im Postausgang seit {new Date(row.created_at).toLocaleString("de-DE")}</div>
+                        <div className="text-xs text-zinc-500">Im Postausgang seit {formatDisplayDateTime(new Date(row.created_at))}</div>
                       </div>
 
                       <div className="flex flex-wrap gap-3 xl:justify-end">
@@ -684,7 +685,7 @@ TSV BoxGym`
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-700">
               <div className="text-zinc-500">Zuletzt eingegangen</div>
               <div className="mt-1 text-sm font-semibold text-zinc-900">
-                {outgoingSummary.latest ? new Date(outgoingSummary.latest.created_at).toLocaleString("de-DE") : "—"}
+                {outgoingSummary.latest ? formatDisplayDateTime(new Date(outgoingSummary.latest.created_at)) : "—"}
               </div>
             </div>
           </div>
@@ -709,7 +710,7 @@ TSV BoxGym`
                     </Badge>
                   </div>
                   <div className="mt-1">{row.email}</div>
-                  <div className="mt-1 text-xs text-zinc-500">{new Date(row.created_at).toLocaleString("de-DE")}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{formatDisplayDateTime(new Date(row.created_at))}</div>
                 </div>
               ))
             )}

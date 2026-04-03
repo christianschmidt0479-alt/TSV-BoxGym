@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { APP_VERSION } from "@/lib/appVersion"
 import { getAppBaseUrl } from "@/lib/mailConfig"
 import { TrainerSessionGuard } from "@/components/trainer-session-guard"
@@ -68,10 +69,23 @@ export default function RootLayout({
           <TrainerSessionGuard />
           <WorkspaceSwitcher />
           <div className="flex-1">{children}</div>
+          <div className="pointer-events-none fixed bottom-4 right-4 z-40 rounded-full border border-zinc-200 bg-white/95 px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm backdrop-blur">
+            Version {APP_VERSION}
+          </div>
           <footer className="px-4 pb-4 pt-2 md:px-6">
-            <div className="mx-auto flex max-w-7xl justify-end">
-              <div className="rounded-full border border-zinc-200 bg-white/95 px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm backdrop-blur">
-                Version {APP_VERSION}
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
+                <Link href="/datenschutz" className="font-medium text-zinc-600 underline underline-offset-4 hover:text-[#154c83]">
+                  Datenschutz
+                </Link>
+                <a
+                  href="https://tsv-falkensee.de/impressum"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-zinc-600 underline underline-offset-4 hover:text-[#154c83]"
+                >
+                  Vereinsimpressum
+                </a>
               </div>
             </div>
           </footer>

@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server"
-import { checkRateLimitAsync, clearLoginFailuresAsync, getLoginLockStateAsync, getRequestIp, isAllowedOrigin, registerLoginFailureAsync } from "@/lib/apiSecurity"
+import {
+  checkRateLimitAsync,
+  clearLoginFailuresAsync,
+  delayFailedLogin,
+  getLoginLockStateAsync,
+  getRequestIp,
+  isAllowedOrigin,
+  isWithinMaxLength,
+  registerLoginFailureAsync,
+  sanitizeTextInput,
+} from "@/lib/apiSecurity"
 import { applyTrainerSessionCookie, clearTrainerSessionCookie, getTrainerSessionMaxAgeMs } from "@/lib/authSession"
 import { findTrainerByEmailAndPin } from "@/lib/boxgymDb"
 
@@ -15,18 +25,19 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as TrainerAuthBody
-    const email = body.email?.trim().toLowerCase() || ""
-    const pin = body.pin?.trim() || ""
+    const email = sanitizeTextInput(body.email, { lowercase: true, maxLength: 254 })
+    const pin = sanitizeTextInput(body.pin, { maxLength: 64 })
     const requestIp = getRequestIp(request)
-    const rateLimit = await checkRateLimitAsync(`trainer-auth:${requestIp}:${email || "__email__"}`, 10, 10 * 60 * 1000)
+    const rateLimit = await checkRateLimitAsync(`trainer-auth:${requestIp}`, 5, 15 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
-    const loginKey = `${requestIp}:${email || "__email__"}`
+    const loginKey = `trainer:${email || "__email__"}`
 
-    const lockState = await getLoginLockStateAsync(loginKey)
+    const lockState = await getLoginLockStateAsync(loginKey, 10)
     if (lockState.blocked) {
+      await delayFailedLogin()
       const minutes = Math.max(1, Math.ceil((lockState.retryAfterMs ?? 0) / 60000))
       return new NextResponse(`Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.`, { status: 429 })
     }
@@ -35,9 +46,14 @@ export async function POST(request: Request) {
       return new NextResponse("Missing credentials", { status: 400 })
     }
 
+    if (!isWithinMaxLength(email, 254) || !isWithinMaxLength(pin, 64)) {
+      return new NextResponse("Invalid credentials", { status: 400 })
+    }
+
     const trainerMatch = await findTrainerByEmailAndPin(email, pin)
     if (!trainerMatch) {
-      const result = await registerLoginFailureAsync(loginKey)
+      const result = await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
+      await delayFailedLogin()
       if (result.blocked) {
         return new NextResponse("Zu viele Fehlversuche. Bitte 15 Minuten warten.", { status: 429 })
       }

@@ -1,4 +1,5 @@
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { formatIsoDateForDisplay } from "@/lib/dateFormat"
 
 export type ParentFamilyMailRow = {
   parent_account_id: string
@@ -122,7 +123,7 @@ export function getParentFamilySubject(row: ParentFamilyMailRow) {
 export function getParentFamilyBody(row: ParentFamilyMailRow, baseUrl: string) {
   const link = getParentFamilyLink(row, baseUrl)
   const childLines = row.children
-    .map((child, index) => `${index + 1}. ${[child.child_name, child.child_birthdate || null, child.child_group || null].filter(Boolean).join(" · ")}`)
+    .map((child, index) => `${index + 1}. ${[child.child_name, formatIsoDateForDisplay(child.child_birthdate), child.child_group || null].filter(Boolean).join(" · ")}`)
     .join("\n")
 
   return `Liebe Eltern,
@@ -139,7 +140,7 @@ Dort findet ihr alle angelegten Kinder direkt im Familienkonto. Die Eltern-E-Mai
 
 Wichtig:
 - Beim ersten Öffnen gebt ihr Vorname und Nachname des Elternteils an.
-- Danach legt ihr euren eigenen Eltern-Zugangscode fest.
+- Danach legt ihr euer eigenes Eltern-Passwort fest.
 - Die Anwesenheit wird künftig vor Ort digital erfasst.
 - Falls sich eure Kontaktdaten geändert haben, gebt uns bitte kurz Bescheid.
 

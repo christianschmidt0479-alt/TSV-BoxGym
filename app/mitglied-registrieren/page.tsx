@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { groupOptions } from "@/lib/boxgymSessions"
-import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { isValidMemberPassword, MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
 import { normalizeTrainingGroupOrFallback } from "@/lib/trainingGroups"
 
 function normalizeBirthDateInput(value?: string | null) {
@@ -61,6 +61,8 @@ export default function MitgliedRegistrierenPage() {
   const [registerPhone, setRegisterPhone] = useState("")
   const [registerGuardianName, setRegisterGuardianName] = useState("")
   const [registerBaseGroup, setRegisterBaseGroup] = useState(groupOptions[0] ?? "")
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
+  const [privacyError, setPrivacyError] = useState("")
 
   useEffect(() => {
     setIsClient(true)
@@ -120,13 +122,15 @@ export default function MitgliedRegistrierenPage() {
     const birthDate = normalizeBirthDateInput(registerBirthDate)
     const pin = registerPin.trim()
 
+    setPrivacyError("")
+
     if (!firstName || !lastName) {
       alert("Bitte Vorname und Nachname eingeben.")
       return
     }
 
     if (!birthDate) {
-      alert("Bitte ein gueltiges Geburtsdatum angeben.")
+      alert("Bitte ein gültiges Geburtsdatum angeben.")
       return
     }
 
@@ -135,8 +139,8 @@ export default function MitgliedRegistrierenPage() {
       return
     }
 
-    if (!isValidPin(pin)) {
-      alert(PIN_REQUIREMENTS_MESSAGE)
+    if (!isValidMemberPassword(pin)) {
+      alert(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE)
       return
     }
 
@@ -155,6 +159,11 @@ export default function MitgliedRegistrierenPage() {
       return
     }
 
+    if (!privacyAccepted) {
+      setPrivacyError("Bitte Datenschutz akzeptieren")
+      return
+    }
+
     try {
       setDbLoading(true)
       if (birthDate !== registerBirthDate) {
@@ -168,10 +177,11 @@ export default function MitgliedRegistrierenPage() {
           lastName,
           birthDate,
           gender: registerGender,
-          pin,
+          password: pin,
           email: registerEmail.trim(),
           phone: registerPhone.trim(),
           baseGroup: registerBaseGroup,
+          consent: true,
         }),
       })
 
@@ -185,11 +195,11 @@ export default function MitgliedRegistrierenPage() {
       const result = (await response.json()) as { verificationSent?: boolean }
 
       if (result.verificationSent === false) {
-        alert("Reservierung fuer den Boxbereich gespeichert.\n\nDie Bestätigungs-E-Mail konnte aber nicht versendet werden.")
+        alert("Reservierung für den Boxbereich gespeichert.\n\nDie Bestätigungs-E-Mail konnte aber nicht versendet werden.")
         return
       }
 
-      alert("Reservierung fuer den Boxbereich gespeichert.\n\nBitte zuerst die E-Mail bestätigen. Danach sind bis zu 6 Trainings ohne Admin-Freigabe möglich.")
+      alert("Reservierung für den Boxbereich gespeichert.\n\nBitte zuerst die E-Mail bestätigen. Danach sind bis zu 6 Trainings ohne Admin-Freigabe möglich.")
       router.push("/")
     } catch (error) {
       console.error(error)
@@ -309,15 +319,15 @@ export default function MitgliedRegistrierenPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Zugangspin selbst wählen <span className="ml-1 text-red-500">*</span></Label>
+                <Label>Passwort selbst wählen <span className="ml-1 text-red-500">*</span></Label>
                 <PasswordInput
                   value={registerPin}
                   onChange={(e) => setRegisterPin(e.target.value)}
-                  placeholder="Eigenen Zugangspin wählen"
+                  placeholder="Eigenes Passwort wählen"
                   className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                 />
                 <p className="text-xs text-zinc-500">
-                  Diesen Zugangspin legst du bei der Registrierung selbst fest.
+                  Dieses Passwort legst du bei der Registrierung selbst fest.
                 </p>
               </div>
 
@@ -342,6 +352,30 @@ export default function MitgliedRegistrierenPage() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <label className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={privacyAccepted}
+                    onChange={(event) => {
+                      setPrivacyAccepted(event.target.checked)
+                      if (event.target.checked) {
+                        setPrivacyError("")
+                      }
+                    }}
+                    className="mt-1 h-4 w-4 rounded border-zinc-300 text-[#154c83]"
+                  />
+                  <span>
+                    Ich akzeptiere die{" "}
+                    <Link href="/datenschutz" className="font-medium text-[#154c83] underline underline-offset-4">
+                      Datenschutzerklärung
+                    </Link>
+                    <span className="ml-1 text-red-500">*</span>
+                  </span>
+                </label>
+                {privacyError ? <p className="text-sm text-red-600">{privacyError}</p> : null}
+              </div>
+
               <Button
                 type="submit"
                 className="w-full rounded-2xl bg-[linear-gradient(135deg,#154c83_0%,#1b5d9f_65%,#e6332a_170%)] text-white hover:opacity-95"
@@ -351,7 +385,7 @@ export default function MitgliedRegistrierenPage() {
               </Button>
 
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                {`Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Geschlecht, Telefonnummer und E-Mail sind Pflichtdaten. Der Zugangspin wird bei der Registrierung selbst gewählt. ${PIN_HINT}`}
+                {`Nach der Registrierung muss zuerst die E-Mail bestätigt werden. Geschlecht, Telefonnummer und E-Mail sind Pflichtdaten. Das Passwort wird bei der Registrierung selbst gewählt. ${MEMBER_PASSWORD_HINT}`}
               </div>
             </form>
           </CardContent>

@@ -124,12 +124,12 @@ export async function POST(request: Request) {
     }
 
     if (!selectedSession) {
-      return new NextResponse("Bitte eine Trainingsgruppe auswaehlen.", { status: 400 })
+      return new NextResponse("Bitte eine Trainingsgruppe auswählen.", { status: 400 })
     }
 
     const checkinSettings = await readCheckinSettings()
     if (!checkinSettings.disableCheckinTimeWindow && !isSessionOpenForCheckin(selectedSession, now)) {
-      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.", { status: 400 })
+      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
     }
 
     let member = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
@@ -147,7 +147,7 @@ export async function POST(request: Request) {
       })
     } else if (!member.is_trial) {
       return new NextResponse(
-        "Diese Person ist bereits als Mitglied erfasst. Probetraining darf bestehende Mitgliedsdaten nicht aendern.",
+        "Diese Person ist bereits als Mitglied erfasst. Probetraining darf bestehende Mitgliedsdaten nicht ändern.",
         { status: 409 }
       )
     }

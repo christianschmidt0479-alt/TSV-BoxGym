@@ -1,6 +1,15 @@
 import { timingSafeEqual } from "crypto"
 import { NextResponse } from "next/server"
-import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+import {
+  checkRateLimitAsync,
+  delayFailedLogin,
+  getLoginLockStateAsync,
+  getRequestIp,
+  isAllowedOrigin,
+  registerLoginFailureAsync,
+  sanitizeTextInput,
+  clearLoginFailuresAsync,
+} from "@/lib/apiSecurity"
 
 function getAdminLoginPassword() {
   return process.env.ADMIN_LOGIN_PASSWORD?.trim() || ""
@@ -20,9 +29,18 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const rateLimit = await checkRateLimitAsync(`admin-auth:${getRequestIp(request)}`, 10, 10 * 60 * 1000)
+    const requestIp = getRequestIp(request)
+    const rateLimit = await checkRateLimitAsync(`admin-auth:${requestIp}`, 5, 15 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
+    }
+
+    const loginKey = `admin-auth:${requestIp}`
+    const lockState = await getLoginLockStateAsync(loginKey, 10)
+    if (lockState.blocked) {
+      await delayFailedLogin()
+      const minutes = Math.max(1, Math.ceil((lockState.retryAfterMs ?? 0) / 60000))
+      return new NextResponse(`Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.`, { status: 429 })
     }
 
     const body = (await request.json()) as { password?: string }
@@ -32,12 +50,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, configured: false }, { status: 503 })
     }
 
-    const supplied = body.password?.trim() || ""
+    const supplied = sanitizeTextInput(body.password, { maxLength: 256 })
     if (!supplied) {
       return new NextResponse("Missing password", { status: 400 })
     }
 
     const ok = safeCompare(supplied, expected)
+    if (!ok) {
+      await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
+      await delayFailedLogin()
+      return NextResponse.json({ ok: false, configured: true }, { status: 401 })
+    }
+
+    await clearLoginFailuresAsync(loginKey)
     return NextResponse.json({ ok, configured: true })
   } catch (error) {
     console.error("admin-auth failed", error)

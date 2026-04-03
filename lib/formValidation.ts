@@ -1,4 +1,4 @@
-import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
 
 /**
  * Zentrale Validierungs-Utilities für Formulare
@@ -39,19 +39,19 @@ export function validateName(value: string, fieldName: string = "Name"): Validat
 }
 
 /**
- * Validiert PIN (6 bis 16 Zeichen, ohne Leerzeichen)
+ * Validiert Passwort
  */
 export function validatePin(value: string): ValidationResult {
   const trimmed = value.trim()
 
   if (!trimmed) {
-    return { valid: false, error: "PIN ist erforderlich." }
+    return { valid: false, error: "Passwort ist erforderlich." }
   }
 
-  if (!isValidPin(trimmed)) {
+  if (!isValidMemberPassword(trimmed)) {
     return {
       valid: false,
-      error: PIN_REQUIREMENTS_MESSAGE,
+      error: MEMBER_PASSWORD_REQUIREMENTS_MESSAGE,
     }
   }
 

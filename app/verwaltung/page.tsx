@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
 import { groupOptions, sessions } from "@/lib/boxgymSessions"
+import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type MemberOverviewRow = {
@@ -245,6 +246,11 @@ export default function VerwaltungOverviewPage() {
               title: "Mitglieder",
               description: "Suche, Status und Boxzwerge 10+.",
             },
+            {
+              href: "/verwaltung/geburtstage",
+              title: "Geburtstage",
+              description: "Nächste und vergangene Geburtstage zentral sehen.",
+            },
           ],
         },
         operationsSection,
@@ -405,7 +411,7 @@ export default function VerwaltungOverviewPage() {
                   <div className="mt-3 space-y-1 text-sm">
                     {boxzwergeAgingWarnings.map((member) => (
                       <div key={member.id}>
-                        {getMemberDisplayName(member)} · {member.birthdate || "Geburtsdatum offen"} · {member.age} Jahre
+                        {getMemberDisplayName(member)} · {formatIsoDateForDisplay(member.birthdate) || "Geburtsdatum offen"} · {member.age} Jahre
                       </div>
                     ))}
                   </div>
@@ -431,7 +437,7 @@ export default function VerwaltungOverviewPage() {
                   {digestSummary.latest ? (
                     <div className="mt-3 text-xs text-blue-800">
                       Letzter Eingang: {digestSummary.latest.member_name} ·{" "}
-                      {new Date(digestSummary.latest.created_at).toLocaleString("de-DE")}
+                      {formatDisplayDateTime(new Date(digestSummary.latest.created_at))}
                     </div>
                   ) : (
                     <div className="mt-3 text-xs text-blue-800">Zurzeit liegt kein offener Vorgang in der Sammelmail-Warteschlange.</div>
@@ -501,7 +507,7 @@ export default function VerwaltungOverviewPage() {
                 <div className="mt-3 space-y-1 text-sm">
                   {boxzwergeAgingWarnings.map((member) => (
                     <div key={member.id}>
-                      {getMemberDisplayName(member)} · {member.birthdate || "Geburtsdatum offen"} · {member.age} Jahre
+                      {getMemberDisplayName(member)} · {formatIsoDateForDisplay(member.birthdate) || "Geburtsdatum offen"} · {member.age} Jahre
                     </div>
                   ))}
                 </div>
@@ -527,7 +533,7 @@ export default function VerwaltungOverviewPage() {
                 {digestSummary.latest ? (
                   <div className="mt-3 text-xs text-blue-800">
                     Letzter Eingang: {digestSummary.latest.member_name} ·{" "}
-                    {new Date(digestSummary.latest.created_at).toLocaleString("de-DE")}
+                      {formatDisplayDateTime(new Date(digestSummary.latest.created_at))}
                   </div>
                 ) : (
                   <div className="mt-3 text-xs text-blue-800">Zurzeit liegt kein offener Vorgang in der Sammelmail-Warteschlange.</div>

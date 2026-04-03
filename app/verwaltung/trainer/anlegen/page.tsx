@@ -8,8 +8,8 @@ import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { type RoleMemberRecord } from "@/lib/personRoles"
-import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { type TrainerAccountRecord } from "@/lib/trainerDb"
+import { isTrainerPinCompliant, TRAINER_PIN_HINT, TRAINER_PIN_REQUIREMENTS_MESSAGE } from "@/lib/trainerPin"
 import { trainerLicenseOptions } from "@/lib/trainerLicense"
 import { compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -149,11 +149,11 @@ export default function TrainerAnlegenPage() {
 
                   <div className={getEditableBoxClass(Boolean((pinDrafts[member.id] ?? "").trim()))}>
                     <Label className="flex items-center justify-between text-zinc-900">
-                      <span>Start-PIN *</span>
+                      <span>Start-Passwort *</span>
                       <span className="text-xs font-semibold text-amber-700">Pflichtfeld</span>
                     </Label>
-                    <PasswordInput value={pinDrafts[member.id] ?? ""} onChange={(e) => setPinDrafts((c) => ({ ...c, [member.id]: e.target.value }))} placeholder="6 bis 16 Zeichen" className={`${inputClassName} mt-2`} />
-                    <div className="mt-2 text-xs text-zinc-500">{PIN_HINT}</div>
+                    <PasswordInput value={pinDrafts[member.id] ?? ""} onChange={(e) => setPinDrafts((c) => ({ ...c, [member.id]: e.target.value }))} placeholder="8 bis 64 Zeichen" className={`${inputClassName} mt-2`} />
+                    <div className="mt-2 text-xs text-zinc-500">{TRAINER_PIN_HINT}</div>
                   </div>
 
                   <Button
@@ -164,8 +164,8 @@ export default function TrainerAnlegenPage() {
                       const pin = (pinDrafts[member.id] ?? "").trim()
                       const license = (licenseDrafts[member.id] ?? trainerLicenseOptions[0]) as (typeof trainerLicenseOptions)[number]
 
-                      if (!member.email?.trim()) return alert("Fuer dieses Mitglied ist keine E-Mail hinterlegt.")
-                      if (!isValidPin(pin)) return alert(PIN_REQUIREMENTS_MESSAGE)
+                      if (!member.email?.trim()) return alert("Für dieses Mitglied ist keine E-Mail hinterlegt.")
+                      if (!isTrainerPinCompliant(pin)) return alert(TRAINER_PIN_REQUIREMENTS_MESSAGE)
 
                       try {
                         setCreatingMemberId(member.id)
@@ -181,7 +181,7 @@ export default function TrainerAnlegenPage() {
                         }
 
                         setPinDrafts((c) => ({ ...c, [member.id]: "" }))
-                        alert("Trainerkonto angelegt. Die Bestaetigungs-Mail wurde versendet.")
+                        alert("Trainerkonto angelegt. Die Bestätigungs-Mail wurde versendet.")
                         await loadCandidates()
                       } catch (error) {
                         console.error(error)

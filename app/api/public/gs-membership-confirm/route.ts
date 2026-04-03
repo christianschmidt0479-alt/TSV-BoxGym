@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     const confirmationStamp = existingDecision === decision && existingStamp ? existingStamp : new Date().toISOString()
     const decisionPrefix = decision === "ja" ? GS_CONFIRMATION_YES_PREFIX : GS_CONFIRMATION_NO_PREFIX
     const decisionAction = decision === "ja" ? "member_gs_confirmation_confirmed" : "member_gs_confirmation_rejected"
-    const decisionDetails = decision === "ja" ? "Mitgliedschaft per GS-Link bestaetigt." : "Mitgliedschaft per GS-Link als nicht vorhanden markiert."
+    const decisionDetails = decision === "ja" ? "Mitgliedschaft per GS-Link bestätigt." : "Mitgliedschaft per GS-Link als nicht vorhanden markiert."
     const actorName = decision === "ja" ? "GS Ja-Link" : "GS Nein-Link"
 
     if (existingDecision !== decision || existingStamp !== confirmationStamp) {

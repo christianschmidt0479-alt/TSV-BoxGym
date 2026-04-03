@@ -14,7 +14,8 @@ import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { sessions } from "@/lib/boxgymSessions"
-import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { formatDisplayDate, formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { getOfficeListStatusMessage, getOfficeListStatusPanelClass } from "@/lib/officeListStatus"
 import { readTrainerAccess } from "@/lib/trainerAccess"
 
 type CheckinRow = {
@@ -38,6 +39,7 @@ type MemberRecord = {
   email?: string | null
   email_verified?: boolean
   email_verified_at?: string | null
+  privacy_accepted_at?: string | null
   email_verification_token?: string | null
   phone?: string | null
   guardian_name?: string | null
@@ -52,6 +54,9 @@ type MemberRecord = {
   is_trial?: boolean
   is_approved?: boolean
   base_group?: string | null
+  office_list_status?: string | null
+  office_list_group?: string | null
+  office_list_checked_at?: string | null
 }
 
 type ParentAccountRow = {
@@ -111,7 +116,7 @@ function getDayKey(dateString: string) {
 
 function liveDateString(date: Date | null) {
   if (!date) return "—"
-  return date.toLocaleDateString("de-DE")
+  return formatDisplayDate(date)
 }
 
 function getStoredString(key: string) {
@@ -168,10 +173,6 @@ function getCompetitionAgeClassBadgeClass(birthdate?: string) {
   return "border-zinc-300 bg-zinc-200 text-zinc-800"
 }
 
-function formatGermanDate(date: Date) {
-  return date.toLocaleDateString("de-DE")
-}
-
 function getMedicalExamStatus(dateString: string | null | undefined) {
   if (!dateString) {
     return {
@@ -192,20 +193,20 @@ function getMedicalExamStatus(dateString: string | null | undefined) {
   if (daysUntilExpiry < 0) {
     return {
       boxClass: "rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800",
-      message: `Abgelaufen seit ${Math.abs(daysUntilExpiry)} Tagen. Gültig war bis einschließlich ${formatGermanDate(expiryDate)}.`,
+      message: `Abgelaufen seit ${Math.abs(daysUntilExpiry)} Tagen. Gültig war bis einschließlich ${formatDisplayDate(expiryDate)}.`,
     }
   }
 
   if (daysUntilExpiry <= 30) {
     return {
       boxClass: "rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800",
-      message: `Läuft in ${daysUntilExpiry} Tagen ab. Gültig bis einschließlich ${formatGermanDate(expiryDate)}.`,
+      message: `Läuft in ${daysUntilExpiry} Tagen ab. Gültig bis einschließlich ${formatDisplayDate(expiryDate)}.`,
     }
   }
 
   return {
     boxClass: "rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800",
-    message: `Gültig bis einschließlich ${formatGermanDate(expiryDate)}.`,
+    message: `Gültig bis einschließlich ${formatDisplayDate(expiryDate)}.`,
   }
 }
 
@@ -223,6 +224,9 @@ export default function MemberAreaPage() {
   const [memberAreaLoading, setMemberAreaLoading] = useState(false)
   const [memberAreaSaving, setMemberAreaSaving] = useState(false)
   const [memberVerificationSending, setMemberVerificationSending] = useState(false)
+  const [privacyConsentRequired, setPrivacyConsentRequired] = useState(false)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
+  const [privacyError, setPrivacyError] = useState("")
   const [personalMonthVisits, setPersonalMonthVisits] = useState(0)
   const [previousMonthVisits, setPreviousMonthVisits] = useState(0)
   const [personalYearVisits, setPersonalYearVisits] = useState(0)
@@ -376,34 +380,44 @@ export default function MemberAreaPage() {
     const pin = memberAreaPin.trim()
 
     if (!email || !pin) {
-      alert("Bitte E-Mail und PIN eingeben.")
-      return
-    }
-
-    if (!isValidPin(pin)) {
-      alert(PIN_REQUIREMENTS_MESSAGE)
+      alert("Bitte E-Mail und Passwort eingeben.")
       return
     }
 
     try {
       setMemberAreaLoading(true)
+      setPrivacyError("")
       const response = await fetch("/api/public/member-area", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "member_login",
           email,
-          pin,
+          password: pin,
         }),
       })
 
       if (!response.ok) {
-        const message = await response.text()
+        let message = "Fehler beim Laden des Mitgliederbereichs."
+        try {
+          const result = (await response.json()) as { code?: string; message?: string }
+          if (result.code === "privacy_consent_required") {
+            setPrivacyConsentRequired(true)
+            setPrivacyError(result.message || "Bitte Datenschutz akzeptieren")
+            return
+          }
+          message = result.message || message
+        } catch {
+          message = await response.text()
+        }
         alert(message || "Fehler beim Laden des Mitgliederbereichs.")
         return
       }
 
       const snapshot = (await response.json()) as MemberAreaSnapshot
+      setPrivacyConsentRequired(false)
+      setPrivacyAccepted(false)
+      setPrivacyError("")
       applyMemberSnapshot(snapshot)
       router.replace(MEMBER_AREA_DEFAULT_ROUTE)
     } catch (error) {
@@ -425,9 +439,23 @@ export default function MemberAreaPage() {
           body: JSON.stringify({ action: "member_session" }),
         })
 
-        if (!response.ok) return
+        if (!response.ok) {
+          try {
+            const result = (await response.json()) as { code?: string; message?: string }
+            if (result.code === "privacy_consent_required") {
+              setPrivacyConsentRequired(true)
+              setPrivacyError(result.message || "Bitte Datenschutz akzeptieren")
+            }
+          } catch {
+            // Ignore non-JSON restore failures.
+          }
+          return
+        }
 
         const snapshot = (await response.json()) as MemberAreaSnapshot
+        setPrivacyConsentRequired(false)
+        setPrivacyAccepted(false)
+        setPrivacyError("")
         applyMemberSnapshot(snapshot)
         router.replace(MEMBER_AREA_DEFAULT_ROUTE)
       } catch (error) {
@@ -435,6 +463,46 @@ export default function MemberAreaPage() {
       }
     })()
   }, [isClient, memberAreaUnlocked, router])
+
+  async function acceptPrivacyConsent() {
+    if (!privacyAccepted) {
+      setPrivacyError("Bitte Datenschutz akzeptieren")
+      return
+    }
+
+    try {
+      setMemberAreaLoading(true)
+      setPrivacyError("")
+      const response = await fetch("/api/public/member-area", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "accept_privacy_consent",
+          email: memberAreaEmail.trim().toLowerCase(),
+          password: memberAreaPin.trim(),
+          consent: true,
+        }),
+      })
+
+      if (!response.ok) {
+        const message = await response.text()
+        setPrivacyError(message || "Datenschutz konnte nicht gespeichert werden.")
+        return
+      }
+
+      const snapshot = (await response.json()) as MemberAreaSnapshot
+      setPrivacyConsentRequired(false)
+      setPrivacyAccepted(false)
+      setPrivacyError("")
+      applyMemberSnapshot(snapshot)
+      router.replace(MEMBER_AREA_DEFAULT_ROUTE)
+    } catch (error) {
+      console.error(error)
+      setPrivacyError("Datenschutz konnte nicht gespeichert werden.")
+    } finally {
+      setMemberAreaLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!isClient || memberAreaUnlocked || !trainerHasRoleAccess) return
@@ -475,12 +543,7 @@ export default function MemberAreaPage() {
     const accessCode = parentAccessCode.trim()
 
     if (!email || !accessCode) {
-      alert("Bitte Eltern-E-Mail und Eltern-Zugangscode eingeben.")
-      return
-    }
-
-    if (!isValidPin(accessCode)) {
-      alert(PIN_REQUIREMENTS_MESSAGE)
+      alert("Bitte Eltern-E-Mail und Eltern-Passwort eingeben.")
       return
     }
 
@@ -634,13 +697,58 @@ export default function MemberAreaPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>PIN</Label>
-                    <PasswordInput value={memberAreaPin} onChange={(event) => setMemberAreaPin(event.target.value)} placeholder="6 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                    <Label>Passwort</Label>
+                    <PasswordInput value={memberAreaPin} onChange={(event) => setMemberAreaPin(event.target.value)} placeholder="Passwort" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                   </div>
 
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    Hinweis: {PIN_REQUIREMENTS_MESSAGE}
+                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+                    <span>Passwort vergessen? Reset funktioniert nur mit bestätigter E-Mail-Adresse.</span>
+                    <Link href="/mein-bereich/passwort-zuruecksetzen" className="font-medium text-[#154c83] underline underline-offset-4">
+                      Per E-Mail neu setzen
+                    </Link>
                   </div>
+
+                  {privacyConsentRequired ? (
+                    <div className="space-y-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-900">
+                      <div className="font-semibold">Datenschutzerklärung erforderlich</div>
+                      <p>
+                        Für dieses Mitglied fehlt noch die Bestätigung der Datenschutzerklärung. Bitte hier
+                        bestätigen, damit der Mitgliederbereich geöffnet werden kann.
+                      </p>
+                      <label className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm text-zinc-700">
+                        <input
+                          type="checkbox"
+                          checked={privacyAccepted}
+                          onChange={(event) => {
+                            setPrivacyAccepted(event.target.checked)
+                            if (event.target.checked) {
+                              setPrivacyError("")
+                            }
+                          }}
+                          className="mt-1 h-4 w-4 rounded border-zinc-300 text-[#154c83]"
+                        />
+                        <span>
+                          Ich akzeptiere die{" "}
+                          <Link href="/datenschutz" className="font-medium text-[#154c83] underline underline-offset-4">
+                            Datenschutzerklärung
+                          </Link>
+                        </span>
+                      </label>
+                      {privacyError ? <div className="text-sm text-red-700">{privacyError}</div> : null}
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          type="button"
+                          className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                          disabled={memberAreaLoading}
+                          onClick={() => {
+                            void acceptPrivacyConsent()
+                          }}
+                        >
+                          {memberAreaLoading ? "Speichert..." : "Datenschutz akzeptieren und fortfahren"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="flex flex-wrap gap-3">
                     <Button type="submit" className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]">
@@ -686,6 +794,15 @@ export default function MemberAreaPage() {
                   <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
                     Stammgruppe: <span className="font-semibold">{memberAreaData.base_group || "Nicht festgelegt"}</span>
                     {baseGroupPosition ? <> · Position in deiner Gruppe diesen Monat: <span className="font-semibold">{baseGroupPosition}</span></> : null}
+                  </div>
+
+                  <div className={getOfficeListStatusPanelClass(memberAreaData.office_list_status)}>
+                    <div className="font-semibold text-zinc-900">GS-Abgleich</div>
+                    <div className="mt-1">{getOfficeListStatusMessage(memberAreaData.office_list_status)}</div>
+                    <div className="mt-1 text-xs">
+                      Letzter GS-Abgleich: {memberAreaData.office_list_checked_at ? formatDisplayDate(new Date(memberAreaData.office_list_checked_at)) : "—"}
+                      {memberAreaData.office_list_group ? ` · ${memberAreaData.office_list_group}` : ""}
+                    </div>
                   </div>
 
                   <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
@@ -907,7 +1024,7 @@ export default function MemberAreaPage() {
                           <div className={getMedicalExamStatus(memberAreaData.last_medical_exam_date).boxClass}>
                             <div className="font-semibold text-zinc-900">Ärztliche Untersuchung</div>
                             <div className="mt-1">
-                              Letztes Datum: {memberAreaData.last_medical_exam_date ? formatGermanDate(new Date(`${memberAreaData.last_medical_exam_date}T12:00:00`)) : "—"}
+                              Letztes Datum: {formatIsoDateForDisplay(memberAreaData.last_medical_exam_date) || "—"}
                             </div>
                             <div className="mt-1">{getMedicalExamStatus(memberAreaData.last_medical_exam_date).message}</div>
                           </div>
@@ -1035,13 +1152,13 @@ export default function MemberAreaPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Eltern-Zugangscode</Label>
-                      <Input value={parentAccessCode} onChange={(event) => setParentAccessCode(event.target.value)} placeholder="Beim ersten Öffnen neu festlegen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                      <Label>Eltern-Passwort</Label>
+                      <PasswordInput value={parentAccessCode} onChange={(event) => setParentAccessCode(event.target.value)} placeholder="Beim ersten Öffnen neu festlegen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                     </div>
                   </div>
 
                   <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
-                    Beim ersten Öffnen: Eltern-E-Mail eingeben, Vor- und Nachname des Elternteils angeben und den eigenen Zugangscode festlegen.
+                    Beim ersten Öffnen: Eltern-E-Mail eingeben, Vor- und Nachname des Elternteils angeben und das eigene Passwort festlegen. Bestehende Passwörter bleiben weiterhin gültig.
                   </div>
 
                   <div className="flex flex-wrap gap-3">
@@ -1105,7 +1222,7 @@ export default function MemberAreaPage() {
                                   <div className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(child)}</div>
                                 </div>
                                 <div className="mt-1 text-sm text-zinc-500">
-                                  {child.birthdate || "Geburtsdatum offen"}
+                                  {formatIsoDateForDisplay(child.birthdate) || "Geburtsdatum offen"}
                                   {age !== null ? ` · ${age} Jahre` : ""}
                                   {child.base_group ? ` · ${child.base_group}` : ""}
                                 </div>

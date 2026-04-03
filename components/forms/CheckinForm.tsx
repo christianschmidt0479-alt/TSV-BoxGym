@@ -298,11 +298,11 @@ export function CheckinForm({
 
           {type === "member" && (
             <FormInput
-              label="PIN"
+              label="Passwort"
               name="pin"
               value={pin}
               onChange={setPin}
-              placeholder="z. B. A3X9Q1"
+              placeholder="Passwort eingeben"
               required
               validator={validatePin}
               showValidation={!!validationErrors.pin}

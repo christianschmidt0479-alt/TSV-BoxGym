@@ -116,7 +116,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as MemberFastCheckinBody
     const token = body.token?.trim() || readMemberDeviceTokenFromHeaders(request) || ""
     if (!token) {
-      const response = new NextResponse("Geraet wurde nicht erkannt. Bitte normal einchecken.", { status: 400 })
+      const response = new NextResponse("Gerät wurde nicht erkannt. Bitte normal einchecken.", { status: 400 })
       return clearMemberDeviceCookie(response)
     }
 
@@ -140,23 +140,23 @@ export async function POST(request: Request) {
     const selectedSession = todaysSessions.find((session) => session.id === body.sessionId) ?? null
 
     if (!selectedSession) {
-      return new NextResponse("Bitte eine Trainingsgruppe auswaehlen.", { status: 400 })
+      return new NextResponse("Bitte eine Trainingsgruppe auswählen.", { status: 400 })
     }
 
     const checkinSettings = await readCheckinSettings()
     if (!checkinSettings.disableCheckinTimeWindow && !isSessionOpenForCheckin(selectedSession, now)) {
-      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.", { status: 400 })
+      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
     }
 
     if (member.is_competition_member) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
-        return new NextResponse("Bitte fuer Wettkaempfer ein aktuelles Gewicht ueber 30 kg angeben.", { status: 400 })
+        return new NextResponse("Bitte für Wettkämpfer ein aktuelles Gewicht über 30 kg angeben.", { status: 400 })
       }
     }
 
     if (!member.email_verified) {
-      return new NextResponse("E-Mail noch nicht bestaetigt. Bitte zuerst den Bestaetigungslink oeffnen.", { status: 400 })
+      return new NextResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink öffnen.", { status: 400 })
     }
 
     const { data: existingMemberCheckins, error: existingMemberCheckinsError } = await supabase
@@ -169,11 +169,11 @@ export async function POST(request: Request) {
     const existingCheckinCount = existingMemberCheckins?.length ?? 0
 
     if (member.is_trial && existingCheckinCount >= 3) {
-      return new NextResponse("Probemitglieder koennen maximal 3 Trainingseinheiten absolvieren.", { status: 400 })
+      return new NextResponse("Probemitglieder können maximal 3 Trainingseinheiten absolvieren.", { status: 400 })
     }
 
     if (!member.is_trial && !member.is_approved && existingCheckinCount >= 6) {
-      return new NextResponse("Ohne Admin-Freigabe sind maximal 6 Trainingseinheiten moeglich. Bitte Trainer oder Admin ansprechen.", { status: 400 })
+      return new NextResponse("Ohne Admin-Freigabe sind maximal 6 Trainingseinheiten möglich. Bitte Trainer oder Admin ansprechen.", { status: 400 })
     }
 
     await createCheckin({

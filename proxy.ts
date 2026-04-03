@@ -20,6 +20,14 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const session = await readTrainerSessionFromRequest(request)
 
+  if (pathname.startsWith("/api/admin")) {
+    if (!session || session.accountRole !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    return NextResponse.next()
+  }
+
   if (pathname.startsWith("/trainer")) {
     if (!session) {
       return NextResponse.redirect(new URL("/trainer-zugang", request.url))
@@ -41,5 +49,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/trainer/:path*", "/verwaltung/:path*"],
+  matcher: ["/api/admin/:path*", "/trainer/:path*", "/verwaltung/:path*"],
 }

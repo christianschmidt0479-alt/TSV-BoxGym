@@ -9,7 +9,7 @@ import { ArrowRight, Lock, ShieldCheck, UserRoundPlus, Users } from "lucide-reac
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { formatDisplayDate } from "@/lib/utils"
+import { formatDisplayDate, formatDisplayWeekday } from "@/lib/dateFormat"
 
 const brand = {
   dark: "bg-[#0f2740]",
@@ -165,21 +165,21 @@ export default function Home() {
     {
       href: "/mein-bereich",
       title: "Onlinebereich Boxen",
-      description: "Zugang nur fuer Boxmitglieder",
+      description: "Zugang nur für Boxmitglieder",
       icon: Users,
       accentClass: "bg-[#154c83] text-white",
     },
     {
       href: "/mitglied-registrieren",
       title: "Registrierung Onlinebereich Boxen",
-      description: "Registrierung fuer den Onlinebereich Boxen.",
+      description: "Registrierung für den Onlinebereich Boxen.",
       icon: UserRoundPlus,
       accentClass: "bg-[#154c83] text-white",
     },
     {
       href: "/trainer",
       title: "Trainerzugang",
-      description: "Nur fuer Trainer",
+      description: "Nur für Trainer",
       icon: Lock,
       accentClass: "bg-white text-[#154c83] border border-[#d8e3ee]",
     },
@@ -201,7 +201,7 @@ export default function Home() {
     {
       id: "live",
       label: "Laufende Einheit",
-      value: currentSession ? `laeuft · ${currentSession.name}` : "—",
+      value: currentSession ? `läuft · ${currentSession.name}` : "—",
     },
     {
       id: "next",
@@ -216,7 +216,7 @@ export default function Home() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] bg-white p-3 shadow-sm">
           <div className="rounded-2xl bg-[#154c83] px-4 py-2 text-sm font-semibold text-white">Startseite</div>
           <div className="flex items-center gap-2 text-sm text-zinc-600">
-            <span className="capitalize">{now ? now.toLocaleDateString("de-DE", { weekday: "long" }) : "—"}</span>
+            <span className="capitalize">{now ? formatDisplayWeekday(now) : "—"}</span>
             <span>·</span>
             <span>{liveDateString(now)}</span>
             <span>·</span>
@@ -292,7 +292,7 @@ export default function Home() {
                         <div className="mt-1 break-words text-xs leading-4 text-zinc-500">{card.description}</div>
                       </div>
                     </div>
-                    <ArrowRight className="h-5 w-5 shrink-0 self-center text-zinc-400" />
+                     <ArrowRight className="h-5 w-5 shrink-0 self-center text-zinc-400" />
                   </div>
                 </Link>
               </Button>

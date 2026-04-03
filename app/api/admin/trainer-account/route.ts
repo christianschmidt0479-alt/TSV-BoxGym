@@ -6,9 +6,9 @@ import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { createTrainerAccount, type TrainerLicense } from "@/lib/trainerDb"
 import { validateEmail } from "@/lib/formValidation"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
-import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { isTrainerPinCompliant, TRAINER_PIN_REQUIREMENTS_MESSAGE } from "@/lib/trainerPin"
 import { normalizeTrainerLicense } from "@/lib/trainerLicense"
 
 type AdminTrainerAccountBody = {
@@ -52,20 +52,20 @@ export async function POST(request: Request) {
     const linkedMemberId = body.linkedMemberId?.trim() || null
 
     if (!firstName || !lastName || !email || !pin) {
-      return new NextResponse("Bitte alle Felder fuer das Trainerkonto ausfuellen.", { status: 400 })
+      return new NextResponse("Bitte alle Felder für das Trainerkonto ausfüllen.", { status: 400 })
     }
 
     const emailValidation = validateEmail(email)
     if (!emailValidation.valid) {
-      return new NextResponse(emailValidation.error || "Bitte eine gueltige E-Mail-Adresse eingeben.", { status: 400 })
+      return new NextResponse(emailValidation.error || "Bitte eine gültige E-Mail-Adresse eingeben.", { status: 400 })
     }
 
-    if (!isValidPin(pin)) {
-      return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+    if (!isTrainerPinCompliant(pin)) {
+      return new NextResponse(TRAINER_PIN_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
     if (trainerLicenseInput && !trainerLicense) {
-      return new NextResponse("Ungueltige Trainerlizenz.", { status: 400 })
+      return new NextResponse("Ungültige Trainerlizenz.", { status: 400 })
     }
 
     const verificationToken = randomUUID()
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!data) {
-        return new NextResponse("Verknuepftes Mitglied nicht gefunden.", { status: 404 })
+        return new NextResponse("Verknüpftes Mitglied nicht gefunden.", { status: 404 })
       }
 
       linkedMember = data
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
     }
 
     if (linkedMember?.email?.trim() && linkedMember.email.trim().toLowerCase() !== email) {
-      return new NextResponse("Mitgliedsverknuepfung passt nicht zur E-Mail-Adresse.", { status: 400 })
+      return new NextResponse("Mitgliedsverknüpfung passt nicht zur E-Mail-Adresse.", { status: 400 })
     }
 
     const trainerAccount = await createTrainerAccount({
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       targetType: "trainer",
       targetId: trainerAccount.id,
       targetName: `${firstName} ${lastName}`.trim(),
-      details: `E-Mail: ${email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${linkedMember?.id ? `, Mitglied verknuepft` : ""}`,
+      details: `E-Mail: ${email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${linkedMember?.id ? `, Mitglied verknüpft` : ""}`,
     })
 
     const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL

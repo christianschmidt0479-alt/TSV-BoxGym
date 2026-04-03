@@ -1,9 +1,12 @@
-import { supabase } from "./supabaseClient"
+import { createServerSupabaseServiceClient, hasSupabaseServiceRoleKey } from "./serverSupabase"
+import { supabase as anonSupabase } from "./supabaseClient"
 import { trainerLicenseOptions, type TrainerLicense } from "./trainerLicense"
 import { hashTrainerPin } from "./trainerPin"
 import { isInternalTrainerTestEmail } from "./trainerAdmin"
 export { trainerLicenseOptions }
 export type { TrainerLicense }
+
+const supabase = hasSupabaseServiceRoleKey() ? createServerSupabaseServiceClient() : anonSupabase
 
 type SupabaseErrorLike = {
   code?: string
@@ -254,13 +257,8 @@ export async function linkTrainerAccountToMember(id: string, memberId: string | 
 }
 
 export async function updateTrainerAccountPin(id: string, pin: string) {
-  const { data, error } = await supabase
-    .from("trainer_accounts")
-    .update({ password_hash: await hashTrainerPin(pin) })
-    .eq("id", id)
-    .select(TRAINER_ACCOUNT_SAFE_SELECT)
-    .single()
+  const nextPasswordHash = await hashTrainerPin(pin)
+  const { error } = await supabase.from("trainer_accounts").update({ password_hash: nextPasswordHash }).eq("id", id)
 
   if (error) throw error
-  return data as TrainerAccountRecord
 }

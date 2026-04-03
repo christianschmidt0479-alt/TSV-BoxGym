@@ -12,7 +12,8 @@ import { InfoHint } from "@/components/ui/info-hint"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
-import { isValidPin, PIN_HINT, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
+import { formatDisplayDate, formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { isValidMemberPassword, MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
 export type ProfileSection = "wettkampf" | "gewicht" | "einstellungen"
 
 type CheckinRow = {
@@ -99,10 +100,6 @@ function getCompetitionAgeClassBadgeClass(birthdate?: string) {
   return "border-zinc-300 bg-zinc-200 text-zinc-800"
 }
 
-function formatGermanDate(date: Date) {
-  return date.toLocaleDateString("de-DE")
-}
-
 function getMedicalExamStatus(dateString: string | null | undefined) {
   if (!dateString) {
     return {
@@ -123,20 +120,20 @@ function getMedicalExamStatus(dateString: string | null | undefined) {
   if (daysUntilExpiry < 0) {
     return {
       boxClass: "rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800",
-      message: `Abgelaufen seit ${Math.abs(daysUntilExpiry)} Tagen. Gültig war bis einschließlich ${formatGermanDate(expiryDate)}.`,
+      message: `Abgelaufen seit ${Math.abs(daysUntilExpiry)} Tagen. Gültig war bis einschließlich ${formatDisplayDate(expiryDate)}.`,
     }
   }
 
   if (daysUntilExpiry <= 30) {
     return {
       boxClass: "rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800",
-      message: `Läuft in ${daysUntilExpiry} Tagen ab. Gültig bis einschließlich ${formatGermanDate(expiryDate)}.`,
+      message: `Läuft in ${daysUntilExpiry} Tagen ab. Gültig bis einschließlich ${formatDisplayDate(expiryDate)}.`,
     }
   }
 
   return {
     boxClass: "rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800",
-    message: `Gültig bis einschließlich ${formatGermanDate(expiryDate)}.`,
+    message: `Gültig bis einschließlich ${formatDisplayDate(expiryDate)}.`,
   }
 }
 
@@ -144,6 +141,8 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState("")
+  const [redirectToLoginAfterSave, setRedirectToLoginAfterSave] = useState(false)
   const [memberAreaEmail, setMemberAreaEmail] = useState("")
   const [memberAreaData, setMemberAreaData] = useState<MemberRecord | null>(null)
   const [profileEmail, setProfileEmail] = useState("")
@@ -188,6 +187,33 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
       }
     })()
   }, [router])
+
+  useEffect(() => {
+    if (!redirectToLoginAfterSave) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          await fetch("/api/public/member-area", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "logout_member_session" }),
+          })
+        } catch (error) {
+          console.error(error)
+        } finally {
+          router.replace("/mein-bereich")
+          router.refresh()
+        }
+      })()
+    }, 1800)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [redirectToLoginAfterSave, router])
 
   const competitionWeightRows = memberAttendanceRows.filter((row) => typeof row.weight === "number")
 
@@ -304,6 +330,8 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                       className="space-y-4"
                       onSubmit={(event) => {
                         event.preventDefault()
+                        setSaveMessage("")
+                        setRedirectToLoginAfterSave(false)
 
                         if (!memberAreaData.id) return
                         if (!profileEmail.trim()) {
@@ -313,13 +341,13 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
 
                         const trimmedNewPin = newMemberPin.trim()
                         if (trimmedNewPin || confirmNewMemberPin.trim()) {
-                          if (!isValidPin(trimmedNewPin)) {
-                            alert(PIN_REQUIREMENTS_MESSAGE)
+                          if (!isValidMemberPassword(trimmedNewPin)) {
+                            alert(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE)
                             return
                           }
 
                           if (trimmedNewPin !== confirmNewMemberPin.trim()) {
-                            alert("Die beiden Zugangscodes stimmen nicht überein.")
+                            alert("Die beiden Passwörter stimmen nicht überein.")
                             return
                           }
                         }
@@ -336,7 +364,7 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                                 email: profileEmail.trim(),
                                 phone: profilePhone.trim(),
                                 loginEmail: memberAreaEmail.trim().toLowerCase(),
-                                newPin: trimmedNewPin,
+                                newPassword: trimmedNewPin,
                               }),
                             })
 
@@ -352,8 +380,11 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                             if (trimmedNewPin) {
                               setNewMemberPin("")
                               setConfirmNewMemberPin("")
+                              setSaveMessage("Dein Passwort wurde aktualisiert. Du wirst gleich zum Mitglieder-Login weitergeleitet.")
+                              setRedirectToLoginAfterSave(true)
+                              return
                             }
-                            alert("Kontaktdaten gespeichert.")
+                            setSaveMessage("Kontaktdaten gespeichert.")
                           } catch (error) {
                             console.error(error)
                             alert("Fehler beim Speichern der Kontaktdaten.")
@@ -363,6 +394,8 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                         })()
                       }}
                     >
+                      {saveMessage ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{saveMessage}</div> : null}
+
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                           <Label>E-Mail</Label>
@@ -374,18 +407,18 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                           <Input value={profilePhone} onChange={(event) => setProfilePhone(event.target.value)} placeholder="Telefonnummer" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                         </div>
                         <div className="space-y-2">
-                          <Label>Neuer Zugangscode</Label>
-                          <PasswordInput value={newMemberPin} onChange={(event) => setNewMemberPin(event.target.value)} placeholder="6 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                          <div className="text-xs text-zinc-500">{PIN_HINT}</div>
+                          <Label>Neues Passwort</Label>
+                          <PasswordInput value={newMemberPin} onChange={(event) => setNewMemberPin(event.target.value)} placeholder="Neues Passwort" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                          <div className="text-xs text-zinc-500">{MEMBER_PASSWORD_HINT}</div>
                         </div>
                         <div className="space-y-2">
-                          <Label>Zugangscode wiederholen</Label>
-                          <PasswordInput value={confirmNewMemberPin} onChange={(event) => setConfirmNewMemberPin(event.target.value)} placeholder="6 bis 16 Zeichen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                          <Label>Passwort wiederholen</Label>
+                          <PasswordInput value={confirmNewMemberPin} onChange={(event) => setConfirmNewMemberPin(event.target.value)} placeholder="Passwort wiederholen" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                         </div>
                       </div>
 
                       <Button type="submit" disabled={saving} className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]">
-                        {saving ? "Speichert..." : "Kontaktdaten speichern"}
+                        {saving ? "Speichert..." : newMemberPin.trim() || confirmNewMemberPin.trim() ? "Speichern und neu anmelden" : "Kontaktdaten speichern"}
                       </Button>
                     </form>
                   </div>
@@ -435,7 +468,7 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                     <div className={getMedicalExamStatus(memberAreaData.last_medical_exam_date).boxClass}>
                       <div className="font-semibold text-zinc-900">Ärztliche Untersuchung</div>
                       <div className="mt-1">
-                        Letztes Datum: {memberAreaData.last_medical_exam_date ? formatGermanDate(new Date(`${memberAreaData.last_medical_exam_date}T12:00:00`)) : "—"}
+                        Letztes Datum: {formatIsoDateForDisplay(memberAreaData.last_medical_exam_date) || "—"}
                       </div>
                       <div className="mt-1">{getMedicalExamStatus(memberAreaData.last_medical_exam_date).message}</div>
                     </div>

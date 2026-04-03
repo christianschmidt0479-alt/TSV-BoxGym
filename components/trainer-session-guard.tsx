@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { clearTrainerAccess, clearTrainerAccessSession, persistTrainerAccess, readTrainerAccess, TRAINER_SESSION_MAX_AGE_MS } from "@/lib/trainerAccess"
+import { clearTrainerAccess, clearTrainerAccessSession, persistTrainerAccess, readTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "mousemove", "scroll", "touchstart"]

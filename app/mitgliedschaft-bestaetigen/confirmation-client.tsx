@@ -18,14 +18,13 @@ type Props = {
 
 export function GsMembershipConfirmationClient({ token, decision }: Props) {
   const [state, setState] = useState<ConfirmationState>({ status: "loading" })
+  const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null
+  const resolvedToken = token?.trim() || params?.get("token")?.trim() || ""
+  const resolvedDecision = normalizeGsMembershipDecision(decision || params?.get("entscheidung") || params?.get("decision") || "ja")
+  const requestIsValid = Boolean(resolvedToken && resolvedDecision)
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const resolvedToken = token?.trim() || params.get("token")?.trim() || ""
-    const resolvedDecision = normalizeGsMembershipDecision(decision || params.get("entscheidung") || params.get("decision") || "ja")
-
-    if (!resolvedToken || !resolvedDecision) {
-      setState({ status: "error", message: "Bestätigungslink fehlt oder ist ungültig." })
+    if (!requestIsValid || !resolvedDecision) {
       return
     }
 
@@ -48,15 +47,16 @@ export function GsMembershipConfirmationClient({ token, decision }: Props) {
 
         setState({
           status: "success",
-          decision: normalizeGsMembershipDecision(payload?.decision) || resolvedDecision,
+          decision: normalizeGsMembershipDecision(payload?.decision) ?? resolvedDecision,
           alreadyProcessed: !!payload?.alreadyProcessed,
         })
       } catch {
         setState({ status: "error", message: "Bestätigung fehlgeschlagen." })
       }
     })()
-  }, [decision, token])
+  }, [requestIsValid, resolvedDecision, resolvedToken])
 
+  const isInvalidRequest = !requestIsValid
   const isNegative = state.status === "success" && state.decision === "nein"
 
   return (
@@ -66,7 +66,12 @@ export function GsMembershipConfirmationClient({ token, decision }: Props) {
           <CardTitle>Mitgliedschaft rückmelden</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {state.status === "loading" ? <div className="text-sm text-zinc-600">Rückmeldung wird verarbeitet...</div> : null}
+          {isInvalidRequest ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              Bestätigungslink fehlt oder ist ungültig.
+            </div>
+          ) : null}
+          {state.status === "loading" && !isInvalidRequest ? <div className="text-sm text-zinc-600">Rückmeldung wird verarbeitet...</div> : null}
           {state.status === "success" ? (
             <div
               className={
@@ -84,7 +89,7 @@ export function GsMembershipConfirmationClient({ token, decision }: Props) {
                   : "Die Mitgliedschaft wurde als nicht vorhanden markiert. Im Adminbereich wird der Freigeben-Button jetzt rot angezeigt."}
             </div>
           ) : null}
-          {state.status === "error" ? (
+          {state.status === "error" && !isInvalidRequest ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{state.message}</div>
           ) : null}
           <Button asChild className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]">

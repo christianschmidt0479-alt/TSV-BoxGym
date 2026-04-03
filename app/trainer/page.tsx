@@ -10,16 +10,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GroupFilterBar } from "@/components/group-filter-bar"
 import { InfoHint } from "@/components/ui/info-hint"
 import { groupOptions, sessions } from "@/lib/boxgymSessions"
+import { formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { clearTrainerAccessSession } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type CheckinRow = {
   id: string
+  member_id?: string
   group_name: string
   date: string
   members?: {
     is_trial?: boolean
+    name?: string
+    first_name?: string
+    last_name?: string
+    birthdate?: string
   } | null
 }
 
@@ -27,6 +33,23 @@ type MemberRow = {
   id: string
   base_group?: string | null
   needs_trainer_assist_checkin?: boolean | null
+}
+
+type TodayBirthdayRow = {
+  id: string
+  display_name: string
+  birthdate: string
+  base_group: string | null
+  turning_age: number
+}
+
+type BirthdayCheckinRow = {
+  id: string
+  member_id: string
+  group_name: string
+  display_name: string
+  birthdate: string
+  turning_age: number
 }
 
 type ActionLink = {
@@ -168,6 +191,8 @@ export default function TrainerDashboardPage() {
   } = useTrainerAccess()
   const [loading, setLoading] = useState(true)
   const [todayCheckins, setTodayCheckins] = useState<CheckinRow[]>([])
+  const [todayBirthdays, setTodayBirthdays] = useState<TodayBirthdayRow[]>([])
+  const [birthdayCheckins, setBirthdayCheckins] = useState<BirthdayCheckinRow[]>([])
   const [memberRows, setMemberRows] = useState<MemberRow[]>([])
   const [now, setNow] = useState<Date | null>(null)
   const [selectedGroup, setSelectedGroup] = useState("alle")
@@ -199,10 +224,14 @@ export default function TrainerDashboardPage() {
 
         const payload = (await response.json()) as {
           todayCheckins: CheckinRow[]
+          todayBirthdays: TodayBirthdayRow[]
+          birthdayCheckins: BirthdayCheckinRow[]
           memberRows: MemberRow[]
         }
 
         setTodayCheckins(payload.todayCheckins ?? [])
+        setTodayBirthdays(payload.todayBirthdays ?? [])
+        setBirthdayCheckins(payload.birthdayCheckins ?? [])
         setMemberRows(payload.memberRows ?? [])
       } finally {
         setLoading(false)
@@ -263,6 +292,28 @@ export default function TrainerDashboardPage() {
     if (selectedGroup === "alle") return memberRows
     return memberRows.filter((member) => (normalizeTrainingGroup(member.base_group) || member.base_group) === selectedGroup)
   }, [memberRows, selectedGroup])
+
+  const filteredBirthdayCheckins = useMemo(() => {
+    if (selectedGroup === "alle") return birthdayCheckins
+    return birthdayCheckins.filter((row) => row.group_name === selectedGroup)
+  }, [birthdayCheckins, selectedGroup])
+
+  const filteredTodayBirthdays = useMemo(() => {
+    if (selectedGroup === "alle") return todayBirthdays
+    return todayBirthdays.filter((row) => row.base_group === selectedGroup)
+  }, [selectedGroup, todayBirthdays])
+
+  const birthdayCheckinMemberIds = useMemo(() => {
+    return new Set(filteredBirthdayCheckins.map((row) => row.member_id))
+  }, [filteredBirthdayCheckins])
+
+  const pendingTodayBirthdays = useMemo(() => {
+    return filteredTodayBirthdays.filter((entry) => !birthdayCheckinMemberIds.has(entry.id))
+  }, [birthdayCheckinMemberIds, filteredTodayBirthdays])
+
+  const checkedInTodayBirthdays = useMemo(() => {
+    return filteredTodayBirthdays.filter((entry) => birthdayCheckinMemberIds.has(entry.id))
+  }, [birthdayCheckinMemberIds, filteredTodayBirthdays])
 
   const filteredActiveSession = useMemo(() => {
     if (selectedGroup === "alle") return activeSession
@@ -367,6 +418,12 @@ export default function TrainerDashboardPage() {
         adminOnly: true,
       },
       {
+        href: "/verwaltung/geburtstage",
+        title: "Geburtstage",
+        description: "Kommende und vergangene Geburtstage schnell prüfen.",
+        adminOnly: true,
+      },
+      {
         href: "/checkin/probetraining",
         title: "Probetraining starten",
         description: "Direkt ein neues Probetraining anmelden.",
@@ -438,6 +495,42 @@ export default function TrainerDashboardPage() {
           <p className="text-sm text-zinc-500">Die wichtigsten Werte für heute, kompakt und direkt lesbar.</p>
         </div>
 
+        {filteredTodayBirthdays.length > 0 ? (
+          <Card className="rounded-[24px] border-0 shadow-sm">
+            <CardHeader className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle>Heute Geburtstag</CardTitle>
+                <Badge tone="amber">{filteredTodayBirthdays.length}</Badge>
+                {checkedInTodayBirthdays.length > 0 ? <Badge tone="emerald">{`${checkedInTodayBirthdays.length} schon da`}</Badge> : null}
+                {pendingTodayBirthdays.length > 0 ? <Badge>{`${pendingTodayBirthdays.length} noch offen`}</Badge> : null}
+                <Badge tone="blue">{selectedGroup === "alle" ? "Alle Gruppen" : selectedGroup}</Badge>
+              </div>
+              <div className="text-sm text-zinc-500">
+                Dieser Hinweis erscheint direkt beim Login. Pro Karte ist sichtbar, ob das Geburtstagskind heute schon eingecheckt hat.
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {filteredTodayBirthdays.map((entry) => (
+                <div key={entry.id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold">{entry.display_name}</div>
+                      <div className="mt-1 text-sm text-amber-900">
+                        {formatIsoDateForDisplay(entry.birthdate) || "Geburtsdatum offen"}
+                        {entry.base_group ? ` · ${entry.base_group}` : ""}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Badge tone="amber">{`Heute ${entry.turning_age}`}</Badge>
+                      {birthdayCheckinMemberIds.has(entry.id) ? <Badge tone="emerald">Eingecheckt</Badge> : <Badge>Noch nicht da</Badge>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
+
         <Card className="rounded-[24px] border-0 shadow-sm">
           <CardContent className="p-5">
             <GroupFilterBar
@@ -482,6 +575,39 @@ export default function TrainerDashboardPage() {
           <h2 className="text-lg font-semibold text-zinc-900">Laufender Betrieb</h2>
           <p className="text-sm text-zinc-500">Heutige Check-ins und offene Punkte als ruhige Kartenansicht.</p>
         </div>
+
+        {filteredBirthdayCheckins.length > 0 ? (
+          <Card className="rounded-[24px] border-0 shadow-sm">
+            <CardHeader className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle>Heute Geburtstag und eingecheckt</CardTitle>
+                <Badge tone="amber">{filteredBirthdayCheckins.length}</Badge>
+                <Badge tone="blue">{selectedGroup === "alle" ? "Alle Gruppen" : selectedGroup}</Badge>
+              </div>
+              <div className="text-sm text-zinc-500">
+                Diese Liste zeigt nur Geburtstagskinder, die heute bereits erfolgreich eingecheckt wurden.
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {filteredBirthdayCheckins.map((entry) => (
+                <div key={entry.member_id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold">{entry.display_name}</div>
+                      <div className="mt-1 text-sm text-amber-900">
+                        {formatIsoDateForDisplay(entry.birthdate) || "Geburtsdatum offen"} · {entry.group_name}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Badge tone="amber">{`Heute ${entry.turning_age}`}</Badge>
+                      <Badge tone="emerald">Eingecheckt</Badge>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
 
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <Card className="rounded-[24px] border-0 shadow-sm">

@@ -156,7 +156,7 @@ ${link}
 Hinweise:
 - Bitte öffnet den Link und meldet euch mit eurer Eltern-E-Mail-Adresse an.
 - Beim ersten Öffnen gebt bitte Vorname und Nachname des Elternteils an.
-- Danach legt ihr euren eigenen Eltern-Zugangscode fest.
+- Danach legt ihr euer eigenes Eltern-Passwort fest.
 - Im Elternbereich seht ihr alle angelegten Kinder gemeinsam in einem Familienkonto.
 - Falls sich eure Kontaktdaten geändert haben, gebt uns bitte kurz Bescheid.
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { getPendingAdminNotifications, markAdminNotificationsSent } from "@/lib/adminDigestDb"
+import { formatDisplayDate } from "@/lib/dateFormat"
 import { enqueueMedicalExamReminderMails } from "@/lib/medicalExamReminderDb"
 import { isManualParentMailRecord } from "@/lib/manualParentMailOutboxDb"
 import { getPendingOutgoingMails, markOutgoingMailsSent } from "@/lib/outgoingMailQueueDb"
@@ -52,10 +53,7 @@ function getBatchKey(date = new Date()) {
 }
 
 function getDateLabel(date = new Date()) {
-  return new Intl.DateTimeFormat("de-DE", {
-    timeZone: "Europe/Berlin",
-    dateStyle: "full",
-  }).format(date)
+  return formatDisplayDate(date, { timeZone: "Europe/Berlin" })
 }
 
 function getDueDateFromContextKey(contextKey: string | null) {

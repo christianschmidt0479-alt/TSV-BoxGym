@@ -44,10 +44,6 @@ function getDayKey(dateString: string) {
   }
 }
 
-function isNowBetween(now: Date, start: Date, end: Date) {
-  return now.getTime() >= start.getTime() && now.getTime() < end.getTime()
-}
-
 export default function TrialCheckinPage() {
   const [now, setNow] = useState<Date | null>(null)
   const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
@@ -198,7 +194,7 @@ export default function TrialCheckinPage() {
     }
 
     if (!checkinAllowed) {
-      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.")
+      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.")
       return
     }
 
@@ -307,7 +303,7 @@ export default function TrialCheckinPage() {
           <CardContent>
             {!checkinAllowed ? (
               <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                Check-in ist aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn moeglich.
+                Check-in ist aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.
               </div>
             ) : null}
 

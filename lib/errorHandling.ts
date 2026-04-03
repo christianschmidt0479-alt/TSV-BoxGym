@@ -119,9 +119,9 @@ export function normalizeError(error: unknown): AppError {
  * Error-Meldungen für häufige Szenarien
  */
 export const ErrorMessages = {
-  MEMBER_NOT_FOUND: "Mitglied nicht gefunden oder PIN nicht korrekt.",
+  MEMBER_NOT_FOUND: "Mitglied nicht gefunden oder Passwort nicht korrekt.",
   TRIAL_NOT_FOUND: "Probetraining-Datensatz nicht gefunden.",
-  INVALID_PIN: "PIN nicht korrekt. Bitte erneut versuchen.",
+  INVALID_PIN: "Passwort nicht korrekt. Bitte erneut versuchen.",
   EMAIL_NOT_VERIFIED: "E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungs-Link öffnen.",
   NOT_APPROVED: "Dein Konto wurde noch nicht freigegeben. Bitte Trainer oder Admin fragen.",
   TRIAL_LIMIT_EXCEEDED: "Probetraining abgeschlossen. Du hast bereits 3 Trainingseinheiten besucht.",

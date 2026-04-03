@@ -6,6 +6,12 @@ const distributedRateLimitPrefix = process.env.RATE_LIMIT_PREFIX?.trim() || "tsv
 let didWarnPartialDistributedConfig = false
 let didWarnStrictRateLimitMode = false
 
+type SanitizeTextOptions = {
+  trim?: boolean
+  lowercase?: boolean
+  maxLength?: number
+}
+
 function normalizeOrigin(value: string) {
   return value.replace(/\/+$/, "").toLowerCase()
 }
@@ -55,6 +61,29 @@ function unavailableRateLimitResult(windowMs: number) {
 
 function unavailableLoginLockState(windowMs = 15 * 60 * 1000) {
   return { blocked: true, retryAfterMs: windowMs, remainingAttempts: 0, unavailable: true }
+}
+
+export function sanitizeTextInput(value: unknown, options: SanitizeTextOptions = {}) {
+  if (typeof value !== "string") return ""
+
+  let normalized = options.trim === false ? value : value.trim()
+  if (options.lowercase) {
+    normalized = normalized.toLowerCase()
+  }
+
+  if (typeof options.maxLength === "number" && options.maxLength >= 0) {
+    normalized = normalized.slice(0, options.maxLength)
+  }
+
+  return normalized
+}
+
+export function isWithinMaxLength(value: string, maxLength: number) {
+  return value.length <= maxLength
+}
+
+export async function delayFailedLogin(ms = 500) {
+  await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function runDistributedPipeline(commands: Array<Array<string>>) {

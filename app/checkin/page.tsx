@@ -97,7 +97,7 @@ export default function CheckinLandingPage() {
       ? "Check-in offen"
       : "Check-in geschlossen"
   const statusDescription = disableCheckinTimeWindow
-    ? "Die 30-Minuten-Regel ist voruebergehend aufgehoben."
+    ? "Die 30-Minuten-Regel ist vorübergehend aufgehoben."
     : checkinEnabled
       ? "Check-ins sind im aktuellen Zeitfenster möglich."
       : "Aktuell ist kein Check-in-Zeitfenster aktiv."

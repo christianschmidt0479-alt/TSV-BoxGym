@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type MemberRow = {
@@ -219,7 +220,7 @@ export default function TrainerMitgliederPage() {
                     >
                       <div className="font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
                       <div className="mt-1 text-sm text-zinc-600">
-                        {member.birthdate || "Geburtsdatum offen"} · {member.base_group || "Keine Stammgruppe"}
+                        {formatIsoDateForDisplay(member.birthdate) || "Geburtsdatum offen"} · {member.base_group || "Keine Stammgruppe"}
                       </div>
                     </button>
                   )
@@ -243,7 +244,7 @@ export default function TrainerMitgliederPage() {
                 <div className="rounded-2xl border border-zinc-200 bg-white p-4">
                   <div className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(selectedMember)}</div>
                   <div className="mt-2 text-sm text-zinc-600">
-                    Geburtsdatum: {selectedMember.birthdate || "—"} · Stammgruppe: {selectedMember.base_group || "—"}
+                    Geburtsdatum: {formatIsoDateForDisplay(selectedMember.birthdate) || "—"} · Stammgruppe: {selectedMember.base_group || "—"}
                   </div>
                   <div className="mt-1 text-sm text-zinc-600">
                     Kontakt: {selectedMember.phone || "—"} · {selectedMember.email || "—"}

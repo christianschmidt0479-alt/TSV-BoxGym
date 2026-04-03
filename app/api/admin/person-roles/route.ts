@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
+import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
 import { isInternalTrainerTestEmail } from "@/lib/trainerAdmin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
@@ -251,13 +252,19 @@ export async function POST(request: Request) {
         .from("members")
         .update({ is_approved: true })
         .eq("id", memberId)
-        .select("id, name, first_name, last_name, email")
+        .select("id, name, first_name, last_name, email, email_verified")
         .maybeSingle()
 
       if (error) throw error
       if (!data) {
         return jsonError("Member not found", 404)
       }
+
+      await ensureMemberAuthUserLink({
+        memberId: data.id,
+        email: data.email,
+        emailVerified: Boolean(data.email_verified),
+      })
 
       await writeAdminAuditLog({
         session,

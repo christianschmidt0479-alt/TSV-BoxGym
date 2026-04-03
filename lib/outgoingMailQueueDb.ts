@@ -69,7 +69,7 @@ export async function enqueueOutgoingMail(input: {
   if (error) {
     if (isMissingTableError(error)) {
       throw new Error(
-        "Die Datenbank kennt den Mail-Ausgang noch nicht. Bitte fuehre zuerst supabase/outgoing_mail_queue.sql in Supabase aus."
+        "Die Datenbank kennt den Mail-Ausgang noch nicht. Bitte führe zuerst supabase/outgoing_mail_queue.sql in Supabase aus."
       )
     }
     throw error

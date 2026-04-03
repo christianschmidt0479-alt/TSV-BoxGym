@@ -11,9 +11,8 @@ import {
 import { findMemberByEmail } from "@/lib/boxgymDb"
 import { validateEmail } from "@/lib/formValidation"
 import { getAppBaseUrl } from "@/lib/mailConfig"
-import { isValidPin, PIN_REQUIREMENTS_MESSAGE } from "@/lib/pin"
 import { sendVerificationEmail } from "@/lib/resendClient"
-import { verifyTrainerPinHash } from "@/lib/trainerPin"
+import { isTrainerPinCompliant, TRAINER_PIN_REQUIREMENTS_MESSAGE, verifyTrainerPinHash } from "@/lib/trainerPin"
 
 type TrainerAccessBody =
   | {
@@ -37,7 +36,7 @@ type TrainerAccessBody =
 
 const TRAINER_VERIFY_PARAM = "trainer_verify"
 const EXISTING_TRAINER_ACCOUNT_MESSAGE =
-  "Fuer diese E-Mail-Adresse existiert bereits ein Trainerkonto oder eine laufende Registrierung. Bitte vorhandenen Zugang nutzen oder Admin ansprechen."
+  "Für diese E-Mail-Adresse existiert bereits ein Trainerkonto oder eine laufende Registrierung. Bitte vorhandenen Zugang nutzen oder Admin ansprechen."
 
 function generateEmailVerificationToken() {
   return randomUUID()
@@ -75,12 +74,12 @@ export async function POST(request: Request) {
     if (body.action === "verify_email") {
       const token = body.token?.trim() ?? ""
       if (!token) {
-        return new NextResponse("Trainer-Bestaetigungslink ungueltig oder bereits verwendet.", { status: 400 })
+        return new NextResponse("Trainer-Bestätigungslink ungültig oder bereits verwendet.", { status: 400 })
       }
 
       const data = await verifyTrainerEmail(token)
       if (!data) {
-        return new NextResponse("Trainer-Bestaetigungslink ungueltig oder bereits verwendet.", { status: 404 })
+        return new NextResponse("Trainer-Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
       }
 
       return NextResponse.json({ ok: true, email: data.email })
@@ -95,18 +94,18 @@ export async function POST(request: Request) {
 
       if (!firstName || !lastName || !email || !pin) {
         console.warn("[public trainer access] validation failed", { step: "validation", email })
-        return new NextResponse("Bitte alle Felder fuer die Trainerregistrierung ausfuellen.", { status: 400 })
+        return new NextResponse("Bitte alle Felder für die Trainerregistrierung ausfüllen.", { status: 400 })
       }
 
       const emailValidation = validateEmail(email)
       if (!emailValidation.valid) {
         console.warn("[public trainer access] validation failed", { step: "validation", email })
-        return new NextResponse(emailValidation.error || "Bitte gib eine gueltige E-Mail-Adresse ein.", { status: 400 })
+        return new NextResponse(emailValidation.error || "Bitte gib eine gültige E-Mail-Adresse ein.", { status: 400 })
       }
 
-      if (!isValidPin(pin)) {
+      if (!isTrainerPinCompliant(pin)) {
         console.warn("[public trainer access] validation failed", { step: "validation", email })
-        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+        return new NextResponse(TRAINER_PIN_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
       if (!phone) {
@@ -164,7 +163,7 @@ export async function POST(request: Request) {
         if (isMailDeliveryError(error)) {
           logTrainerAccessFailure(registerStep, error, { email })
           return new NextResponse(
-            "Trainerzugang angelegt, aber die Bestaetigungs-E-Mail konnte nicht versendet werden. Bitte Admin informieren.",
+            "Trainerzugang angelegt, aber die Bestätigungs-E-Mail konnte nicht versendet werden. Bitte Admin informieren.",
             { status: 502 }
           )
         }
@@ -182,11 +181,11 @@ export async function POST(request: Request) {
       const newPin = body.newPin?.trim() ?? ""
 
       if (!email || !currentPin || !newPin) {
-        return new NextResponse("Bitte E-Mail, aktuellen PIN und neuen PIN angeben.", { status: 400 })
+        return new NextResponse("Bitte E-Mail, aktuelles Passwort und neues Passwort angeben.", { status: 400 })
       }
 
-      if (!isValidPin(newPin)) {
-        return new NextResponse(PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+      if (!isTrainerPinCompliant(newPin)) {
+        return new NextResponse(TRAINER_PIN_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
       const trainer = await findTrainerByEmail(email)
@@ -203,7 +202,7 @@ export async function POST(request: Request) {
         await updateTrainerAccountPin(trainer.id, newPin)
       } catch (error) {
         logTrainerAccessFailure("pin hash", error, { email, trainerId: trainer.id })
-        return new NextResponse("PIN konnte aktuell nicht aktualisiert werden. Bitte spaeter erneut versuchen.", {
+        return new NextResponse("Passwort konnte aktuell nicht aktualisiert werden. Bitte spaeter erneut versuchen.", {
           status: 500,
         })
       }
