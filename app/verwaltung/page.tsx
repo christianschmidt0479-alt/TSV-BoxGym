@@ -493,11 +493,11 @@ export default function VerwaltungOverviewPage() {
           ))}
         </div>
 
-        <Card className="rounded-[24px] border-0 shadow-sm">
+        <Card className="hidden rounded-[24px] border-0 shadow-sm md:block">
           <CardHeader className="md:items-start">
             <CardTitle>Stand heute</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-zinc-600 md:block">
+          <CardContent className="space-y-3 text-sm text-zinc-600">
             {boxzwergeAgingWarnings.length > 0 ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-900">
                 <div className="font-semibold">Warnung für Christian Schmidt</div>
