@@ -42,6 +42,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
     { href: "/verwaltung/mail", label: "Mail" },
     ...(isAdmin ? [{ href: "/verwaltung/sicherheit", label: "Sicherheit" }] : []),
     ...(isAdmin ? [{ href: "/verwaltung/einstellungen", label: "Einstellungen", icon: <Settings className="h-4 w-4" /> }] : []),
+    ...(isAdmin ? [{ href: "/verwaltung/ki", label: "KI" }] : []),
   ]
   const mobileSections = [
     { title: "Start", items: startItems.map(({ href, label }) => ({ href, label })) },
@@ -217,6 +218,14 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                   >
                     <Settings className="h-4 w-4" />
                     Einstellungen
+                  </Link>
+                ) : null}
+                {isAdmin ? (
+                  <Link
+                    href="/verwaltung/ki"
+                    className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
+                  >
+                    KI
                   </Link>
                 ) : null}
               </nav>

@@ -4,6 +4,8 @@ import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { findTrainerByEmail, updateTrainerAccountPin } from "@/lib/trainerDb"
 import { ADMIN_PASSWORD_REQUIREMENTS_MESSAGE, isTrainerPinCompliant, verifyTrainerPinHash } from "@/lib/trainerPin"
+import { createAiSecurityEventSafe } from "@/lib/aiSecurityEventsDb"
+import { SECURITY_EVENT_TYPES } from "@/lib/aiSecurity"
 
 type ChangeAdminPasswordBody = {
   currentPassword?: string
@@ -18,6 +20,14 @@ export async function PUT(request: Request) {
 
     const session = await readTrainerSessionFromHeaders(request)
     if (!session || session.accountRole !== "admin") {
+      void createAiSecurityEventSafe({
+        type: SECURITY_EVENT_TYPES.AUTH_DENIED,
+        route: "/api/admin/account-password",
+        ip: getRequestIp(request),
+        severity: "high",
+        detail: "Unbefugter Zugriffsversuch auf Admin-Passwortänderung",
+        source: "admin/account-password",
+      })
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
