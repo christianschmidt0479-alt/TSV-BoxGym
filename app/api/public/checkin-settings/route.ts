@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server"
-import { isAllowedOrigin } from "@/lib/apiSecurity"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 
 export async function GET(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
       return new NextResponse("Forbidden", { status: 403 })
+    }
+
+    const rateLimit = await checkRateLimitAsync(`checkin-settings:${getRequestIp(request)}`, 60, 5 * 60 * 1000)
+    if (!rateLimit.ok) {
+      return new NextResponse("Too many requests", { status: 429 })
     }
 
     const settings = await readCheckinSettings()

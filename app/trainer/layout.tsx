@@ -16,7 +16,7 @@ export default function TrainerLayout({ children }: { children: ReactNode }) {
             <div className="flex flex-col gap-3 px-4 py-3 md:px-5 md:py-3.5">
               <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <Image src="/boxgym-headline-old.png" alt="TSV Falkensee BoxGym" width={66} height={28} className="h-auto w-[28px] object-contain sm:w-[33px] md:w-auto" priority />
+                  <Image src="/boxgym-headline-old.png" alt="TSV Falkensee BoxGym" width={40} height={17} className="h-auto w-[17px] object-contain sm:w-[20px] md:w-auto" priority />
                   <div className="min-w-0">
                     <div className="inline-flex items-center gap-2 rounded-full bg-[#eef4fb] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#154c83]">
                       <ClipboardCheck className="h-3.5 w-3.5" />

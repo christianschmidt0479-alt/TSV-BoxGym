@@ -9,12 +9,14 @@ type DisplayWeekdayOptions = DisplayDateOptions & {
 const GERMAN_DATE_PATTERN = /^\d{2}\.\d{2}\.\d{4}$/
 const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
+const DEFAULT_TIME_ZONE = "Europe/Berlin"
+
 export function formatDisplayDate(date: Date, options: DisplayDateOptions = {}) {
   return new Intl.DateTimeFormat("de-DE", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    ...(options.timeZone ? { timeZone: options.timeZone } : {}),
+    timeZone: options.timeZone ?? DEFAULT_TIME_ZONE,
   }).format(date)
 }
 
@@ -26,14 +28,14 @@ export function formatDisplayDateTime(date: Date, options: DisplayDateOptions = 
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    ...(options.timeZone ? { timeZone: options.timeZone } : {}),
+    timeZone: options.timeZone ?? DEFAULT_TIME_ZONE,
   }).format(date)
 }
 
 export function formatDisplayWeekday(date: Date, options: DisplayWeekdayOptions = {}) {
   return new Intl.DateTimeFormat("de-DE", {
     weekday: options.weekday ?? "long",
-    ...(options.timeZone ? { timeZone: options.timeZone } : {}),
+    timeZone: options.timeZone ?? DEFAULT_TIME_ZONE,
   }).format(date)
 }
 
@@ -73,4 +75,21 @@ export function formatDateInputForDisplay(value: string | null | undefined) {
   if (Number.isNaN(parsed.getTime())) return null
 
   return formatDisplayDate(parsed, { timeZone: "UTC" })
+}
+
+export function getIsoDateInTimeZone(date = new Date(), timeZone = "Europe/Berlin") {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date).map((part) => [part.type, part.value])
+  )
+
+  return `${parts.year ?? ""}-${parts.month ?? ""}-${parts.day ?? ""}`
+}
+
+export function getTodayIsoDateInBerlin(date = new Date()) {
+  return getIsoDateInTimeZone(date, "Europe/Berlin")
 }

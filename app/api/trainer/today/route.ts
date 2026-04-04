@@ -29,7 +29,11 @@ export async function GET(request: Request) {
     }
 
     const supabase = getServerSupabase()
-    const response = await supabase.from("checkins").select("id, group_name, date, members(is_trial)").eq("date", today)
+    const response = await supabase
+      .from("checkins")
+      .select("id, group_name, checkin_mode, date, time, created_at, members(id, name, first_name, last_name, is_trial)")
+      .eq("date", today)
+      .order("created_at", { ascending: false })
 
     if (response.error) throw response.error
 

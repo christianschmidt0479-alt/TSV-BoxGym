@@ -1,6 +1,8 @@
 import { createServerSupabaseServiceClient, hasSupabaseServiceRoleKey } from "./serverSupabase"
 import { supabase as anonSupabase } from "./supabaseClient"
 import { hashAuthSecret, isBcryptHash, verifyAuthSecret } from "./authSecret"
+import type { MemberCheckinMode } from "./memberCheckin"
+import { generateMemberQrToken } from "./memberQrToken"
 import { verifyTrainerPinHash } from "./trainerPin"
 import { normalizeTrainingGroup } from "./trainingGroups"
 
@@ -18,9 +20,14 @@ function isMissingColumnError(error: { message?: string } | null) {
 function withoutOptionalMemberFields<T extends Record<string, unknown>>(payload: T) {
   return Object.fromEntries(
     Object.entries(payload).filter(
-      ([key]) => key !== "guardian_name" && key !== "gender" && key !== "privacy_accepted_at"
+      ([key]) =>
+        key !== "guardian_name" &&
+        key !== "gender" &&
+        key !== "privacy_accepted_at" &&
+        key !== "member_qr_token" &&
+        key !== "member_qr_active"
     )
-  ) as Omit<T, "guardian_name" | "gender" | "privacy_accepted_at">
+  ) as Omit<T, "guardian_name" | "gender" | "privacy_accepted_at" | "member_qr_token" | "member_qr_active">
 }
 
 function withNormalizedBaseGroup<T extends { base_group?: string | null }>(row: T): T {
@@ -244,6 +251,8 @@ export async function createMember(input: MemberInput) {
     member_pin: input.member_pin ? await hashMemberPinValue(input.member_pin) : null,
     is_approved: input.is_approved ?? false,
     base_group: normalizeTrainingGroup(input.base_group) || null,
+    member_qr_token: generateMemberQrToken(),
+    member_qr_active: true,
   }
 
   const primary = await supabase
@@ -527,6 +536,7 @@ export async function getAllMembers() {
 export async function createCheckin(input: {
   member_id: string
   group_name: string
+  checkin_mode: MemberCheckinMode
   weight?: string
   date: string
   time: string
@@ -544,6 +554,7 @@ export async function createCheckin(input: {
       {
         member_id: input.member_id,
         group_name: normalizeTrainingGroup(input.group_name) || input.group_name,
+        checkin_mode: input.checkin_mode,
         weight: Number.isNaN(numericWeight) ? null : numericWeight,
         date: input.date,
         time: input.time,

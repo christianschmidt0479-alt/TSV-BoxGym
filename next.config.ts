@@ -9,6 +9,9 @@ const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "off" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  ...(isProduction
+    ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }]
+    : []),
   {
     key: "Content-Security-Policy",
     value: [

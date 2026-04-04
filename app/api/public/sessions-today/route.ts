@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { sessions } from "@/lib/boxgymSessions"
 
 function getDayKey(date: Date) {
@@ -20,8 +21,16 @@ function getDayKey(date: Date) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    if (!isAllowedOrigin(request)) {
+      return new NextResponse("Forbidden", { status: 403 })
+    }
+
+    const rateLimit = await checkRateLimitAsync(`public-sessions-today:${getRequestIp(request)}`, 30, 5 * 60 * 1000)
+    if (!rateLimit.ok) {
+      return new NextResponse("Too many requests", { status: 429 })
+    }
     const dayKey = getDayKey(new Date())
     const rows = sessions
       .filter((session) => session.dayKey === dayKey)

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, findMemberById } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
-import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
 import {
   applyMemberDeviceCookie,
   clearMemberDeviceCookie,
@@ -11,12 +10,12 @@ import {
   readMemberDeviceTokenFromHeaders,
   verifyMemberDeviceToken,
 } from "@/lib/memberDeviceSession"
-import { readQrAccessFromHeaders } from "@/lib/qrAccess"
-import { sessions } from "@/lib/boxgymSessions"
+import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
 import { supabase } from "@/lib/supabaseClient"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
 type MemberFastCheckinBody = {
+  qrAccessToken?: string
   token?: string
   sessionId?: string
   weight?: string
@@ -67,26 +66,6 @@ function timeString(date = new Date()) {
   })
 }
 
-function getDayKey(dateString: string) {
-  const date = new Date(`${dateString}T12:00:00`)
-  const day = date.getDay()
-
-  switch (day) {
-    case 1:
-      return "Montag"
-    case 2:
-      return "Dienstag"
-    case 3:
-      return "Mittwoch"
-    case 4:
-      return "Donnerstag"
-    case 5:
-      return "Freitag"
-    default:
-      return ""
-  }
-}
-
 function getMonthKey(dateString: string) {
   return dateString.slice(0, 7)
 }
@@ -103,17 +82,12 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const qrAccess = await readQrAccessFromHeaders(request)
-    if (!qrAccess || qrAccess.panel !== "member") {
-      return new NextResponse("QR-Zugang erforderlich.", { status: 403 })
-    }
-
+    const body = (await request.json()) as MemberFastCheckinBody
     const rateLimit = await checkRateLimitAsync(`public-member-fast-checkin:${getRequestIp(request)}`, 25, 10 * 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
-    const body = (await request.json()) as MemberFastCheckinBody
     const token = body.token?.trim() || readMemberDeviceTokenFromHeaders(request) || ""
     if (!token) {
       const response = new NextResponse("Gerät wurde nicht erkannt. Bitte normal einchecken.", { status: 400 })
@@ -136,22 +110,29 @@ export async function POST(request: Request) {
     const liveDate = todayString(now)
     const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
     const currentMonthKey = getMonthKey(liveDate)
-    const todaysSessions = sessions.filter((session) => session.dayKey === getDayKey(liveDate))
-    const selectedSession = todaysSessions.find((session) => session.id === body.sessionId) ?? null
-
-    if (!selectedSession) {
-      return new NextResponse("Bitte eine Trainingsgruppe auswählen.", { status: 400 })
-    }
-
+    const todaysSessions = getSessionsForDate(liveDate)
     const checkinSettings = await readCheckinSettings()
-    if (!checkinSettings.disableCheckinTimeWindow && !isSessionOpenForCheckin(selectedSession, now)) {
+    const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
+
+    const checkinAssignment = resolveMemberCheckinAssignment({
+      dailySessions: todaysSessions,
+      now,
+      baseGroup: member.base_group,
+      mode: checkinMode,
+    })
+
+    if (!checkinAssignment.allowed || !checkinAssignment.groupName) {
+      if (checkinMode === "ferien") {
+        return new NextResponse("Im Ferienmodus ist nur der Check-in über die Stammgruppe möglich.", { status: 400 })
+      }
       return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
     }
 
-    if (member.is_competition_member) {
+    const requiresWeight = member.is_competition_member || checkinAssignment.groupName === "L-Gruppe"
+    if (requiresWeight) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
-        return new NextResponse("Bitte für Wettkämpfer ein aktuelles Gewicht über 30 kg angeben.", { status: 400 })
+        return new NextResponse("Bitte für die L-Gruppe ein aktuelles Gewicht über 30 kg angeben.", { status: 400 })
       }
     }
 
@@ -178,8 +159,9 @@ export async function POST(request: Request) {
 
     await createCheckin({
       member_id: member.id,
-      group_name: normalizeTrainingGroup(selectedSession.group) || selectedSession.group,
-      weight: member.is_competition_member ? body.weight?.trim() : undefined,
+      group_name: checkinAssignment.groupName,
+      checkin_mode: checkinMode,
+      weight: requiresWeight ? body.weight?.trim() : undefined,
       date: liveDate,
       time: timeString(now),
       year: currentYear,
@@ -200,6 +182,7 @@ export async function POST(request: Request) {
         id: member.id,
         firstName: member.first_name?.trim() || deviceSession.firstName,
         lastName: member.last_name?.trim() || deviceSession.lastName,
+        baseGroup: normalizeTrainingGroup(member.base_group) || member.base_group || "",
         isCompetitionMember: Boolean(member.is_competition_member),
       },
     })
@@ -214,11 +197,6 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   if (!isAllowedOrigin(request)) {
     return new NextResponse("Forbidden", { status: 403 })
-  }
-
-  const qrAccess = await readQrAccessFromHeaders(request)
-  if (!qrAccess || qrAccess.panel !== "member") {
-    return new NextResponse("QR-Zugang erforderlich.", { status: 403 })
   }
 
   const token = readMemberDeviceTokenFromHeaders(request)
@@ -241,6 +219,7 @@ export async function GET(request: Request) {
       id: member.id,
       firstName: member.first_name?.trim() || deviceSession.firstName,
       lastName: member.last_name?.trim() || deviceSession.lastName,
+      baseGroup: normalizeTrainingGroup(member.base_group) || member.base_group || "",
       isCompetitionMember: Boolean(member.is_competition_member),
     },
   })

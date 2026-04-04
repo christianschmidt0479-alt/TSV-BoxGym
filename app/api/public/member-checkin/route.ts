@@ -2,10 +2,8 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, findMemberByEmailAndPin } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
-import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
 import { applyMemberDeviceCookie, clearMemberDeviceCookie, createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
-import { readQrAccessFromHeaders } from "@/lib/qrAccess"
-import { sessions } from "@/lib/boxgymSessions"
+import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
 import { supabase } from "@/lib/supabaseClient"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
@@ -13,6 +11,7 @@ type MemberCheckinBody = {
   email?: string
   password?: string
   pin?: string
+  qrAccessToken?: string
   weight?: string
   sessionId?: string
   rememberDevice?: boolean
@@ -63,26 +62,6 @@ function timeString(date = new Date()) {
   })
 }
 
-function getDayKey(dateString: string) {
-  const date = new Date(`${dateString}T12:00:00`)
-  const day = date.getDay()
-
-  switch (day) {
-    case 1:
-      return "Montag"
-    case 2:
-      return "Dienstag"
-    case 3:
-      return "Mittwoch"
-    case 4:
-      return "Donnerstag"
-    case 5:
-      return "Freitag"
-    default:
-      return ""
-  }
-}
-
 function getMonthKey(dateString: string) {
   return dateString.slice(0, 7)
 }
@@ -99,14 +78,12 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const qrAccess = await readQrAccessFromHeaders(request)
-    if (!qrAccess || qrAccess.panel !== "member") {
-      return new NextResponse("QR-Zugang erforderlich.", { status: 403 })
-    }
-
     const body = (await request.json()) as MemberCheckinBody
     const email = body.email?.trim().toLowerCase() ?? ""
     const password = body.password?.trim() ?? body.pin?.trim() ?? ""
+    const checkinSettings = await readCheckinSettings()
+    const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
+
     const rateLimit = await checkRateLimitAsync(
       `public-member-checkin:${getRequestIp(request)}:${email || "__email__"}`,
       25,
@@ -120,21 +97,9 @@ export async function POST(request: Request) {
     const liveDate = todayString(now)
     const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
     const currentMonthKey = getMonthKey(liveDate)
-    const todaysSessions = sessions.filter((session) => session.dayKey === getDayKey(liveDate))
-    const selectedSession = todaysSessions.find((session) => session.id === body.sessionId) ?? null
-    const selectedGroup = normalizeTrainingGroup(selectedSession?.group)
-
+    const todaysSessions = getSessionsForDate(liveDate)
     if (!email || !password) {
       return new NextResponse("Bitte E-Mail und Passwort eingeben.", { status: 400 })
-    }
-
-    if (!selectedSession) {
-      return new NextResponse("Bitte eine Trainingsgruppe auswählen.", { status: 400 })
-    }
-
-    const checkinSettings = await readCheckinSettings()
-    if (!checkinSettings.disableCheckinTimeWindow && !isSessionOpenForCheckin(selectedSession, now)) {
-      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
     }
 
     const memberMatch = await findMemberByEmailAndPin(email, password)
@@ -147,10 +112,25 @@ export async function POST(request: Request) {
       return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
     }
 
-    if (resolvedMember.is_competition_member) {
+    const checkinAssignment = resolveMemberCheckinAssignment({
+      dailySessions: todaysSessions,
+      now,
+      baseGroup: resolvedMember.base_group,
+      mode: checkinMode,
+    })
+
+    if (!checkinAssignment.allowed || !checkinAssignment.groupName) {
+      if (checkinMode === "ferien") {
+        return new NextResponse("Im Ferienmodus ist nur der Check-in über die Stammgruppe möglich.", { status: 400 })
+      }
+      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
+    }
+
+    const requiresWeight = resolvedMember.is_competition_member || checkinAssignment.groupName === "L-Gruppe"
+    if (requiresWeight) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
-        return new NextResponse("Bitte für Wettkämpfer ein aktuelles Gewicht über 30 kg angeben.", { status: 400 })
+        return new NextResponse("Bitte für die L-Gruppe ein aktuelles Gewicht über 30 kg angeben.", { status: 400 })
       }
     }
 
@@ -177,8 +157,9 @@ export async function POST(request: Request) {
 
     await createCheckin({
       member_id: resolvedMember.id,
-      group_name: selectedGroup || selectedSession.group,
-      weight: resolvedMember.is_competition_member ? body.weight?.trim() : undefined,
+      group_name: checkinAssignment.groupName,
+      checkin_mode: checkinMode,
+      weight: requiresWeight ? body.weight?.trim() : undefined,
       date: liveDate,
       time: timeString(now),
       year: currentYear,
@@ -204,6 +185,7 @@ export async function POST(request: Request) {
             id: resolvedMember.id,
             firstName: resolvedMember.first_name?.trim() || "",
             lastName: resolvedMember.last_name?.trim() || "",
+            baseGroup: normalizeTrainingGroup(resolvedMember.base_group) || resolvedMember.base_group || "",
             isCompetitionMember: Boolean(resolvedMember.is_competition_member),
           }
         : null,

@@ -46,6 +46,8 @@ type ResultRow = {
   id: string
   memberId: string | null
   isTrainerLinked?: boolean
+  hasTrainerAccount?: boolean
+  email?: string
   firstName: string
   lastName: string
   birthdate: string
@@ -1159,6 +1161,7 @@ export async function POST(request: Request) {
     const membersById = new Map<string, MemberRow>()
     const trainerAccountsByLastName = new Map<string, TrainerAccountRow[]>()
     const trainerAccountsByEmail = new Map<string, TrainerAccountRow[]>()
+    const trainerAccountEmails = new Set<string>()
 
     for (const member of members) {
       membersById.set(member.id, member)
@@ -1199,6 +1202,7 @@ export async function POST(request: Request) {
 
       const emailKey = buildEmailKey(trainer.email || "")
       if (emailKey) {
+        trainerAccountEmails.add(emailKey)
         if (!trainerAccountsByEmail.has(emailKey)) trainerAccountsByEmail.set(emailKey, [])
         trainerAccountsByEmail.get(emailKey)?.push(trainer)
       }
@@ -1276,6 +1280,8 @@ export async function POST(request: Request) {
           id: `excel-${excelRow.fileIndex}-${excelRow.index}`,
           memberId: null,
           isTrainerLinked: false,
+          hasTrainerAccount: trainerAccountEmails.has(buildEmailKey(excelRow.email)),
+          email: excelRow.email || "",
           firstName: excelRow.firstName,
           lastName: excelRow.lastName,
           birthdate: excelRow.birthdate || "—",
@@ -1299,6 +1305,8 @@ export async function POST(request: Request) {
         id: `match-${member.id}-${excelRow.fileIndex}-${excelRow.index}`,
         memberId: member.id,
         isTrainerLinked: linkedTrainerMemberIds.has(member.id),
+        hasTrainerAccount: linkedTrainerMemberIds.has(member.id) || trainerAccountEmails.has(buildEmailKey(member.email || "")),
+        email: member.email || excelRow.email || "",
         firstName: member.first_name || excelRow.firstName,
         lastName: member.last_name || excelRow.lastName,
         birthdate: member.birthdate || excelRow.birthdate || "—",
@@ -1340,6 +1348,8 @@ export async function POST(request: Request) {
         id: `missing-${member.id}`,
         memberId: member.id,
         isTrainerLinked: linkedTrainerMemberIds.has(member.id),
+        hasTrainerAccount: linkedTrainerMemberIds.has(member.id) || trainerAccountEmails.has(buildEmailKey(member.email || "")),
+        email: member.email || "",
         firstName: member.first_name || "",
         lastName: member.last_name || "",
         birthdate: member.birthdate || "—",

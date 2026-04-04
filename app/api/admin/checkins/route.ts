@@ -31,6 +31,7 @@ export async function GET(request: Request) {
         id,
         member_id,
         group_name,
+        checkin_mode,
         date,
         time,
         created_at,

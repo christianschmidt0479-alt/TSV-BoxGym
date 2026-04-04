@@ -2,39 +2,76 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
+import { getMemberCheckinModeLabel } from "@/lib/memberCheckin"
 import { buildTrainingGroupOptions, compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
+
+type CheckinMember = {
+  id?: string
+  name?: string
+  first_name?: string
+  last_name?: string
+  birthdate?: string
+  is_trial?: boolean
+  is_approved?: boolean
+  base_group?: string | null
+}
 
 type CheckinRow = {
   id: string
   member_id: string
   group_name: string
+  checkin_mode?: string | null
   date: string
   time: string
   created_at: string
-  members?: {
-    id?: string
-    name?: string
-    first_name?: string
-    last_name?: string
-    birthdate?: string
-    is_trial?: boolean
-    is_approved?: boolean
-    base_group?: string | null
-  } | null
+  members?: CheckinMember | CheckinMember[] | null
+}
+
+function getRelatedMember(member?: CheckinRow["members"]) {
+  if (Array.isArray(member)) return member[0] ?? null
+  return member ?? null
 }
 
 function getMemberDisplayName(member?: CheckinRow["members"]) {
-  const first = member?.first_name ?? ""
-  const last = member?.last_name ?? ""
+  const resolvedMember = getRelatedMember(member)
+  const first = resolvedMember?.first_name ?? ""
+  const last = resolvedMember?.last_name ?? ""
   const full = `${first} ${last}`.trim()
-  return full || member?.name || "—"
+  return full || resolvedMember?.name || "—"
+}
+
+function getCheckinModeBadgeClassName(mode?: string | null) {
+  return mode === "ferien"
+    ? "border-amber-200 bg-amber-50 text-amber-900"
+    : "border-[#cfe0ef] bg-[#f4f9ff] text-[#154c83]"
+}
+
+function isTrialCheckin(row: CheckinRow) {
+  return Boolean(getRelatedMember(row.members)?.is_trial)
+}
+
+function getBaseGroup(row: CheckinRow) {
+  return getRelatedMember(row.members)?.base_group ?? "—"
+}
+
+function getBirthdate(row: CheckinRow) {
+  return getRelatedMember(row.members)?.birthdate ?? "—"
+}
+
+function getMemberType(row: CheckinRow) {
+  const member = getRelatedMember(row.members)
+  if (member?.is_trial) return "Probetraining"
+  if (member?.is_approved === false) return "Registriert"
+  return "Mitglied"
 }
 
 export default function CheckinsPage() {
@@ -45,7 +82,7 @@ export default function CheckinsPage() {
   const [groupFilter, setGroupFilter] = useState("alle")
   const [typeFilter, setTypeFilter] = useState("alle")
   const [nameFilter, setNameFilter] = useState("")
-  const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 10))
+  const [dateFilter, setDateFilter] = useState(() => getTodayIsoDateInBerlin())
 
   useEffect(() => {
     if (!authResolved || !trainerRole) {
@@ -114,8 +151,8 @@ export default function CheckinsPage() {
       const matchesGroup = groupFilter === "alle" || normalizedGroup === groupFilter
       const matchesType =
         typeFilter === "alle" ||
-        (typeFilter === "mitglied" && !row.members?.is_trial) ||
-        (typeFilter === "probetraining" && !!row.members?.is_trial)
+        (typeFilter === "mitglied" && !isTrialCheckin(row)) ||
+        (typeFilter === "probetraining" && isTrialCheckin(row))
       const matchesName =
         nameFilter.trim() === "" ||
         getMemberDisplayName(row.members).toLowerCase().includes(nameFilter.trim().toLowerCase())
@@ -131,7 +168,7 @@ export default function CheckinsPage() {
       const normalizedGroup = normalizeTrainingGroup(row.group_name) || row.group_name
       const current = counts.get(normalizedGroup) ?? { count: 0, trial: 0, members: 0 }
       current.count += 1
-      if (row.members?.is_trial) current.trial += 1
+      if (isTrialCheckin(row)) current.trial += 1
       else current.members += 1
       counts.set(normalizedGroup, current)
     }
@@ -178,7 +215,7 @@ export default function CheckinsPage() {
           <CardContent className="p-5">
             <div className="text-sm text-zinc-500">Mitglieder</div>
             <div className="mt-1 text-3xl font-bold text-[#154c83]">
-              {filteredRows.filter((row) => !row.members?.is_trial).length}
+              {filteredRows.filter((row) => !isTrialCheckin(row)).length}
             </div>
           </CardContent>
         </Card>
@@ -186,7 +223,7 @@ export default function CheckinsPage() {
           <CardContent className="p-5">
             <div className="text-sm text-zinc-500">Probetraining</div>
             <div className="mt-1 text-3xl font-bold text-emerald-700">
-              {filteredRows.filter((row) => !!row.members?.is_trial).length}
+              {filteredRows.filter((row) => isTrialCheckin(row)).length}
             </div>
           </CardContent>
         </Card>
@@ -291,37 +328,39 @@ export default function CheckinsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Datum</TableHead>
                   <TableHead>Uhrzeit</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Geburtsdatum</TableHead>
                   <TableHead>Typ</TableHead>
                   <TableHead>Stammgruppe</TableHead>
                   <TableHead>Gruppe heute</TableHead>
+                  <TableHead>Modus</TableHead>
                   <TableHead className="text-right">Aktion</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-zinc-500">
+                    <TableCell colSpan={9} className="text-center text-zinc-500">
                       Keine Check-ins für die aktuelle Filterung vorhanden.
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredRows.map((row) => (
                     <TableRow key={row.id}>
+                      <TableCell>{row.date}</TableCell>
                       <TableCell>{row.time}</TableCell>
                       <TableCell className="font-medium">{getMemberDisplayName(row.members)}</TableCell>
-                      <TableCell>{row.members?.birthdate ?? "—"}</TableCell>
-                      <TableCell>
-                        {row.members?.is_trial
-                          ? "Probetraining"
-                          : row.members?.is_approved === false
-                            ? "Registriert"
-                            : "Mitglied"}
-                      </TableCell>
-                      <TableCell>{row.members?.base_group ?? "—"}</TableCell>
+                      <TableCell>{getBirthdate(row)}</TableCell>
+                      <TableCell>{getMemberType(row)}</TableCell>
+                      <TableCell>{getBaseGroup(row)}</TableCell>
                       <TableCell>{row.group_name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={getCheckinModeBadgeClassName(row.checkin_mode)}>
+                          {getMemberCheckinModeLabel(row.checkin_mode)}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-right">
                         <Button
                           type="button"

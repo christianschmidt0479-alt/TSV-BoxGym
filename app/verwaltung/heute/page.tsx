@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { sessions } from "@/lib/boxgymSessions"
+import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type CheckinRow = {
@@ -44,7 +45,7 @@ export default function VerwaltungHeutePage() {
   const [loading, setLoading] = useState(true)
   const [todayCheckins, setTodayCheckins] = useState<CheckinRow[]>([])
   const [members, setMembers] = useState<MemberRow[]>([])
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const today = useMemo(() => getTodayIsoDateInBerlin(), [])
 
   useEffect(() => {
     if (!authResolved || !trainerRole) {

@@ -6,6 +6,7 @@ import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
 import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
+import { validateEmail } from "@/lib/formValidation"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { parseTrainingGroup } from "@/lib/trainingGroups"
 
@@ -94,12 +95,21 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte Stammgruppe auswählen.", { status: 400 })
     }
 
+    if (!gender) {
+      return new NextResponse("Bitte Geschlecht angeben.", { status: 400 })
+    }
+
     if (!isValidMemberPassword(password)) {
       return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
     if (!email) {
       return new NextResponse("Bitte E-Mail angeben.", { status: 400 })
+    }
+
+    const emailValidation = validateEmail(email)
+    if (!emailValidation.valid) {
+      return new NextResponse(emailValidation.error || "Bitte eine gültige E-Mail-Adresse angeben.", { status: 400 })
     }
 
     if (!phone) {

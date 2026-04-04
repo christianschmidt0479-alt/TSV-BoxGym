@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
 import { groupOptions, sessions } from "@/lib/boxgymSessions"
-import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { formatDisplayDateTime, formatIsoDateForDisplay, getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type MemberOverviewRow = {
@@ -99,7 +99,7 @@ export default function VerwaltungOverviewPage() {
   const [todayCheckins, setTodayCheckins] = useState<CheckinOverviewRow[]>([])
   const [digestQueueRows, setDigestQueueRows] = useState<AdminDigestQueueRow[]>([])
 
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const today = useMemo(() => getTodayIsoDateInBerlin(), [])
 
   useEffect(() => {
     if (!authResolved || !trainerRole) {

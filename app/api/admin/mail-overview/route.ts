@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { getManualAdminMailDrafts, isManualAdminMailRecord } from "@/lib/manualAdminMailOutboxDb"
 import { getManualParentMailDrafts, isManualParentMailRecord } from "@/lib/manualParentMailOutboxDb"
 import { getParentFamilyMailRows } from "@/lib/parentMailDrafts"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
     }
 
     const supabase = getServerSupabase()
-    const [adminQueueResponse, parentFamilyMailRows, manualParentOutboxRows] = await Promise.all([
+    const [adminQueueResponse, parentFamilyMailRows, manualParentOutboxRows, manualAdminOutboxRows] = await Promise.all([
       supabase
         .from("admin_notification_queue")
         .select("id, kind, member_name, email, group_name, created_at, sent_at")
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
         .order("created_at", { ascending: false }),
       getParentFamilyMailRows(),
       getManualParentMailDrafts(),
+      getManualAdminMailDrafts(),
     ])
 
     const outgoingQueueWithContextResponse = await supabase
@@ -61,9 +63,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       adminQueueRows: adminQueueResponse.data ?? [],
-      outgoingQueueRows: (outgoingQueueResponse.data ?? []).filter((row) => !isManualParentMailRecord(row)),
+      outgoingQueueRows: (outgoingQueueResponse.data ?? []).filter((row) => !isManualParentMailRecord(row) && !isManualAdminMailRecord(row)),
       parentFamilyMailRows,
       manualParentOutboxRows,
+      manualAdminOutboxRows,
     })
   } catch (error) {
     console.error("admin mail overview failed", error)

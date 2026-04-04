@@ -112,6 +112,9 @@ export async function POST(request: Request) {
     const normalizedGroup = group?.trim() ?? ""
 
     if (purpose === "admin_notification") {
+      const { error: authError } = await requireAdminSessionForMailRequest(request)
+      if (authError) return authError
+
       if (!normalizedName || !normalizedKind) {
         return new NextResponse("Missing name or kind", { status: 400 })
       }

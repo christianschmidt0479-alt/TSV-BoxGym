@@ -6,6 +6,7 @@ import { ArrowRight, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { groupOptions, sessions, getGroupSlug } from "@/lib/boxgymSessions"
+import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -59,7 +60,7 @@ export default function GruppenPage() {
     })()
   }, [authResolved, trainerRole])
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getTodayIsoDateInBerlin()
 
   const groupCards = useMemo(() => {
     return groupOptions.map((group) => {

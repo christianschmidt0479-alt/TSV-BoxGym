@@ -10,9 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { sessions } from "@/lib/boxgymSessions"
-import { getActiveCheckinSession, parseTimeToDate } from "@/lib/checkinWindow"
+import { getMemberCheckinMode, getSessionsForDate, isAdultBaseGroup, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
 import { buildQrAccessHeaders, clearStoredQrAccess, readStoredQrAccess, storeQrAccess } from "@/lib/qrAccessClient"
 import { QR_ACCESS_PARAM } from "@/lib/qrAccess"
 
@@ -22,26 +20,6 @@ function todayString() {
   const month = String(today.getMonth() + 1).padStart(2, "0")
   const day = String(today.getDate()).padStart(2, "0")
   return `${year}-${month}-${day}`
-}
-
-function getDayKey(dateString: string) {
-  const date = new Date(`${dateString}T12:00:00`)
-  const day = date.getDay()
-
-  switch (day) {
-    case 1:
-      return "Montag"
-    case 2:
-      return "Dienstag"
-    case 3:
-      return "Mittwoch"
-    case 4:
-      return "Donnerstag"
-    case 5:
-      return "Freitag"
-    default:
-      return ""
-  }
 }
 
 export default function MemberCheckinPage() {
@@ -57,17 +35,15 @@ export default function MemberCheckinPage() {
   const [rememberedMemberId, setRememberedMemberId] = useState("")
   const [rememberedFirstName, setRememberedFirstName] = useState("")
   const [rememberedLastName, setRememberedLastName] = useState("")
+  const [rememberedBaseGroup, setRememberedBaseGroup] = useState("")
   const [rememberedCompetitionMember, setRememberedCompetitionMember] = useState(false)
   const [rememberedWeight, setRememberedWeight] = useState("")
-  const [selectedSessionId, setSelectedSessionId] = useState<string>("")
-  const [showSessionSelect, setShowSessionSelect] = useState(false)
-  const [requestedGroup, setRequestedGroup] = useState("")
 
   const liveDate = now ? todayStringFromDate(now) : todayString()
+
   useEffect(() => {
     setNow(new Date())
     const params = new URLSearchParams(window.location.search)
-    setRequestedGroup(params.get("group")?.trim() ?? "")
     const storedQrAccess = readStoredQrAccess("member")
 
     const qrToken = params.get(QR_ACCESS_PARAM)?.trim() ?? ""
@@ -85,10 +61,11 @@ export default function MemberCheckinPage() {
             return
           }
 
-          const result = (await response.json()) as { accessUntil?: number }
+          const result = (await response.json()) as { accessUntil?: number; token?: string }
           const accessUntil = result.accessUntil ?? Date.now()
-          storeQrAccess("member", qrToken, accessUntil)
-          setQrAccessToken(qrToken)
+          const validatedToken = result.token?.trim() || qrToken
+          storeQrAccess("member", validatedToken, accessUntil)
+          setQrAccessToken(validatedToken)
 
           params.delete(QR_ACCESS_PARAM)
           params.delete("panel")
@@ -128,6 +105,7 @@ export default function MemberCheckinPage() {
             id: string
             firstName: string
             lastName: string
+            baseGroup?: string
             isCompetitionMember: boolean
           }
         }
@@ -137,6 +115,7 @@ export default function MemberCheckinPage() {
         setRememberedMemberId(result.member.id)
         setRememberedFirstName(result.member.firstName)
         setRememberedLastName(result.member.lastName)
+        setRememberedBaseGroup(result.member.baseGroup?.trim() ?? "")
         setRememberedCompetitionMember(result.member.isCompetitionMember)
       } catch (error) {
         console.error("remembered device restore failed", error)
@@ -144,59 +123,19 @@ export default function MemberCheckinPage() {
     })()
   }, [])
 
-  const todaysSessions = useMemo(() => {
-    const dayKey = getDayKey(liveDate)
-    return sessions.filter((session) => session.dayKey === dayKey)
-  }, [liveDate])
+  const todaysSessions = useMemo(() => getSessionsForDate(liveDate), [liveDate])
+  const checkinMode = useMemo(() => getMemberCheckinMode(disableCheckinTimeWindow), [disableCheckinTimeWindow])
 
-  const displaySessions = useMemo(() => {
-    if (!requestedGroup) return todaysSessions
-    return todaysSessions.filter((session) => session.group === requestedGroup)
-  }, [requestedGroup, todaysSessions])
-
-  const activeSession = useMemo(() => {
-    if (!now) return null
-    if (disableCheckinTimeWindow) return null
-    return getActiveCheckinSession(now, displaySessions)
-  }, [disableCheckinTimeWindow, displaySessions, now])
-
-  const nextSession = useMemo(() => {
-    if (!now) return null
-    return (
-      displaySessions
-        .map((session) => ({
-          session,
-          startDate: parseTimeToDate(session.start, now),
-        }))
-        .filter(({ startDate }) => startDate.getTime() > now.getTime())
-        .sort((left, right) => left.startDate.getTime() - right.startDate.getTime())[0]?.session ?? null
-    )
-  }, [displaySessions, now])
-
-  const autoSession = activeSession ?? nextSession
-  const selectedSession =
-    displaySessions.find((session) => session.id === selectedSessionId) ?? autoSession ?? displaySessions[0] ?? null
-  const checkinAllowed = disableCheckinTimeWindow ? displaySessions.length > 0 : Boolean(activeSession)
-
-  useEffect(() => {
-    if (displaySessions.length === 0) {
-      setSelectedSessionId("")
-      setShowSessionSelect(true)
-      return
-    }
-
-    const exists = displaySessions.some((session) => session.id === selectedSessionId)
-    if (exists) return
-
-    if (autoSession) {
-      setSelectedSessionId(autoSession.id)
-      setShowSessionSelect(false)
-      return
-    }
-
-    setSelectedSessionId(displaySessions[0].id)
-    setShowSessionSelect(true)
-  }, [autoSession, displaySessions, selectedSessionId])
+  const rememberedAssignment = useMemo(() => {
+    if (!now || !rememberedBaseGroup) return null
+    return resolveMemberCheckinAssignment({
+      dailySessions: todaysSessions,
+      now,
+      baseGroup: rememberedBaseGroup,
+      mode: checkinMode,
+    })
+  }, [checkinMode, now, rememberedBaseGroup, todaysSessions])
+  const rememberedNeedsWeight = rememberedCompetitionMember || rememberedAssignment?.groupName === "L-Gruppe"
 
   const hasRememberedDevice = Boolean(rememberedMemberId && rememberedFirstName && rememberedLastName)
 
@@ -205,12 +144,14 @@ export default function MemberCheckinPage() {
       id: string
       firstName: string
       lastName: string
+      baseGroup?: string
       isCompetitionMember: boolean
     }
   }) {
     setRememberedMemberId(payload.member.id)
     setRememberedFirstName(payload.member.firstName)
     setRememberedLastName(payload.member.lastName)
+    setRememberedBaseGroup(payload.member.baseGroup?.trim() ?? "")
     setRememberedCompetitionMember(payload.member.isCompetitionMember)
   }
 
@@ -219,6 +160,7 @@ export default function MemberCheckinPage() {
     setRememberedMemberId("")
     setRememberedFirstName("")
     setRememberedLastName("")
+    setRememberedBaseGroup("")
     setRememberedCompetitionMember(false)
     setRememberedWeight("")
   }
@@ -229,16 +171,6 @@ export default function MemberCheckinPage() {
 
     if (!email || !pin) {
       alert("Bitte E-Mail und Passwort eingeben.")
-      return
-    }
-
-    if (!selectedSession) {
-      alert("Bitte eine Trainingsgruppe auswählen.")
-      return
-    }
-
-    if (!checkinAllowed) {
-      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.")
       return
     }
 
@@ -253,8 +185,8 @@ export default function MemberCheckinPage() {
         body: JSON.stringify({
           email,
           password: pin,
+          qrAccessToken,
           weight: memberWeight.trim(),
-          sessionId: selectedSession.id,
           rememberDevice,
         }),
       })
@@ -275,14 +207,13 @@ export default function MemberCheckinPage() {
           id: string
           firstName: string
           lastName: string
+          baseGroup?: string
           isCompetitionMember: boolean
         } | null
       }
 
       if (rememberDevice && result.rememberUntil && result.member) {
-        updateRememberedDevice({
-          member: result.member,
-        })
+        updateRememberedDevice({ member: result.member })
       }
 
       alert("Check-in erfolgreich gespeichert.")
@@ -303,13 +234,8 @@ export default function MemberCheckinPage() {
       return
     }
 
-    if (!selectedSession) {
-      alert("Bitte eine Trainingsgruppe auswählen.")
-      return
-    }
-
-    if (!checkinAllowed) {
-      alert("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.")
+    if (!rememberedAssignment?.allowed) {
+      alert(checkinMode === "ferien" ? "Im Ferienmodus wird immer die Stammgruppe verwendet." : "Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.")
       return
     }
 
@@ -322,7 +248,7 @@ export default function MemberCheckinPage() {
           ...buildQrAccessHeaders(qrAccessToken),
         },
         body: JSON.stringify({
-          sessionId: selectedSession.id,
+          qrAccessToken,
           weight: rememberedWeight.trim(),
         }),
       })
@@ -350,9 +276,7 @@ export default function MemberCheckinPage() {
         }
       }
 
-      updateRememberedDevice({
-        member: result.member,
-      })
+      updateRememberedDevice({ member: result.member })
       setRememberedWeight("")
       alert("Check-in erfolgreich gespeichert.")
     } catch (error) {
@@ -395,20 +319,34 @@ export default function MemberCheckinPage() {
                   </div>
                   <h1 className="text-xl font-bold tracking-tight sm:text-3xl">Mitglied einchecken</h1>
                   <p className="mt-2 text-sm leading-6 text-blue-50/90 sm:text-base">
-                    Bestehende Mitglieder werden hier direkt für die aktuelle Einheit eingecheckt.
+                    {checkinMode === "ferien"
+                      ? "Ferienbetrieb - freie Zeiten. Der Check-in läuft über die Stammgruppe."
+                      : "Check-in nur während Trainingszeit. Die laufende Gruppe wird automatisch gesetzt."}
                   </p>
-                  {disableCheckinTimeWindow ? (
+                  {checkinMode === "ferien" ? (
                     <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-200">Ferienmodus aktiv</p>
+                  ) : hasRememberedDevice && isAdultBaseGroup(rememberedBaseGroup) ? (
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-200">Ü18 jederzeit möglich</p>
                   ) : null}
                 </div>
               </div>
               <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
                 <CardContent className="p-5">
                   <div className="rounded-2xl bg-white/10 p-3 text-sm">
-                    <div className="text-zinc-300">{activeSession ? "Aktive Einheit" : nextSession ? "Nächste Einheit" : "Aktuelle Einheit"}</div>
-                    <div className="mt-1 font-semibold">{selectedSession?.group ?? "Keine Gruppe"}</div>
+                    <div className="text-zinc-300">Check-in-Gruppe</div>
+                    <div className="mt-1 font-semibold">
+                      {hasRememberedDevice
+                        ? rememberedAssignment?.groupName || rememberedBaseGroup || "Wird automatisch ermittelt"
+                        : checkinMode === "ferien"
+                          ? "Stammgruppe nach Anmeldung"
+                          : "Laufende Gruppe nach Anmeldung"}
+                    </div>
                     <div className="mt-1 text-zinc-300">
-                      {selectedSession ? `${selectedSession.start} – ${selectedSession.end}` : "Heute keine Einheit"}
+                      {hasRememberedDevice && rememberedAssignment?.session
+                        ? `${rememberedAssignment.session.start} – ${rememberedAssignment.session.end}`
+                        : checkinMode === "ferien"
+                          ? "Im Ferienmodus wird immer die Stammgruppe verwendet."
+                          : "Im Normalbetrieb ist Check-in nur im Zeitfenster einer laufenden Gruppe möglich."}
                     </div>
                   </div>
                 </CardContent>
@@ -422,11 +360,15 @@ export default function MemberCheckinPage() {
             <CardTitle>Mitglieder-Check-in</CardTitle>
           </CardHeader>
           <CardContent>
-            {!checkinAllowed ? (
+            {checkinMode === "normal" ? (
               <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                Check-in ist aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.
+                Check-in nur während Trainingszeit. Außerhalb des Zeitfensters ist nur Ü18 zulässig.
               </div>
-            ) : null}
+            ) : (
+              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                Ferienbetrieb - freie Zeiten. Es wird immer die Stammgruppe verwendet.
+              </div>
+            )}
 
             {hasRememberedDevice ? (
               <div className="mb-5 rounded-[24px] border border-[#cfe0ef] bg-[#f4f9ff] p-4">
@@ -439,14 +381,17 @@ export default function MemberCheckinPage() {
                     <div className="mt-3 text-lg font-semibold text-zinc-900">
                       Als {rememberedFirstName} {rememberedLastName} einchecken
                     </div>
-                    <p className="mt-1 text-sm text-zinc-600">Dieses Gerät ist gespeichert. Ein Tap reicht für den nächsten Check-in.</p>
+                    <p className="mt-1 text-sm text-zinc-600">
+                      Dieses Gerät ist gespeichert. Ein Tap reicht für den nächsten Check-in.
+                      {rememberedBaseGroup ? ` Gruppe: ${rememberedAssignment?.groupName || rememberedBaseGroup}.` : ""}
+                    </p>
                   </div>
                   <Button type="button" variant="outline" className="rounded-2xl" onClick={forgetRememberedDevice}>
                     Ausloggen
                   </Button>
                 </div>
 
-                {rememberedCompetitionMember ? (
+                {rememberedNeedsWeight ? (
                   <div className="mt-4 space-y-2">
                     <Label>Gewicht in kg</Label>
                     <Input
@@ -455,7 +400,7 @@ export default function MemberCheckinPage() {
                       placeholder="z. B. 72,4"
                       className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
                     />
-                    <div className="text-xs text-zinc-500">Für Sportler aus der Wettkampfliste bleibt das Gewicht auch im Schnell-Check-in Pflicht.</div>
+                    <div className="text-xs text-zinc-500">Für die L-Gruppe und für Sportler aus der Wettkampfliste ist das Gewicht auch im Schnell-Check-in Pflicht.</div>
                   </div>
                 ) : null}
 
@@ -463,7 +408,7 @@ export default function MemberCheckinPage() {
                   <Button
                     type="button"
                     className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
-                    disabled={fastCheckinLoading || dbLoading || !selectedSession || !checkinAllowed}
+                    disabled={fastCheckinLoading || dbLoading || !rememberedAssignment?.allowed}
                     onClick={() => {
                       void handleFastCheckin()
                     }}
@@ -488,58 +433,14 @@ export default function MemberCheckinPage() {
 
               <div className="space-y-2">
                 <Label>Passwort</Label>
-                <>
-                  <PasswordInput value={memberPin} onChange={(e) => setMemberPin(e.target.value)} placeholder="Passwort" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                </>
+                <PasswordInput value={memberPin} onChange={(e) => setMemberPin(e.target.value)} placeholder="Passwort" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <Label>Trainingsgruppe</Label>
-                  {displaySessions.length > 0 && autoSession ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="h-auto rounded-xl px-2 py-1 text-xs text-[#154c83]"
-                      onClick={() => setShowSessionSelect((prev) => !prev)}
-                    >
-                      {showSessionSelect ? "Auswahl schließen" : "Einheit ändern"}
-                    </Button>
-                  ) : null}
-                </div>
-                {!showSessionSelect && selectedSession ? (
-                  <div className="rounded-2xl border border-[#d8e3ee] bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-                    <div className="font-semibold text-zinc-900">{selectedSession.group}</div>
-                    <div className="mt-1 text-zinc-500">{selectedSession.start} – {selectedSession.end}</div>
-                  </div>
-                ) : (
-                  <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-                    <SelectTrigger className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {displaySessions.length === 0 ? (
-                        <SelectItem value="none" disabled>
-                          Keine Gruppen verfügbar
-                        </SelectItem>
-                      ) : (
-                        displaySessions.map((session) => (
-                          <SelectItem key={session.id} value={session.id}>
-                            {session.title}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
+                <Label>Gewicht in kg</Label>
+                <Input value={memberWeight} onChange={(e) => setMemberWeight(e.target.value)} placeholder="z. B. 72,4" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                <div className="text-xs text-zinc-500">Für Check-ins in der L-Gruppe ist ein aktuelles Gewicht Pflicht.</div>
               </div>
-
-              {selectedSession ? (
-                <div className="space-y-2">
-                  <Label>Gewicht in kg</Label>
-                  <Input value={memberWeight} onChange={(e) => setMemberWeight(e.target.value)} placeholder="z. B. 72,4" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                </div>
-              ) : null}
 
               <label className="flex items-start gap-3 rounded-2xl border border-[#d8e3ee] bg-zinc-50 p-3 text-sm text-zinc-700">
                 <input
@@ -555,7 +456,7 @@ export default function MemberCheckinPage() {
               </label>
 
               <div className="sticky bottom-3 -mx-1 rounded-[24px] border border-[#d8e3ee] bg-white/95 p-2 shadow-lg backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none">
-                <Button type="submit" className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading || !selectedSession || !checkinAllowed}>
+                <Button type="submit" className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading}>
                   {dbLoading ? "Speichert..." : "Mitglied einchecken"}
                 </Button>
               </div>

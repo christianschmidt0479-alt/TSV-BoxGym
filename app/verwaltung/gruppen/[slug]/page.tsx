@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getGroupBySlug, sessions } from "@/lib/boxgymSessions"
-import { formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { formatIsoDateForDisplay, getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
@@ -83,7 +83,7 @@ export default function GruppeDetailPage({ params }: { params: Promise<{ slug: s
     })()
   }, [authResolved, trainerRole, group])
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getTodayIsoDateInBerlin()
 
   const plannedSessions = useMemo(() => {
     return group ? sessions.filter((session) => session.group === group) : []

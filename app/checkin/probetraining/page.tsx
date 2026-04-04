@@ -57,6 +57,7 @@ export default function TrialCheckinPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string>("")
   const [showSessionSelect, setShowSessionSelect] = useState(false)
   const [requestedGroup, setRequestedGroup] = useState("")
+  const [qrAccessError, setQrAccessError] = useState("")
 
   const liveDate = now ? todayStringFromDate(now) : todayString()
   useEffect(() => {
@@ -76,14 +77,17 @@ export default function TrialCheckinPage() {
           if (!response.ok) {
             clearStoredQrAccess("trial")
             setQrAccessToken("")
+            setQrAccessError("Dieser QR-Code ist ungültig oder abgelaufen.")
             console.error("trial qr access validation failed", response.status)
             return
           }
 
-          const result = (await response.json()) as { accessUntil?: number }
+          const result = (await response.json()) as { accessUntil?: number; token?: string }
           const accessUntil = result.accessUntil ?? Date.now()
-          storeQrAccess("trial", qrToken, accessUntil)
-          setQrAccessToken(qrToken)
+          const validatedToken = result.token?.trim() || qrToken
+          storeQrAccess("trial", validatedToken, accessUntil)
+          setQrAccessToken(validatedToken)
+          setQrAccessError("")
 
           params.delete(QR_ACCESS_PARAM)
           params.delete("panel")
@@ -92,6 +96,7 @@ export default function TrialCheckinPage() {
         } catch (error) {
           clearStoredQrAccess("trial")
           setQrAccessToken("")
+          setQrAccessError("Dieser QR-Code konnte nicht geprüft werden.")
           console.error("trial qr access validation failed", error)
         }
       })()
@@ -212,6 +217,7 @@ export default function TrialCheckinPage() {
           birthDate: trialBirthDate,
           email: trialEmail.trim(),
           phone: trialPhone.trim(),
+          qrAccessToken,
           sessionId: selectedSession.id,
         }),
       })
@@ -260,6 +266,12 @@ export default function TrialCheckinPage() {
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] sm:mb-3 sm:px-3 sm:text-sm">
                   <UserPlus className="h-4 w-4" />
+                {qrAccessError ? (
+                  <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {qrAccessError}
+                  </div>
+                ) : null}
+
                   Probetraining
                 </div>
                 <div className="flex items-center gap-3">

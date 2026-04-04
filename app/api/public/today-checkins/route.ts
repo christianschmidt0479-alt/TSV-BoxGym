@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { getTodayCheckins } from "@/lib/boxgymDb"
+import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 
 type TodayCheckinsBody = {
   date?: string
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as TodayCheckinsBody
-    const date = body.date ?? new Date().toISOString().slice(0, 10)
+    const date = body.date ?? getTodayIsoDateInBerlin()
     const rows = ((await getTodayCheckins(date)) as PublicTodayCheckinRow[]).map((row) => ({
       ...row,
       members: row.members

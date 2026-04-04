@@ -1,22 +1,15 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import Link from "next/link"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Copy, ExternalLink, Printer, ScanLine } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
+import { buildAdminQrEntries, type AdminQrEntry } from "@/lib/adminQrEntries"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { clearTrainerAccessSession } from "@/lib/trainerAccess"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
-
-type QrEntry = {
-  title: string
-  description: string
-  url: string
-  alt: string
-  eyebrow: string
-  helper: string
-}
 
 export default function VerwaltungQrCodesPage() {
   const router = useRouter()
@@ -31,62 +24,45 @@ export default function VerwaltungQrCodesPage() {
   const [memberQrUrl, setMemberQrUrl] = useState("")
   const [trialQrUrl, setTrialQrUrl] = useState("")
 
+  const loadQrUrl = useCallback(async (panel: "member" | "trial") => {
+    const response = await fetch(`/api/qr-access-url?panel=${panel}`)
+
+    if (response.status === 401 || response.status === 403) {
+      await clearTrainerAccessSession({ remote: false })
+      router.replace("/trainer-zugang")
+      router.refresh()
+      return false
+    }
+
+    if (!response.ok) {
+      return false
+    }
+
+    const payload = (await response.json()) as { url?: string }
+    if (panel === "member") {
+      setMemberQrUrl(payload.url?.trim() ?? "")
+    } else {
+      setTrialQrUrl(payload.url?.trim() ?? "")
+    }
+
+    return true
+  }, [router])
+
   useEffect(() => {
     void (async () => {
       try {
-        const [memberResponse, trialResponse] = await Promise.all([
-          fetch("/api/qr-access-url?panel=member"),
-          fetch("/api/qr-access-url?panel=trial"),
-        ])
-
-        if ([memberResponse.status, trialResponse.status].some((status) => status === 401 || status === 403)) {
-          await clearTrainerAccessSession({ remote: false })
-          router.replace("/trainer-zugang")
-          router.refresh()
-          return
-        }
-
-        if (memberResponse.ok) {
-          const payload = (await memberResponse.json()) as { url?: string }
-          setMemberQrUrl(payload.url?.trim() ?? "")
-        }
-
-        if (trialResponse.ok) {
-          const payload = (await trialResponse.json()) as { url?: string }
-          setTrialQrUrl(payload.url?.trim() ?? "")
-        }
+        await Promise.all([loadQrUrl("member"), loadQrUrl("trial")])
       } catch (error) {
         console.error("qr code urls failed", error)
       }
     })()
-  }, [router])
+  }, [loadQrUrl])
 
-  const qrEntries: QrEntry[] = [
-    {
-      title: "TSV Boxbereiche Mitglieder registrieren",
-      description: "Der zentrale QR-Code für die Registrierung im Boxbereich. Geeignet für Handyansicht, Aushang und direkte Ausgabe im Gym.",
-      url: `${resolvedBaseUrl}/tsv-mitglied-registrieren`,
-      alt: "QR-Code TSV Boxbereiche Mitglieder registrieren",
-      eyebrow: "Registrierung",
-      helper: "Für TSV-Mitglieder oder Personen, die parallel die TSV-Mitgliedschaft beantragen.",
-    },
-    {
-      title: "Mitglieder Check-in",
-      description: "Führt direkt zum QR-Zugang für reguläre Mitglieder im Trainingsbetrieb.",
-      url: memberQrUrl,
-      alt: "QR-Code Mitglieder Check-in",
-      eyebrow: "Check-in",
-      helper: "Für den regulären Zugang im Mitgliedsbereich.",
-    },
-    {
-      title: "Probetraining Check-in",
-      description: "Direkter Zugang zum Probetraining-Panel für neue Sportler und Testtermine.",
-      url: trialQrUrl,
-      alt: "QR-Code Probetraining Check-in",
-      eyebrow: "Check-in",
-      helper: "Nur für Probetraining und entsprechende Trainerbegleitung.",
-    },
-  ]
+  const qrEntries: AdminQrEntry[] = buildAdminQrEntries({
+    baseUrl: resolvedBaseUrl,
+    memberQrUrl,
+    trialQrUrl,
+  })
 
   async function copyUrl(value: string, label: string) {
     try {
@@ -109,15 +85,17 @@ export default function VerwaltungQrCodesPage() {
           <h1 className="mt-3 text-2xl font-bold text-[#154c83]">QR-Codes</h1>
           <p className="text-sm text-zinc-600">Drei gleich grosse QR-Karten für Registrierung, Mitglieder-Check-in und Probetraining.</p>
         </div>
-        <Button variant="outline" className="rounded-2xl" onClick={() => window.print()}>
-          <Printer className="mr-2 h-4 w-4" />
-          Alle drucken
+        <Button asChild variant="outline" className="rounded-2xl">
+          <Link href="/qr-druck?scope=all" target="_blank" rel="noreferrer">
+            <Printer className="mr-2 h-4 w-4" />
+            Alle drucken
+          </Link>
         </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {qrEntries.map((entry) => (
-          <Card key={entry.title} className="h-full rounded-[24px] border-0 shadow-sm">
+          <Card key={entry.key} className="h-full rounded-[24px] border-0 shadow-sm">
             <CardContent className="flex h-full flex-col gap-5 p-5">
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full bg-[#154c83]/8 px-3 py-1 text-xs font-semibold tracking-wide text-[#154c83]">
@@ -140,6 +118,12 @@ export default function VerwaltungQrCodesPage() {
                   <Button variant="outline" className="rounded-2xl" onClick={() => copyUrl(entry.url, entry.title)} disabled={!entry.url}>
                     <Copy className="mr-2 h-4 w-4" />
                     Link kopieren
+                  </Button>
+                  <Button asChild variant="outline" className="rounded-2xl" disabled={!entry.url}>
+                    <Link href={`/qr-druck?scope=${encodeURIComponent(entry.key)}`} target="_blank" rel="noreferrer">
+                      <Printer className="mr-2 h-4 w-4" />
+                      Drucken
+                    </Link>
                   </Button>
                 </div>
               </div>

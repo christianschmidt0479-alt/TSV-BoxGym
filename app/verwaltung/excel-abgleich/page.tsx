@@ -11,9 +11,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { getOfficeListStatusBadgeClass, getOfficeListStatusLabel, type OfficeListResultStatus } from "@/lib/officeListStatus"
+import { isTrainerPinCompliant, TRAINER_PIN_REQUIREMENTS_MESSAGE } from "@/lib/trainerPin"
 import { isCompatibleOfficeListGroup, normalizeTrainingGroup, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -39,6 +39,8 @@ type ReconcileRow = {
   id: string
   memberId: string | null
   isTrainerLinked?: boolean
+  hasTrainerAccount?: boolean
+  email?: string
   firstName: string
   lastName: string
   birthdate: string
@@ -321,6 +323,8 @@ export default function ExcelAbgleichPage() {
     row.groupDb !== "—" &&
     !isCompatibleOfficeListGroup(row.groupDb, row.groupExcel, { isTrainer: Boolean(row.isTrainerLinked) })
 
+  const canActivateTrainerAccount = (row: ReconcileRow) => Boolean(row.email?.trim()) && !row.hasTrainerAccount
+
   const getUpdatedDbRow = (entry: ReconcileRow, nextValues: Partial<ReconcileRow>): ReconcileRow => {
     const nextRow = { ...entry, ...nextValues }
     if (nextRow.db !== "Ja" || nextRow.excel !== "Ja") {
@@ -396,25 +400,29 @@ export default function ExcelAbgleichPage() {
       })
 
       if (payload.member?.email) {
-        router.push(
-          buildAdminMailComposeHref({
-            title: "Freigabe-Mail bearbeiten",
-            returnTo: "/verwaltung/excel-abgleich",
-            requests: [
-              {
-                kind: "approval_notice",
-                email: payload.member.email,
-                name:
-                  `${payload.member.first_name ?? ""} ${payload.member.last_name ?? ""}`.trim() ||
-                  payload.member.name ||
-                  undefined,
-                targetKind: "member",
-                group: getPreferredApprovalGroup(row),
-              },
-            ],
-          })
-        )
+        const mailResponse = await fetch("/api/admin/manual-mail-outbox", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            request: {
+              kind: "approval_notice",
+              email: payload.member.email,
+              name:
+                `${payload.member.first_name ?? ""} ${payload.member.last_name ?? ""}`.trim() ||
+                payload.member.name ||
+                undefined,
+              targetKind: "member",
+              group: getPreferredApprovalGroup(row),
+            },
+          }),
+        })
+
+        if (!mailResponse.ok) {
+          throw new Error((await mailResponse.text()) || "Freigabe-Mail konnte nicht in den Postausgang gelegt werden.")
+        }
       }
+
+      alert(payload.member?.email ? "TSV-Mitglied gesetzt. Die Freigabe-Mail liegt jetzt im Postausgang." : "TSV-Mitglied gesetzt.")
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "TSV-Mitglied konnte nicht gesetzt werden.")
     } finally {
@@ -471,6 +479,72 @@ export default function ExcelAbgleichPage() {
       })
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Gruppe konnte nicht übernommen werden.")
+    } finally {
+      setUpdatingActionKey(null)
+    }
+  }
+
+  const handleActivateTrainerAccount = async (row: ReconcileRow) => {
+    if (!canActivateTrainerAccount(row)) return
+
+    const email = row.email?.trim().toLowerCase() ?? ""
+    if (!email) return
+
+    const pinInput = window.prompt(
+      `Start-Passwort für Trainerkonto von ${row.firstName} ${row.lastName}`.trim()
+    )
+
+    if (pinInput === null) return
+
+    const pin = pinInput.trim()
+    if (!isTrainerPinCompliant(pin)) {
+      alert(TRAINER_PIN_REQUIREMENTS_MESSAGE)
+      return
+    }
+
+    try {
+      setUpdatingActionKey(`trainer:${row.id}`)
+      setError("")
+
+      const response = await fetch("/api/admin/trainer-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: row.firstName,
+          lastName: row.lastName,
+          email,
+          pin,
+          skipMemberLink: true,
+        }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          clearTrainerAccess()
+        }
+        throw new Error(await response.text())
+      }
+
+      setResult((current) => {
+        if (!current) return current
+
+        const nextRows = current.rows.map((entry) => {
+          if (entry.id !== row.id) return entry
+          return {
+            ...entry,
+            hasTrainerAccount: true,
+          }
+        })
+
+        return {
+          ...current,
+          rows: nextRows,
+        }
+      })
+
+      alert("Trainerkonto angelegt. Die Bestätigungs-Mail wurde versendet.")
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Trainerkonto konnte nicht aktiviert werden.")
     } finally {
       setUpdatingActionKey(null)
     }
@@ -893,9 +967,41 @@ export default function ExcelAbgleichPage() {
                                 {updatingActionKey === `group:${getNavigableMemberId(row)}` ? "Setzt..." : "Gruppe übernehmen"}
                               </Button>
                             ) : null}
+
+                            {canActivateTrainerAccount(row) ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-xl px-3"
+                                disabled={updatingActionKey === `trainer:${row.id}`}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void handleActivateTrainerAccount(row)
+                                }}
+                              >
+                                {updatingActionKey === `trainer:${row.id}` ? "Aktiviert..." : "Trainerkonto aktivieren"}
+                              </Button>
+                            ) : null}
                           </div>
                         ) : (
-                          <span className="text-sm text-zinc-300">—</span>
+                          canActivateTrainerAccount(row) ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-xl px-3"
+                              disabled={updatingActionKey === `trainer:${row.id}`}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void handleActivateTrainerAccount(row)
+                              }}
+                            >
+                              {updatingActionKey === `trainer:${row.id}` ? "Aktiviert..." : "Trainerkonto aktivieren"}
+                            </Button>
+                          ) : (
+                            <span className="text-sm text-zinc-300">—</span>
+                          )
                         )}
                       </TableCell>
                     </TableRow>

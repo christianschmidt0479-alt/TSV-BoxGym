@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { formatIsoDateForDisplay, getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type BoxzwergeMemberRow = {
@@ -62,7 +62,7 @@ export default function TrainerBoxzwergePage() {
   const [presenceFilter, setPresenceFilter] = useState<"alle" | "heute-da" | "offen">("alle")
   const [members, setMembers] = useState<BoxzwergeMemberRow[]>([])
   const [todayCheckins, setTodayCheckins] = useState<CheckinRow[]>([])
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const today = useMemo(() => getTodayIsoDateInBerlin(), [])
 
   const loadData = useCallback(async () => {
     setLoading(true)

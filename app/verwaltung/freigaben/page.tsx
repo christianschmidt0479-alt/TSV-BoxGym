@@ -771,10 +771,30 @@ export default function FreigabenPage() {
 
                             await loadPending()
 
+                            if (memberEmail) {
+                              const outboxResponse = await fetch("/api/admin/manual-mail-outbox", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  request: {
+                                    kind: "approval_notice",
+                                    email: memberEmail,
+                                    name: memberName,
+                                    targetKind: "member",
+                                    group: selectedGroup,
+                                  },
+                                }),
+                              })
+
+                              if (!outboxResponse.ok) {
+                                throw new Error((await outboxResponse.text()) || "Freigabe-Mail konnte nicht in den Postausgang gelegt werden.")
+                              }
+                            }
+
                             if (mailRequests.length > 0) {
                               router.push(
                                 buildAdminMailComposeHref({
-                                  title: "Freigabe-Mails bearbeiten",
+                                  title: "Passwort-Mail bearbeiten",
                                   returnTo: "/verwaltung/freigaben",
                                   requests: mailRequests,
                                 })
@@ -782,7 +802,7 @@ export default function FreigabenPage() {
                               return
                             }
 
-                            alert("Mitglied freigegeben.")
+                            alert(memberEmail ? "Mitglied freigegeben. Die Freigabe-Mail liegt jetzt im Postausgang." : "Mitglied freigegeben.")
                           } catch (error) {
                             console.error(error)
                             alert("Fehler bei der Freigabe.")

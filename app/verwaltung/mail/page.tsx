@@ -69,6 +69,16 @@ type ManualParentOutboxRow = {
   created_at: string
 }
 
+type ManualAdminOutboxRow = {
+  id: string
+  kind: "approval_notice"
+  to: string
+  name: string | null
+  subject: string
+  body: string
+  created_at: string
+}
+
 function getKindLabel(kind: AdminQueueRow["kind"]) {
   switch (kind) {
     case "member":
@@ -109,6 +119,7 @@ export default function MailVerwaltungPage() {
   const [outgoingQueueRows, setOutgoingQueueRows] = useState<OutgoingQueueRow[]>([])
   const [parentFamilyMailRows, setParentFamilyMailRows] = useState<ParentFamilyMailRow[]>([])
   const [manualParentOutboxRows, setManualParentOutboxRows] = useState<ManualParentOutboxRow[]>([])
+  const [manualAdminOutboxRows, setManualAdminOutboxRows] = useState<ManualAdminOutboxRow[]>([])
 
   async function loadMailData() {
     try {
@@ -126,6 +137,7 @@ export default function MailVerwaltungPage() {
         setOutgoingQueueRows([])
         setParentFamilyMailRows([])
         setManualParentOutboxRows([])
+        setManualAdminOutboxRows([])
         return
       }
 
@@ -144,17 +156,20 @@ export default function MailVerwaltungPage() {
           outgoingQueueRows: OutgoingQueueRow[]
           parentFamilyMailRows: ParentFamilyMailRow[]
           manualParentOutboxRows: ManualParentOutboxRow[]
+          manualAdminOutboxRows: ManualAdminOutboxRow[]
         }
         setAdminQueueRows(payload.adminQueueRows ?? [])
         setOutgoingQueueRows(payload.outgoingQueueRows ?? [])
         setParentFamilyMailRows(payload.parentFamilyMailRows ?? [])
         setManualParentOutboxRows(payload.manualParentOutboxRows ?? [])
+        setManualAdminOutboxRows(payload.manualAdminOutboxRows ?? [])
       } else if (adminQueueResponse.status === 401) {
         setLoadError("Admin-Sitzung abgelaufen. Bitte im Adminzugang neu anmelden, damit die Entwürfe geladen werden.")
         setAdminQueueRows([])
         setOutgoingQueueRows([])
         setParentFamilyMailRows([])
         setManualParentOutboxRows([])
+        setManualAdminOutboxRows([])
       } else {
         const errorText = await adminQueueResponse.text()
         if (!isMissingTableError({ message: errorText })) {
@@ -568,8 +583,8 @@ TSV BoxGym`
 
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-700">
-              <div className="text-zinc-500">Eltern-Entwürfe</div>
-              <div className="mt-1 text-2xl font-bold text-zinc-900">{loading ? "…" : visibleParentOutboxRows.length}</div>
+              <div className="text-zinc-500">Entwürfe gesamt</div>
+              <div className="mt-1 text-2xl font-bold text-zinc-900">{loading ? "…" : visibleParentOutboxRows.length + manualAdminOutboxRows.length}</div>
             </div>
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-700">
               <div className="text-zinc-500">Versandart</div>
@@ -580,6 +595,62 @@ TSV BoxGym`
               <div className="mt-1 font-semibold text-zinc-900">Ausgeschlossen</div>
             </div>
           </div>
+
+          {manualAdminOutboxRows.length === 0 ? null : (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+                <div className="font-semibold text-zinc-900">Freigabe-Entwürfe</div>
+                <div className="mt-1">Diese Mails wurden beim Freigeben in den manuellen Postausgang gelegt und gehen nicht automatisch verloren.</div>
+              </div>
+
+              {manualAdminOutboxRows.map((row) => {
+                const params = new URLSearchParams({
+                  subject: row.subject,
+                  body: row.body,
+                })
+
+                return (
+                  <div key={row.id} className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="space-y-2">
+                        <div className="text-lg font-semibold text-zinc-900">{row.name || row.to}</div>
+                        <div className="text-sm text-zinc-600">{row.to}</div>
+                        <div className="text-xs text-zinc-500">Im Postausgang seit {formatDisplayDateTime(new Date(row.created_at))}</div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 xl:justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-2xl"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(row.body)
+                            alert("Mailtext kopiert.")
+                          }}
+                        >
+                          Text kopieren
+                        </Button>
+                        <Button asChild className="rounded-2xl bg-[#e6332a] text-white hover:bg-[#c92b23]">
+                          <a href={`mailto:${row.to}?${params.toString()}`}>Mail manuell senden</a>
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 xl:grid-cols-[0.95fr_1.05fr]">
+                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+                        <div className="font-semibold text-zinc-900">Betreff</div>
+                        <div className="mt-2">{row.subject}</div>
+                      </div>
+                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+                        <div className="font-semibold text-zinc-900">Mailtext</div>
+                        <div className="mt-2 whitespace-pre-wrap leading-relaxed">{row.body}</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {visibleParentOutboxRows.length === 0 ? (
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Noch keine Elternmails im Postausgang.</div>

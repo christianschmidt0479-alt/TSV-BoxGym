@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
-import { createTrainerAccount, type TrainerLicense } from "@/lib/trainerDb"
+import { createTrainerAccount, isTrainerAccountEmailConflict, type TrainerLicense } from "@/lib/trainerDb"
 import { validateEmail } from "@/lib/formValidation"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { sendVerificationEmail } from "@/lib/resendClient"
@@ -19,6 +19,7 @@ type AdminTrainerAccountBody = {
   trainerLicense?: TrainerLicense
   pin?: string
   linkedMemberId?: string
+  skipMemberLink?: boolean
 }
 
 function getServerSupabase() {
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
     const trainerLicense = normalizeTrainerLicense(trainerLicenseInput)
     const pin = body.pin?.trim() ?? ""
     const linkedMemberId = body.linkedMemberId?.trim() || null
+    const skipMemberLink = Boolean(body.skipMemberLink)
 
     if (!firstName || !lastName || !email || !pin) {
       return new NextResponse("Bitte alle Felder für das Trainerkonto ausfüllen.", { status: 400 })
@@ -72,7 +74,9 @@ export async function POST(request: Request) {
     const supabase = getServerSupabase()
 
     let linkedMember: { id: string; email?: string | null } | null = null
-    if (linkedMemberId) {
+    if (skipMemberLink) {
+      linkedMember = null
+    } else if (linkedMemberId) {
       const { data, error } = await supabase
         .from("members")
         .select("id, email")
@@ -118,7 +122,7 @@ export async function POST(request: Request) {
       targetType: "trainer",
       targetId: trainerAccount.id,
       targetName: `${firstName} ${lastName}`.trim(),
-      details: `E-Mail: ${email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${linkedMember?.id ? `, Mitglied verknüpft` : ""}`,
+      details: `E-Mail: ${email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${linkedMember?.id ? `, Mitglied verknüpft` : skipMemberLink ? ", ohne Mitgliedszuweisung" : ""}`,
     })
 
     const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
@@ -133,6 +137,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, email })
   } catch (error) {
+    if (isTrainerAccountEmailConflict(error)) {
+      return new NextResponse(error.message, { status: 409 })
+    }
+
     console.error("admin trainer account creation failed", error)
     return new NextResponse("Interner Fehler", { status: 500 })
   }

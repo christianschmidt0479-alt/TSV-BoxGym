@@ -27,7 +27,9 @@ Important variables for production:
 - `APP_BASE_URL=https://tsvboxgym.de`
 - `TRAINER_SESSION_SECRET`
 - `PUBLIC_AREA_SESSION_SECRET`
-- `MEMBER_DEVICE_SESSION_SECRET` (optional, otherwise `TRAINER_SESSION_SECRET` is used)
+- `MEMBER_DEVICE_SESSION_SECRET` — recommended; falls back to `TRAINER_SESSION_SECRET` if not set
+- `QR_ACCESS_SESSION_SECRET` — recommended; falls back through `MEMBER_DEVICE_SESSION_SECRET` → `TRAINER_SESSION_SECRET`
+- `GS_MEMBERSHIP_CONFIRMATION_SECRET` — recommended; falls back through `PUBLIC_AREA_SESSION_SECRET` → `TRAINER_SESSION_SECRET`
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL=TSV BoxGym <noreply@tsvboxgym.de>`
 - `RESEND_REPLY_TO_EMAIL=info@tsvboxgym.de`
@@ -146,6 +148,45 @@ npm run lint
 npm run typecheck
 npm run build
 ```
+
+## E2E Smoke Tests
+
+The repository now includes a Playwright smoke test suite for public pages and APIs, plus optional authenticated live or staging checks.
+
+Install dependencies and browser once:
+
+```bash
+npm install
+npx playwright install chromium
+```
+
+Public smoke tests against the configured base URL:
+
+```bash
+npm run test:e2e
+```
+
+Run directly against production:
+
+```bash
+npm run test:e2e:live
+```
+
+Run against staging or another environment:
+
+```bash
+E2E_BASE_URL=https://your-staging-host npm run test:e2e
+```
+
+Optional authenticated checks use environment variables from `.env.local` or your shell:
+
+- `E2E_TRAINER_EMAIL`
+- `E2E_TRAINER_PASSWORD`
+- `E2E_MEMBER_EMAIL`
+- `E2E_MEMBER_PASSWORD`
+- `E2E_ADMIN_PASSWORD`
+
+If those variables are missing, the protected tests are skipped automatically and only the public smoke suite runs.
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 

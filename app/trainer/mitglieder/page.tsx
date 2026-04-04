@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { buildTrainingGroupOptions, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type MemberRow = {
@@ -42,6 +44,7 @@ export default function TrainerMitgliederPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [deletingAttendanceId, setDeletingAttendanceId] = useState("")
   const [search, setSearch] = useState("")
+  const [groupFilter, setGroupFilter] = useState("alle")
   const [members, setMembers] = useState<MemberRow[]>([])
   const [selectedMemberId, setSelectedMemberId] = useState("")
   const [attendanceRows, setAttendanceRows] = useState<AttendanceRow[]>([])
@@ -134,6 +137,10 @@ export default function TrainerMitgliederPage() {
     const trimmed = search.trim().toLowerCase()
 
     return members.filter((member) => {
+      const normalizedGroup = normalizeTrainingGroup(member.base_group) || member.base_group || ""
+      const matchesGroup = groupFilter === "alle" || normalizedGroup === groupFilter
+      if (!matchesGroup) return false
+
       if (trimmed === "") return true
 
       return (
@@ -144,12 +151,24 @@ export default function TrainerMitgliederPage() {
         (member.base_group ?? "").toLowerCase().includes(trimmed)
       )
     })
-  }, [members, search])
+  }, [groupFilter, members, search])
+
+  const groupOptions = useMemo(() => {
+    return buildTrainingGroupOptions(members.map((member) => member.base_group))
+  }, [members])
 
   const selectedMember = useMemo(
-    () => members.find((member) => member.id === selectedMemberId) ?? null,
-    [members, selectedMemberId]
+    () => filteredMembers.find((member) => member.id === selectedMemberId) ?? null,
+    [filteredMembers, selectedMemberId]
   )
+
+  useEffect(() => {
+    if (!selectedMemberId) return
+    if (filteredMembers.some((member) => member.id === selectedMemberId)) return
+
+    setSelectedMemberId("")
+    setAttendanceRows([])
+  }, [filteredMembers, selectedMemberId])
 
   if (!authResolved) {
     return <div className="text-sm text-zinc-500">Zugriff wird geprüft...</div>
@@ -196,6 +215,23 @@ export default function TrainerMitgliederPage() {
                 placeholder="Name, Geburtsdatum, Telefon, E-Mail oder Gruppe"
                 className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Gruppe</Label>
+              <Select value={groupFilter} onValueChange={setGroupFilter}>
+                <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="alle">Alle Gruppen</SelectItem>
+                  {groupOptions.map((group) => (
+                    <SelectItem key={group} value={group}>
+                      {group}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {loading ? (

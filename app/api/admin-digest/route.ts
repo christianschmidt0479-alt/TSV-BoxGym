@@ -3,6 +3,7 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { getPendingAdminNotifications, markAdminNotificationsSent } from "@/lib/adminDigestDb"
 import { formatDisplayDate } from "@/lib/dateFormat"
+import { isManualAdminMailRecord } from "@/lib/manualAdminMailOutboxDb"
 import { enqueueMedicalExamReminderMails } from "@/lib/medicalExamReminderDb"
 import { isManualParentMailRecord } from "@/lib/manualParentMailOutboxDb"
 import { getPendingOutgoingMails, markOutgoingMailsSent } from "@/lib/outgoingMailQueueDb"
@@ -97,7 +98,7 @@ export async function GET(request: Request) {
     getPendingOutgoingMails(),
   ])
 
-  const sendableOutgoingMails = outgoingMails.filter((item) => !isManualParentMailRecord(item))
+  const sendableOutgoingMails = outgoingMails.filter((item) => !isManualParentMailRecord(item) && !isManualAdminMailRecord(item))
 
   if (items.length === 0 && sendableOutgoingMails.length === 0) {
     return NextResponse.json({
@@ -202,7 +203,7 @@ export async function POST(request: Request) {
     getPendingOutgoingMails(),
   ])
 
-  const sendableOutgoingMails = outgoingMails.filter((item) => !isManualParentMailRecord(item))
+  const sendableOutgoingMails = outgoingMails.filter((item) => !isManualParentMailRecord(item) && !isManualAdminMailRecord(item))
 
   if (items.length === 0 && sendableOutgoingMails.length === 0) {
     return NextResponse.json({

@@ -7,10 +7,9 @@ import { ArrowRight, ClipboardList, ShieldCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GroupFilterBar } from "@/components/group-filter-bar"
 import { InfoHint } from "@/components/ui/info-hint"
-import { groupOptions, sessions } from "@/lib/boxgymSessions"
-import { formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { sessions } from "@/lib/boxgymSessions"
+import { formatIsoDateForDisplay, getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { clearTrainerAccessSession } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -195,8 +194,7 @@ export default function TrainerDashboardPage() {
   const [birthdayCheckins, setBirthdayCheckins] = useState<BirthdayCheckinRow[]>([])
   const [memberRows, setMemberRows] = useState<MemberRow[]>([])
   const [now, setNow] = useState<Date | null>(null)
-  const [selectedGroup, setSelectedGroup] = useState("alle")
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const today = useMemo(() => getTodayIsoDateInBerlin(), [])
 
   const sessionLabel = useMemo(() => {
     const fullName = `${accountFirstName} ${accountLastName}`.trim()
@@ -278,77 +276,42 @@ export default function TrainerDashboardPage() {
     return pastSessions[pastSessions.length - 1] ?? null
   }, [now, today, todaysSessions])
 
-  const filteredSessions = useMemo(() => {
-    if (selectedGroup === "alle") return todaysSessions
-    return todaysSessions.filter((session) => session.group === selectedGroup)
-  }, [selectedGroup, todaysSessions])
-
-  const filteredTodayCheckins = useMemo(() => {
-    if (selectedGroup === "alle") return todayCheckins
-    return todayCheckins.filter((row) => (normalizeTrainingGroup(row.group_name) || row.group_name) === selectedGroup)
-  }, [selectedGroup, todayCheckins])
-
-  const filteredMemberRows = useMemo(() => {
-    if (selectedGroup === "alle") return memberRows
-    return memberRows.filter((member) => (normalizeTrainingGroup(member.base_group) || member.base_group) === selectedGroup)
-  }, [memberRows, selectedGroup])
-
-  const filteredBirthdayCheckins = useMemo(() => {
-    if (selectedGroup === "alle") return birthdayCheckins
-    return birthdayCheckins.filter((row) => row.group_name === selectedGroup)
-  }, [birthdayCheckins, selectedGroup])
-
-  const filteredTodayBirthdays = useMemo(() => {
-    if (selectedGroup === "alle") return todayBirthdays
-    return todayBirthdays.filter((row) => row.base_group === selectedGroup)
-  }, [selectedGroup, todayBirthdays])
-
   const birthdayCheckinMemberIds = useMemo(() => {
-    return new Set(filteredBirthdayCheckins.map((row) => row.member_id))
-  }, [filteredBirthdayCheckins])
+    return new Set(birthdayCheckins.map((row) => row.member_id))
+  }, [birthdayCheckins])
 
   const pendingTodayBirthdays = useMemo(() => {
-    return filteredTodayBirthdays.filter((entry) => !birthdayCheckinMemberIds.has(entry.id))
-  }, [birthdayCheckinMemberIds, filteredTodayBirthdays])
+    return todayBirthdays.filter((entry) => !birthdayCheckinMemberIds.has(entry.id))
+  }, [birthdayCheckinMemberIds, todayBirthdays])
 
   const checkedInTodayBirthdays = useMemo(() => {
-    return filteredTodayBirthdays.filter((entry) => birthdayCheckinMemberIds.has(entry.id))
-  }, [birthdayCheckinMemberIds, filteredTodayBirthdays])
-
-  const filteredActiveSession = useMemo(() => {
-    if (selectedGroup === "alle") return activeSession
-    return activeSession?.group === selectedGroup ? activeSession : null
-  }, [activeSession, selectedGroup])
-
-  const filteredPreviousSession = useMemo(() => {
-    if (selectedGroup === "alle") return previousSession
-    return previousSession?.group === selectedGroup ? previousSession : null
-  }, [previousSession, selectedGroup])
+    return todayBirthdays.filter((entry) => birthdayCheckinMemberIds.has(entry.id))
+  }, [birthdayCheckinMemberIds, todayBirthdays])
 
   const trialCount = useMemo(() => {
-    return filteredTodayCheckins.filter((row) => row.members?.is_trial).length
-  }, [filteredTodayCheckins])
+    return todayCheckins.filter((row) => row.members?.is_trial).length
+  }, [todayCheckins])
 
   const activeSessionCount = useMemo(() => {
-    if (!filteredActiveSession) return 0
-    return filteredTodayCheckins.filter((row) => row.group_name === filteredActiveSession.group).length
-  }, [filteredActiveSession, filteredTodayCheckins])
+    if (!activeSession) return 0
+    return todayCheckins.filter((row) => row.group_name === activeSession.group).length
+  }, [activeSession, todayCheckins])
 
   const previousSessionCount = useMemo(() => {
-    if (!filteredPreviousSession) return 0
-    return filteredTodayCheckins.filter((row) => row.group_name === filteredPreviousSession.group).length
-  }, [filteredPreviousSession, filteredTodayCheckins])
+    if (!previousSession) return 0
+    return todayCheckins.filter((row) => row.group_name === previousSession.group).length
+  }, [previousSession, todayCheckins])
 
   const trainerAssistMembers = useMemo(() => {
-    return filteredMemberRows.filter(
+    return memberRows.filter(
       (member) => (normalizeTrainingGroup(member.base_group) || member.base_group) !== "Boxzwerge" && member.needs_trainer_assist_checkin
     ).length
-  }, [filteredMemberRows])
+  }, [memberRows])
 
   const checkinSummary = useMemo(() => {
     const grouped = new Map<string, { count: number; trial: number }>()
 
-    for (const row of filteredTodayCheckins) {
+    for (const row of todayCheckins) {
       const normalizedGroup = normalizeTrainingGroup(row.group_name) || row.group_name
       const current = grouped.get(normalizedGroup) ?? { count: 0, trial: 0 }
       current.count += 1
@@ -364,17 +327,17 @@ export default function TrainerDashboardPage() {
         members: values.count - values.trial,
       }))
       .sort((a, b) => compareTrainingGroupOrder(a.group, b.group) || a.group.localeCompare(b.group, "de"))
-  }, [filteredTodayCheckins])
+  }, [todayCheckins])
 
   const assistSummary = useMemo(() => {
     const grouped = countByGroup(
-      filteredMemberRows
+      memberRows
         .filter((member) => member.base_group && member.needs_trainer_assist_checkin)
         .map((member) => ({ group: (normalizeTrainingGroup(member.base_group) || member.base_group) as string }))
     )
 
     return grouped
-  }, [filteredMemberRows])
+  }, [memberRows])
 
   const trainerActions = useMemo<ActionLink[]>(() => {
     return [
@@ -495,22 +458,21 @@ export default function TrainerDashboardPage() {
           <p className="text-sm text-zinc-500">Die wichtigsten Werte für heute, kompakt und direkt lesbar.</p>
         </div>
 
-        {filteredTodayBirthdays.length > 0 ? (
+        {todayBirthdays.length > 0 ? (
           <Card className="rounded-[24px] border-0 shadow-sm">
             <CardHeader className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle>Heute Geburtstag</CardTitle>
-                <Badge tone="amber">{filteredTodayBirthdays.length}</Badge>
+                <Badge tone="amber">{todayBirthdays.length}</Badge>
                 {checkedInTodayBirthdays.length > 0 ? <Badge tone="emerald">{`${checkedInTodayBirthdays.length} schon da`}</Badge> : null}
                 {pendingTodayBirthdays.length > 0 ? <Badge>{`${pendingTodayBirthdays.length} noch offen`}</Badge> : null}
-                <Badge tone="blue">{selectedGroup === "alle" ? "Alle Gruppen" : selectedGroup}</Badge>
               </div>
               <div className="text-sm text-zinc-500">
                 Dieser Hinweis erscheint direkt beim Login. Pro Karte ist sichtbar, ob das Geburtstagskind heute schon eingecheckt hat.
               </div>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {filteredTodayBirthdays.map((entry) => (
+              {todayBirthdays.map((entry) => (
                 <div key={entry.id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
@@ -531,29 +493,18 @@ export default function TrainerDashboardPage() {
           </Card>
         ) : null}
 
-        <Card className="rounded-[24px] border-0 shadow-sm">
-          <CardContent className="p-5">
-            <GroupFilterBar
-              options={groupOptions}
-              value={selectedGroup}
-              onChange={setSelectedGroup}
-              description="Gruppe zuerst wählen, damit Übersicht und Listen direkt auf den relevanten Bereich fokussiert bleiben."
-            />
-          </CardContent>
-        </Card>
-
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <TrainerStat
             label="Check-ins heute"
-            value={loading ? "…" : filteredTodayCheckins.length}
-            hint={selectedGroup === "alle" ? "Alle Gruppen" : selectedGroup}
+            value={loading ? "…" : todayCheckins.length}
+            hint="Alle Gruppen"
           />
           <TrainerStat
             label="Aktive Einheit"
-            value={loading ? "…" : filteredActiveSession ? activeSessionCount : "—"}
+            value={loading ? "…" : activeSession ? activeSessionCount : "—"}
             hint={
-              filteredActiveSession
-                ? `${filteredActiveSession.group} · ${filteredActiveSession.start} - ${filteredActiveSession.end}`
+              activeSession
+                ? `${activeSession.group} · ${activeSession.start} - ${activeSession.end}`
                 : "Keine passende Einheit"
             }
           />
@@ -576,20 +527,19 @@ export default function TrainerDashboardPage() {
           <p className="text-sm text-zinc-500">Heutige Check-ins und offene Punkte als ruhige Kartenansicht.</p>
         </div>
 
-        {filteredBirthdayCheckins.length > 0 ? (
+        {birthdayCheckins.length > 0 ? (
           <Card className="rounded-[24px] border-0 shadow-sm">
             <CardHeader className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle>Heute Geburtstag und eingecheckt</CardTitle>
-                <Badge tone="amber">{filteredBirthdayCheckins.length}</Badge>
-                <Badge tone="blue">{selectedGroup === "alle" ? "Alle Gruppen" : selectedGroup}</Badge>
+                <Badge tone="amber">{birthdayCheckins.length}</Badge>
               </div>
               <div className="text-sm text-zinc-500">
                 Diese Liste zeigt nur Geburtstagskinder, die heute bereits erfolgreich eingecheckt wurden.
               </div>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {filteredBirthdayCheckins.map((entry) => (
+              {birthdayCheckins.map((entry) => (
                 <div key={entry.member_id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
@@ -614,8 +564,7 @@ export default function TrainerDashboardPage() {
             <CardHeader className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle>Heutige Check-ins</CardTitle>
-                <Badge tone="blue">{selectedGroup === "alle" ? "Alle Gruppen" : selectedGroup}</Badge>
-                {filteredPreviousSession ? <Badge>{`Vorherige Einheit ${previousSessionCount}`}</Badge> : null}
+                {previousSession ? <Badge>{`Vorherige Einheit ${previousSessionCount}`}</Badge> : null}
               </div>
               <div className="text-sm text-zinc-500">
                 Gruppenübersicht für heute, kompakt und ohne Tabellenansicht.
@@ -624,7 +573,7 @@ export default function TrainerDashboardPage() {
             <CardContent className="space-y-3">
               {checkinSummary.length === 0 ? (
                 <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">
-                  Für diese Auswahl gibt es heute noch keine Check-ins.
+                  Heute liegen noch keine Check-ins vor.
                 </div>
               ) : (
                 checkinSummary.map((entry) => (
@@ -638,9 +587,9 @@ export default function TrainerDashboardPage() {
                           <Badge tone="amber">{`${entry.trial} Probetraining`}</Badge>
                         </div>
                       </div>
-                      {filteredActiveSession?.group === entry.group ? (
+                      {activeSession?.group === entry.group ? (
                         <Badge tone="blue">Läuft gerade</Badge>
-                      ) : filteredPreviousSession?.group === entry.group ? (
+                      ) : previousSession?.group === entry.group ? (
                         <Badge>Vorherige Einheit</Badge>
                       ) : null}
                     </div>
@@ -662,10 +611,10 @@ export default function TrainerDashboardPage() {
               <CardHeader className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <CardTitle>Mitgliederhinweise</CardTitle>
-                  <Badge tone="blue">{loading ? "…" : `${filteredMemberRows.length} sichtbar`}</Badge>
+                  <Badge tone="blue">{loading ? "…" : `${memberRows.length} sichtbar`}</Badge>
                 </div>
                 <div className="text-sm text-zinc-500">
-                  Hinweise und offene Punkte in der gewählten Gruppe.
+                  Hinweise und offene Punkte im aktuellen Mitgliederbestand.
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -691,19 +640,19 @@ export default function TrainerDashboardPage() {
               <CardHeader className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <CardTitle>Heute im Plan</CardTitle>
-                  <Badge>{loading ? "…" : `${filteredSessions.length} Einheiten`}</Badge>
+                  <Badge>{loading ? "…" : `${todaysSessions.length} Einheiten`}</Badge>
                 </div>
                 <div className="text-sm text-zinc-500">
-                  Nur die Einheiten, die für heute wirklich relevant sind.
+                  Die regulären Einheiten aus dem heutigen Wochenplan.
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {filteredSessions.length === 0 ? (
+                {todaysSessions.length === 0 ? (
                   <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">
-                    Heute sind für diese Auswahl keine regulären Einheiten im Wochenplan.
+                    Heute sind keine regulären Einheiten im Wochenplan.
                   </div>
                 ) : (
-                  filteredSessions.map((session) => (
+                  todaysSessions.map((session) => (
                     <div key={session.id} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
@@ -712,9 +661,9 @@ export default function TrainerDashboardPage() {
                           {session.dayKey} · {session.start} - {session.end}
                         </div>
                       </div>
-                        {filteredActiveSession?.id === session.id ? (
+                        {activeSession?.id === session.id ? (
                           <Badge tone="blue">Aktiv</Badge>
-                        ) : filteredPreviousSession?.id === session.id ? (
+                        ) : previousSession?.id === session.id ? (
                           <Badge>Vorherige</Badge>
                         ) : null}
                       </div>

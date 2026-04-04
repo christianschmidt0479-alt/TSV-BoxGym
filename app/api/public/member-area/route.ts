@@ -29,6 +29,8 @@ import {
   type ParentAccountRow,
 } from "@/lib/parentAccountsDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
+import { sessions } from "@/lib/boxgymSessions"
+import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import {
   applyMemberAreaSessionCookie,
   applyParentAreaSessionCookie,
@@ -84,6 +86,8 @@ type MemberRecord = {
   office_list_status?: string | null
   office_list_group?: string | null
   office_list_checked_at?: string | null
+  member_qr_token?: string | null
+  member_qr_active?: boolean | null
 }
 
 type ParentChildRow = {
@@ -171,22 +175,112 @@ function getPreviousMonthKey(monthKey: string) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
 }
 
-function calculateTrainingStreak(checkins: Array<{ date: string }>) {
-  if (checkins.length === 0) return 0
+function addDays(dateString: string, days: number) {
+  const date = new Date(`${dateString}T12:00:00`)
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
+}
 
-  const uniqueDates = Array.from(new Set(checkins.map((c) => c.date))).sort().reverse()
-  let streak = 1
+function hasScheduledBaseGroupTraining(baseGroup: string, dateString: string) {
+  const date = new Date(`${dateString}T12:00:00`)
+  const day = date.getDay()
 
-  for (let i = 1; i < uniqueDates.length; i++) {
-    const current = new Date(`${uniqueDates[i - 1]}T12:00:00`)
-    const next = new Date(`${uniqueDates[i]}T12:00:00`)
-    const diffDays = Math.round((current.getTime() - next.getTime()) / (1000 * 60 * 60 * 24))
+  return sessions.some((session) => {
+    const normalizedGroup = normalizeTrainingGroup(session.group) || session.group
+    if (normalizedGroup !== baseGroup) return false
 
-    if (diffDays <= 7) streak += 1
-    else break
+    if (session.dayKey === "Montag") return day === 1
+    if (session.dayKey === "Dienstag") return day === 2
+    if (session.dayKey === "Mittwoch") return day === 3
+    if (session.dayKey === "Donnerstag") return day === 4
+    if (session.dayKey === "Freitag") return day === 5
+    return false
+  })
+}
+
+function findPreviousScheduledBaseGroupDate(baseGroup: string, beforeDate: string) {
+  let cursor = addDays(beforeDate, -1)
+
+  for (let index = 0; index < 14; index += 1) {
+    if (hasScheduledBaseGroupTraining(baseGroup, cursor)) {
+      return cursor
+    }
+    cursor = addDays(cursor, -1)
   }
 
-  return streak
+  return null
+}
+
+function calculateScheduledBaseGroupTrainingStreak({
+  checkins,
+  baseGroup,
+  endDate,
+}: {
+  checkins: Array<{ date: string; group_name?: string | null }>
+  baseGroup?: string | null
+  endDate: string
+}) {
+  const normalizedBaseGroup = normalizeTrainingGroup(baseGroup)
+  if (!normalizedBaseGroup) return 0
+
+  const attendedDates = Array.from(
+    new Set(
+      checkins
+        .filter((row) => (normalizeTrainingGroup(row.group_name) || row.group_name) === normalizedBaseGroup)
+        .map((row) => row.date)
+        .filter((date) => date <= endDate)
+    )
+  ).sort().reverse()
+
+  if (attendedDates.length === 0) return 0
+
+  const attendedDateSet = new Set(attendedDates)
+  const latestScheduledAttendance = attendedDates.find((date) => hasScheduledBaseGroupTraining(normalizedBaseGroup, date))
+
+  if (!latestScheduledAttendance) return 0
+
+  let streak = 1
+  let currentDate = latestScheduledAttendance
+
+  while (true) {
+    const previousScheduledDate = findPreviousScheduledBaseGroupDate(normalizedBaseGroup, currentDate)
+    if (!previousScheduledDate) return streak
+    if (!attendedDateSet.has(previousScheduledDate)) return streak
+
+    streak += 1
+    currentDate = previousScheduledDate
+  }
+}
+
+function calculateTrainingStreak({
+  checkins,
+  baseGroup,
+  liveDate,
+  disableCheckinTimeWindow,
+}: {
+  checkins: Array<{ date: string; group_name?: string | null }>
+  baseGroup?: string | null
+  liveDate: string
+  disableCheckinTimeWindow: boolean
+}) {
+  const normalizedBaseGroup = normalizeTrainingGroup(baseGroup)
+  if (!normalizedBaseGroup) return 0
+
+  const scheduledStreak = calculateScheduledBaseGroupTrainingStreak({
+    checkins,
+    baseGroup: normalizedBaseGroup,
+    endDate: disableCheckinTimeWindow ? addDays(liveDate, -1) : liveDate,
+  })
+
+  if (!disableCheckinTimeWindow || normalizedBaseGroup === "L-Gruppe") {
+    return scheduledStreak
+  }
+
+  const attendedTodayInBaseGroup = checkins.some(
+    (row) => row.date === liveDate && (normalizeTrainingGroup(row.group_name) || row.group_name) === normalizedBaseGroup
+  )
+
+  return attendedTodayInBaseGroup ? scheduledStreak + 1 : scheduledStreak
 }
 
 function getMemberDisplayName(member?: Partial<MemberRecord> | null) {
@@ -267,6 +361,7 @@ async function buildMemberSnapshot(member: MemberRecord) {
   const previousMonthKey = getPreviousMonthKey(currentMonthKey)
 
   const [
+    checkinSettings,
     { data: monthRows },
     { data: previousMonthRows },
     { data: yearRows },
@@ -275,10 +370,11 @@ async function buildMemberSnapshot(member: MemberRecord) {
     { data: recentRows },
     { data: attendanceRows },
   ] = await Promise.all([
+    readCheckinSettings(),
     supabase.from("checkins").select("*").eq("member_id", member.id).eq("month_key", currentMonthKey),
     supabase.from("checkins").select("*").eq("member_id", member.id).eq("month_key", previousMonthKey),
     supabase.from("checkins").select("*").eq("member_id", member.id).eq("year", currentYear),
-    supabase.from("checkins").select("date").eq("member_id", member.id).order("date", { ascending: false }),
+    supabase.from("checkins").select("date, group_name").eq("member_id", member.id).order("date", { ascending: false }),
     supabase
       .from("checkins")
       .select("*")
@@ -329,7 +425,12 @@ async function buildMemberSnapshot(member: MemberRecord) {
     personalLastCheckin: (lastRow as CheckinRow | null) ?? null,
     memberAttendanceRows: (attendanceRows as CheckinRow[] | null) ?? [],
     recentCheckins: (recentRows as CheckinRow[] | null) ?? [],
-    trainingStreak: calculateTrainingStreak((allRows as Array<{ date: string }>) ?? []),
+    trainingStreak: calculateTrainingStreak({
+      checkins: (allRows as Array<{ date: string; group_name?: string | null }>) ?? [],
+      baseGroup: normalizedMember.base_group,
+      liveDate,
+      disableCheckinTimeWindow: checkinSettings.disableCheckinTimeWindow,
+    }),
     baseGroupMonthVisits,
     baseGroupPosition,
   }

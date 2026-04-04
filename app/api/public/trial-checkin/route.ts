@@ -3,8 +3,9 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { createCheckin, createMember, findMemberByFirstLastAndBirthdate, updateMemberProfile, updateTrialMember } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
-import { sessions } from "@/lib/boxgymSessions"
-import { readQrAccessFromHeaders } from "@/lib/qrAccess"
+import { getMemberCheckinMode, getSessionsForDate } from "@/lib/memberCheckin"
+import { readQrAccessFromHeaders, verifyQrAccessToken } from "@/lib/qrAccess"
+import { getQrAccessToken } from "@/lib/qrAccessServer"
 import { supabase } from "@/lib/supabaseClient"
 
 type TrialCheckinBody = {
@@ -13,6 +14,7 @@ type TrialCheckinBody = {
   birthDate?: string
   email?: string
   phone?: string
+  qrAccessToken?: string
   sessionId?: string
 }
 
@@ -50,28 +52,16 @@ function timeString(date = new Date()) {
   })
 }
 
-function getDayKey(dateString: string) {
-  const date = new Date(`${dateString}T12:00:00`)
-  const day = date.getDay()
-
-  switch (day) {
-    case 1:
-      return "Montag"
-    case 2:
-      return "Dienstag"
-    case 3:
-      return "Mittwoch"
-    case 4:
-      return "Donnerstag"
-    case 5:
-      return "Freitag"
-    default:
-      return ""
-  }
-}
-
 function getMonthKey(dateString: string) {
   return dateString.slice(0, 7)
+}
+
+function hasLegacyQrAccessToken(token?: string) {
+  try {
+    return token?.trim() === getQrAccessToken()
+  } catch {
+    return false
+  }
 }
 
 export async function POST(request: Request) {
@@ -80,12 +70,13 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const qrAccess = await readQrAccessFromHeaders(request)
-    if (!qrAccess || qrAccess.panel !== "trial") {
+    const body = (await request.json()) as TrialCheckinBody
+    const qrAccess = (await readQrAccessFromHeaders(request)) ?? (await verifyQrAccessToken(body.qrAccessToken?.trim()))
+    const hasLegacyAccess = hasLegacyQrAccessToken(body.qrAccessToken)
+    if ((!qrAccess || qrAccess.panel !== "trial") && !hasLegacyAccess) {
       return new NextResponse("QR-Zugang erforderlich.", { status: 403 })
     }
 
-    const body = (await request.json()) as TrialCheckinBody
     const firstName = body.firstName?.trim() ?? ""
     const lastName = body.lastName?.trim() ?? ""
     const birthDate = body.birthDate ?? ""
@@ -104,7 +95,7 @@ export async function POST(request: Request) {
     const liveDate = todayString(now)
     const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
     const currentMonthKey = getMonthKey(liveDate)
-    const todaysSessions = sessions.filter((session) => session.dayKey === getDayKey(liveDate))
+    const todaysSessions = getSessionsForDate(liveDate)
     const selectedSession = todaysSessions.find((session) => session.id === body.sessionId) ?? null
 
     if (!firstName || !lastName) {
@@ -128,7 +119,9 @@ export async function POST(request: Request) {
     }
 
     const checkinSettings = await readCheckinSettings()
-    if (!checkinSettings.disableCheckinTimeWindow && !isSessionOpenForCheckin(selectedSession, now)) {
+    const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
+
+    if (!isSessionOpenForCheckin(selectedSession, now)) {
       return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
     }
 
@@ -176,6 +169,7 @@ export async function POST(request: Request) {
     await createCheckin({
       member_id: member.id,
       group_name: selectedSession.group,
+      checkin_mode: checkinMode,
       date: liveDate,
       time: timeString(now),
       year: currentYear,

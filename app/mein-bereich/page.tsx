@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, CircleUserRound, MailCheck, ShieldCheck, UsersRound } from "lucide-react"
+import { ArrowLeft, CircleUserRound, MailCheck, QrCode, ShieldCheck, UsersRound } from "lucide-react"
+import { QRCodeSVG } from "qrcode.react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -57,6 +58,8 @@ type MemberRecord = {
   office_list_status?: string | null
   office_list_group?: string | null
   office_list_checked_at?: string | null
+  member_qr_token?: string | null
+  member_qr_active?: boolean | null
 }
 
 type ParentAccountRow = {
@@ -400,7 +403,8 @@ export default function MemberAreaPage() {
       if (!response.ok) {
         let message = "Fehler beim Laden des Mitgliederbereichs."
         try {
-          const result = (await response.json()) as { code?: string; message?: string }
+          const raw = await response.text()
+          const result = JSON.parse(raw) as { code?: string; message?: string }
           if (result.code === "privacy_consent_required") {
             setPrivacyConsentRequired(true)
             setPrivacyError(result.message || "Bitte Datenschutz akzeptieren")
@@ -408,7 +412,7 @@ export default function MemberAreaPage() {
           }
           message = result.message || message
         } catch {
-          message = await response.text()
+          // Keep the default message when the error payload is not valid JSON.
         }
         alert(message || "Fehler beim Laden des Mitgliederbereichs.")
         return
@@ -863,6 +867,32 @@ export default function MemberAreaPage() {
 
                   <div className="rounded-2xl border bg-white p-4">
                     <div className="mb-4 flex items-center gap-2 font-semibold text-zinc-900">
+                      <QrCode className="h-4 w-4 text-[#154c83]" />
+                      Mein Mitglieds-QR-Code
+                    </div>
+                    {memberAreaData.member_qr_token && memberAreaData.member_qr_active !== false ? (
+                      <div className="flex flex-col items-center gap-4 py-2">
+                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                          <QRCodeSVG
+                            value={memberAreaData.member_qr_token}
+                            size={200}
+                            level="M"
+                            includeMargin={false}
+                          />
+                        </div>
+                        <p className="max-w-xs text-center text-sm text-zinc-500">
+                          Dieser Code ist dein persönlicher Mitglieds-Code. Zeige ihn beim Check-in vor.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                        Dein QR-Code wurde noch nicht aktiviert. Bitte wende dich an den Trainer oder Admin.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border bg-white p-4">
+                    <div className="mb-4 flex items-center gap-2 font-semibold text-zinc-900">
                       <ShieldCheck className="h-4 w-4 text-[#154c83]" />
                       Meine Kontaktdaten
                     </div>
@@ -955,7 +985,6 @@ export default function MemberAreaPage() {
                                   throw new Error(message || "E-Mail konnte nicht versendet werden.")
                                 }
 
-                                await response.json()
                                 const result = (await response.json()) as {
                                   verificationLink?: string
                                   delivery?: { messageId?: string | null }

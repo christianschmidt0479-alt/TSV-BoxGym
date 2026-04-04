@@ -2,18 +2,50 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { sessions } from "@/lib/boxgymSessions"
+import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
+import { getMemberCheckinModeLabel } from "@/lib/memberCheckin"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
+
+type CheckinMember = {
+  id?: string
+  name?: string
+  first_name?: string
+  last_name?: string
+  is_trial?: boolean
+}
 
 type CheckinRow = {
   id: string
   group_name: string
+  checkin_mode?: string | null
   date: string
-  members?: {
-    is_trial?: boolean
-  } | null
+  time?: string
+  created_at?: string
+  members?: CheckinMember | CheckinMember[] | null
+}
+
+function getRelatedMember(member?: CheckinRow["members"]) {
+  if (Array.isArray(member)) return member[0] ?? null
+  return member ?? null
+}
+
+function getMemberDisplayName(member?: CheckinRow["members"]) {
+  const resolvedMember = getRelatedMember(member)
+  const first = resolvedMember?.first_name ?? ""
+  const last = resolvedMember?.last_name ?? ""
+  const full = `${first} ${last}`.trim()
+  return full || resolvedMember?.name || "—"
+}
+
+function getCheckinModeBadgeClassName(mode?: string | null) {
+  return mode === "ferien"
+    ? "border-amber-200 bg-amber-50 text-amber-900"
+    : "border-[#cfe0ef] bg-[#f4f9ff] text-[#154c83]"
 }
 
 function getDayKey(dateString: string) {
@@ -41,7 +73,7 @@ export default function TrainerHeutePage() {
   const [loading, setLoading] = useState(true)
   const [todayCheckins, setTodayCheckins] = useState<CheckinRow[]>([])
   const [now, setNow] = useState<Date | null>(null)
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const today = useMemo(() => getTodayIsoDateInBerlin(), [])
 
   useEffect(() => {
     if (!authResolved || !trainerRole) {
@@ -115,7 +147,7 @@ export default function TrainerHeutePage() {
     const rows = todayCheckins.filter((row) => row.group_name === activeSession.group)
     return {
       attendees: rows.length,
-      trialCount: rows.filter((row) => row.members?.is_trial).length,
+      trialCount: rows.filter((row) => getRelatedMember(row.members)?.is_trial).length,
     }
   }, [activeSession, todayCheckins])
 
@@ -235,6 +267,50 @@ export default function TrainerHeutePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>Check-ins heute</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Check-ins werden geladen...</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Zeitpunkt</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Gruppe</TableHead>
+                  <TableHead>Modus</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {todayCheckins.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-zinc-500">
+                      Heute liegen noch keine Check-ins vor.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  todayCheckins.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{row.date} · {row.time ?? "—"}</TableCell>
+                      <TableCell className="font-medium">{getMemberDisplayName(row.members)}</TableCell>
+                      <TableCell>{row.group_name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={getCheckinModeBadgeClassName(row.checkin_mode)}>
+                          {getMemberCheckinModeLabel(row.checkin_mode)}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

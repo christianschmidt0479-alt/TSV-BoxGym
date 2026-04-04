@@ -4,7 +4,8 @@ import { useEffect, useState } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ShieldCheck } from "lucide-react"
+import { QrCode, ShieldCheck } from "lucide-react"
+import { QRCodeSVG } from "qrcode.react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,7 +15,7 @@ import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { formatDisplayDate, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { isValidMemberPassword, MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
-export type ProfileSection = "wettkampf" | "gewicht" | "einstellungen"
+export type ProfileSection = "wettkampf" | "gewicht" | "einstellungen" | "qrcode"
 
 type CheckinRow = {
   id: string
@@ -46,11 +47,18 @@ type MemberRecord = {
   competition_losses?: number | null
   competition_draws?: number | null
   base_group?: string | null
+  member_qr_token?: string | null
+  member_qr_active?: boolean | null
 }
 
 type MemberAreaSnapshot = {
   member: MemberRecord
+  personalMonthVisits: number
+  previousMonthVisits: number
+  personalYearVisits: number
+  personalLastCheckin: CheckinRow | null
   memberAttendanceRows: CheckinRow[]
+  trainingStreak: number
 }
 
 function getStoredString(key: string) {
@@ -137,6 +145,13 @@ function getMedicalExamStatus(dateString: string | null | undefined) {
   }
 }
 
+function getMemberDisplayName(member: MemberRecord | null) {
+  if (!member) return ""
+
+  const fullName = `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim()
+  return member.name || fullName
+}
+
 export function MemberProfilePageContent({ section }: { section: ProfileSection }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -147,7 +162,12 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
   const [memberAreaData, setMemberAreaData] = useState<MemberRecord | null>(null)
   const [profileEmail, setProfileEmail] = useState("")
   const [profilePhone, setProfilePhone] = useState("")
+  const [personalMonthVisits, setPersonalMonthVisits] = useState(0)
+  const [previousMonthVisits, setPreviousMonthVisits] = useState(0)
+  const [personalYearVisits, setPersonalYearVisits] = useState(0)
+  const [personalLastCheckin, setPersonalLastCheckin] = useState<CheckinRow | null>(null)
   const [memberAttendanceRows, setMemberAttendanceRows] = useState<CheckinRow[]>([])
+  const [trainingStreak, setTrainingStreak] = useState(0)
   const [newMemberPin, setNewMemberPin] = useState("")
   const [confirmNewMemberPin, setConfirmNewMemberPin] = useState("")
   const profileSection = section
@@ -175,7 +195,12 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
         }
 
         const snapshot = (await response.json()) as MemberAreaSnapshot
+  setPersonalMonthVisits(snapshot.personalMonthVisits)
+  setPreviousMonthVisits(snapshot.previousMonthVisits)
+  setPersonalYearVisits(snapshot.personalYearVisits)
+  setPersonalLastCheckin(snapshot.personalLastCheckin)
         setMemberAttendanceRows(snapshot.memberAttendanceRows)
+  setTrainingStreak(snapshot.trainingStreak)
         setMemberAreaData(snapshot.member)
         setProfileEmail(snapshot.member.email || "")
         setProfilePhone(snapshot.member.phone || "")
@@ -252,6 +277,9 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                   Mein Bereich
                 </div>
                 <h1 className="mt-2 text-2xl font-bold text-[#154c83]">Sportlerprofil</h1>
+                {getMemberDisplayName(memberAreaData) ? (
+                  <div className="mt-1 text-sm font-medium text-zinc-600">{getMemberDisplayName(memberAreaData)}</div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -292,6 +320,16 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
             >
               Einstellungen
             </Link>
+            <Link
+              href="/mein-bereich/profil/qrcode"
+              className={
+                profileSection === "qrcode"
+                  ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
+                  : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
+              }
+            >
+              Mein QR-Code
+            </Link>
           </div>
         </div>
 
@@ -300,6 +338,35 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
             <CardTitle>Mein Bereich</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl bg-zinc-100 p-4">
+                <div className="text-sm text-zinc-500">Monat gesamt</div>
+                <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalMonthVisits}</div>
+              </div>
+              <div className="rounded-2xl bg-zinc-100 p-4">
+                <div className="text-sm text-zinc-500">Trainingsserie</div>
+                <div className="mt-1 text-3xl font-bold text-[#154c83]">{trainingStreak}</div>
+                <div className="mt-1 text-xs text-zinc-500">aufeinanderfolgende Trainingswochen</div>
+              </div>
+              <div className="rounded-2xl bg-zinc-100 p-4">
+                <div className="text-sm text-zinc-500">Vormonat</div>
+                <div className="mt-1 text-3xl font-bold text-[#154c83]">{previousMonthVisits}</div>
+              </div>
+              <div className="rounded-2xl bg-zinc-100 p-4">
+                <div className="text-sm text-zinc-500">Dieses Jahr</div>
+                <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalYearVisits}</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-zinc-100 p-4">
+              <div className="text-sm text-zinc-500">Letzter Check-in</div>
+              <div className="mt-1 text-sm font-medium text-zinc-800">
+                {personalLastCheckin
+                  ? `${personalLastCheckin.date} · ${personalLastCheckin.time} · ${personalLastCheckin.group_name}`
+                  : "Noch kein Check-in gespeichert"}
+              </div>
+            </div>
+
             {isSettingsSection ? (
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl bg-zinc-100 p-4">
@@ -565,6 +632,39 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                     Gewichtsdaten werden sichtbar, sobald du im Wettkampfbereich geführt wirst.
                   </div>
                 )
+              ) : null}
+
+              {profileSection === "qrcode" ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 font-semibold text-zinc-900">
+                    <QrCode className="h-4 w-4 text-[#154c83]" />
+                    Mein Mitglieds-QR-Code
+                  </div>
+                  {memberAreaData.member_qr_token && memberAreaData.member_qr_active !== false ? (
+                    <div className="flex flex-col items-center gap-6 py-4">
+                      <div className="rounded-3xl border-2 border-[#c8d8ea] bg-white p-6 shadow-md">
+                        <QRCodeSVG
+                          value={memberAreaData.member_qr_token}
+                          size={220}
+                          level="M"
+                          includeMargin={false}
+                        />
+                      </div>
+                      <div className="max-w-sm space-y-2 text-center">
+                        <p className="text-sm font-medium text-zinc-800">
+                          Dieser Code ist dein persönlicher Mitglieds-Code.
+                        </p>
+                        <p className="text-sm text-zinc-500">
+                          Zeige ihn beim Check-in vor. Der Code ist nur dir zugeordnet und sollte nicht weitergegeben werden.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                      Dein QR-Code wurde noch nicht aktiviert. Bitte wende dich an den Trainer oder Admin.
+                    </div>
+                  )}
+                </div>
               ) : null}
             </div>
           </CardContent>

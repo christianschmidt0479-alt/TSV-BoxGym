@@ -157,9 +157,9 @@ export async function readQrAccessFromHeaders(request: Request) {
 	return verifyQrAccessToken(headerToken)
 }
 
-export async function applyQrAccessCookie(response: NextResponse, panel: QrAccessPanel) {
-	const token = await createQrAccessToken(panel)
-	response.cookies.set(QR_ACCESS_COOKIE, token, {
+export async function applyQrAccessCookie(response: NextResponse, panel: QrAccessPanel, token?: string) {
+	const resolvedToken = token ?? (await createQrAccessToken(panel))
+	response.cookies.set(QR_ACCESS_COOKIE, resolvedToken, {
 		httpOnly: true,
 		sameSite: "lax",
 		secure: process.env.NODE_ENV === "production",

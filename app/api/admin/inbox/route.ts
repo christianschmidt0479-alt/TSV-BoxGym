@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { isManualAdminMailRecord } from "@/lib/manualAdminMailOutboxDb"
 import { isManualParentMailRecord } from "@/lib/manualParentMailOutboxDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
@@ -152,7 +153,7 @@ export async function GET(request: Request) {
       trainers: trainersResponse.data ?? [],
       members: membersResponse.data ?? [],
       adminQueueRows: adminQueueResponse.data ?? [],
-      outgoingQueueRows: (outgoingQueueResponse.data ?? []).filter((row) => !isManualParentMailRecord(row)),
+      outgoingQueueRows: (outgoingQueueResponse.data ?? []).filter((row) => !isManualParentMailRecord(row) && !isManualAdminMailRecord(row)),
     })
   } catch (error) {
     console.error("admin inbox failed", error)
