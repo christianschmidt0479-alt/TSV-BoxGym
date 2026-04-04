@@ -6,6 +6,13 @@ const distributedRateLimitPrefix = process.env.RATE_LIMIT_PREFIX?.trim() || "tsv
 let didWarnPartialDistributedConfig = false
 let didWarnStrictRateLimitMode = false
 
+// Non-production environments use relaxed in-memory limits so local dev testing
+// doesn't hit rate limits constantly. Production always uses the distributed
+// limiter (Upstash) and is completely unaffected by these values.
+function isDevEnvironment() {
+  return process.env.NODE_ENV !== "production"
+}
+
 type SanitizeTextOptions = {
   trim?: boolean
   lowercase?: boolean
@@ -148,21 +155,23 @@ export function isAllowedOrigin(request: Request) {
 }
 
 export function checkRateLimit(key: string, limit: number, windowMs: number) {
+  const effectiveLimit = isDevEnvironment() ? limit * 10 : limit
+  const effectiveWindowMs = isDevEnvironment() ? Math.max(Math.floor(windowMs / 10), 30_000) : windowMs
   const now = Date.now()
   const current = rateLimitStore.get(key)
 
   if (!current || current.resetAt <= now) {
-    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs })
-    return { ok: true, remaining: limit - 1 }
+    rateLimitStore.set(key, { count: 1, resetAt: now + effectiveWindowMs })
+    return { ok: true, remaining: effectiveLimit - 1 }
   }
 
-  if (current.count >= limit) {
+  if (current.count >= effectiveLimit) {
     return { ok: false, remaining: 0, retryAfterMs: current.resetAt - now }
   }
 
   current.count += 1
   rateLimitStore.set(key, current)
-  return { ok: true, remaining: limit - current.count }
+  return { ok: true, remaining: effectiveLimit - current.count }
 }
 
 export async function checkRateLimitAsync(key: string, limit: number, windowMs: number) {
@@ -279,11 +288,14 @@ export async function getLoginLockStateAsync(key: string, maxAttempts = 5) {
 }
 
 export function registerLoginFailure(key: string, maxAttempts = 5, windowMs = 15 * 60 * 1000, blockMs = 15 * 60 * 1000) {
+  // In dev: 1-min block window instead of 15 min so test logins don't stay locked.
+  const effectiveBlockMs = isDevEnvironment() ? 60_000 : blockMs
+  const effectiveWindowMs = isDevEnvironment() ? 60_000 : windowMs
   const now = Date.now()
   const current = loginFailureStore.get(key)
 
   if (!current || current.resetAt <= now) {
-    const next = { count: 1, resetAt: now + windowMs, blockedUntil: 0 }
+    const next = { count: 1, resetAt: now + effectiveWindowMs, blockedUntil: 0 }
     loginFailureStore.set(key, next)
     return { blocked: false, remainingAttempts: maxAttempts - 1 }
   }
@@ -294,10 +306,10 @@ export function registerLoginFailure(key: string, maxAttempts = 5, windowMs = 15
 
   current.count += 1
   if (current.count >= maxAttempts) {
-    current.blockedUntil = now + blockMs
-    current.resetAt = now + blockMs
+    current.blockedUntil = now + effectiveBlockMs
+    current.resetAt = now + effectiveBlockMs
     loginFailureStore.set(key, current)
-    return { blocked: true, retryAfterMs: blockMs, remainingAttempts: 0 }
+    return { blocked: true, retryAfterMs: effectiveBlockMs, remainingAttempts: 0 }
   }
 
   loginFailureStore.set(key, current)

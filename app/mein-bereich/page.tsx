@@ -772,13 +772,19 @@ export default function MemberAreaPage() {
                 <CardContent className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                     <div className="rounded-2xl bg-zinc-100 p-4">
-                      <div className="text-sm text-zinc-500">Monat gesamt</div>
+                      <div className="text-sm text-zinc-500">Dieser Monat</div>
                       <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalMonthVisits}</div>
                     </div>
                     <div className="rounded-2xl bg-zinc-100 p-4">
                       <div className="text-sm text-zinc-500">Trainingsserie</div>
-                      <div className="mt-1 text-3xl font-bold text-[#154c83]">{trainingStreak}</div>
-                      <div className="mt-1 text-xs text-zinc-500">aufeinanderfolgende Trainingswochen</div>
+                      {trainingStreak > 0 ? (
+                        <>
+                          <div className="mt-1 text-3xl font-bold text-[#154c83]">{trainingStreak}</div>
+                          <div className="mt-1 text-xs text-zinc-500">Wochen in Folge</div>
+                        </>
+                      ) : (
+                        <div className="mt-2 text-sm text-zinc-400">Noch keine Serie</div>
+                      )}
                     </div>
                     <div className="rounded-2xl bg-zinc-100 p-4">
                       <div className="text-sm text-zinc-500">Vormonat</div>
@@ -822,7 +828,7 @@ export default function MemberAreaPage() {
                     <div className="text-sm text-zinc-500">Letzter Check-in</div>
                     <div className="mt-1 text-sm font-medium text-zinc-800">
                       {personalLastCheckin
-                        ? `${personalLastCheckin.date} · ${personalLastCheckin.time} · ${personalLastCheckin.group_name}`
+                        ? `${formatIsoDateForDisplay(personalLastCheckin.date)} · ${personalLastCheckin.time} · ${personalLastCheckin.group_name}`
                         : "Noch kein Check-in gespeichert"}
                     </div>
                   </div>
@@ -837,7 +843,7 @@ export default function MemberAreaPage() {
                           <div key={row.id} className="flex flex-col gap-1 rounded-2xl bg-zinc-100 px-4 py-3 text-sm text-zinc-700 md:flex-row md:items-center md:justify-between">
                             <div className="font-medium text-zinc-900">{row.group_name}</div>
                             <div>
-                              {row.date} · {row.time}
+                              {formatIsoDateForDisplay(row.date)} · {row.time}
                               {typeof row.weight === "number" ? ` · ${String(row.weight).replace(".", ",")} kg` : ""}
                             </div>
                           </div>
@@ -858,7 +864,7 @@ export default function MemberAreaPage() {
                         {memberAttendanceRows.map((row) => (
                           <div key={`attendance-${row.id}`} className="flex flex-col gap-1 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 md:flex-row md:items-center md:justify-between">
                             <div className="font-medium text-zinc-900">{row.group_name}</div>
-                            <div>{row.date} · {row.time}</div>
+                            <div>{formatIsoDateForDisplay(row.date)} · {row.time}</div>
                           </div>
                         ))}
                       </div>
@@ -1122,7 +1128,7 @@ export default function MemberAreaPage() {
                                     {String(row.weight).replace(".", ",")} kg
                                   </div>
                                   <div>
-                                    {row.date} · {row.time} · {row.group_name}
+                                    {formatIsoDateForDisplay(row.date)} · {row.time} · {row.group_name}
                                   </div>
                                 </div>
                               ))}

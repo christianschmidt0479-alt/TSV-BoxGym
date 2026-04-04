@@ -32,6 +32,46 @@ type Overview = {
 
 type ActionSaveState = "idle" | "saving" | "done" | "error"
 
+// ─── Analytics-Typen ──────────────────────────────────────────────────────────
+
+type GroupStat = { group: string; count7d: number; count30d: number }
+type MemberRef = { id: string; name: string; group: string }
+type TopMember = MemberRef & { count: number }
+type DecliningMember = MemberRef & { prev: number; now: number }
+type PeakHour = { label: string; count: number }
+
+type KiAnalytics = {
+  todayDate: string
+  todayCheckins: number
+  todaySessions: { id: string; group: string; start: string; end: string; title: string }[]
+  pendingCount: number
+  newTrialCount: number
+  totalMembers: number
+  groupStats: GroupStat[]
+  topMembers: TopMember[]
+  silentMembers14d: MemberRef[]
+  silentMembers30d: MemberRef[]
+  decliningMembers: DecliningMember[]
+  peakHours: PeakHour[]
+  summary: string
+  topGroup7d: { group: string; count7d: number } | null
+  topGroup30d: { group: string; count30d: number } | null
+  weakGroup30d: { group: string; count30d: number } | null
+  nextSession: { id: string; group: string; start: string; end: string; title: string } | null
+}
+
+const SEARCH_HINTS = [
+  { label: "ohne freigabe", desc: "Pending-Anmeldungen" },
+  { label: "nicht eingecheckt", desc: "14 Tage inaktiv" },
+  { label: "rückgang", desc: "abnehmende Aktivität" },
+  { label: "gruppe", desc: "Gruppen-Besuch" },
+  { label: "stoßzeit", desc: "Stoßzeiten" },
+  { label: "einheiten heute", desc: "Heutige Einheiten" },
+  { label: "übersicht", desc: "Tages-Zusammenfassung" },
+  { label: "probe", desc: "Probetraining" },
+  { label: "meiste checkins", desc: "Top-Mitglieder" },
+] as const
+
 type SaveState = "idle" | "saving" | "success" | "error"
 
 const DEFAULT_SETTINGS: AiSecuritySettings = {
@@ -127,6 +167,28 @@ export default function KiPage() {
   const [overview, setOverview] = useState<Overview | null>(null)
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [blockDialogTarget, setBlockDialogTarget] = useState<{ type: "ip" | "route"; key: string } | null>(null)
+
+  const [analytics, setAnalytics] = useState<KiAnalytics | null>(null)
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
+
+  // Analytics laden
+  useEffect(() => {
+    if (!authResolved || trainerRole !== "admin") {
+      setLoadingAnalytics(false)
+      return
+    }
+    ;(async () => {
+      try {
+        const res = await fetch("/api/admin/ki-analytics", { cache: "no-store" })
+        if (res.ok) setAnalytics(await res.json())
+      } catch {
+        // nichts – leerer Zustand ist ok
+      } finally {
+        setLoadingAnalytics(false)
+      }
+    })()
+  }, [authResolved, trainerRole])
 
   // KI-Settings laden
   useEffect(() => {
@@ -251,6 +313,36 @@ export default function KiPage() {
     }
   }
 
+  function handleSearch(q: string) {
+    setSearchQuery(q)
+  }
+
+  function searchResults(q: string) {
+    const lq = q.toLowerCase().trim()
+    if (!lq || !analytics) return null
+    if (lq.includes("freigabe") || lq.includes("warten") || lq.includes("pending"))
+      return { type: "pending" as const }
+    if (lq.includes("probe") || lq.includes("trial") || lq.includes("neu"))
+      return { type: "trial" as const }
+    if (
+      lq.includes("nicht") || lq.includes("fehlen") || lq.includes("weg") ||
+      lq.includes("inaktiv") || lq.includes("eingecheckt") || lq.includes("nicht da")
+    ) return { type: "silent" as const }
+    if (lq.includes("rückgang") || lq.includes("weniger") || lq.includes("abnehm"))
+      return { type: "declining" as const }
+    if (lq.includes("meiste") || lq.includes("beliebt") || lq.includes("top") || lq.includes("aktiv"))
+      return { type: "top" as const }
+    if (lq.includes("stoß") || lq.includes("stoss") || lq.includes("peak") || lq.includes("uhrzeit") || lq.includes("zeiten"))
+      return { type: "peaks" as const }
+    if (lq.includes("gruppe") || lq.includes("besuch") || lq.includes("auslastung"))
+      return { type: "groups" as const }
+    if (lq.includes("einheit") || lq.includes("session") || lq.includes("heute"))
+      return { type: "sessions" as const }
+    if (lq.includes("übersicht") || lq.includes("gesamt") || lq.includes("status"))
+      return { type: "overview" as const }
+    return { type: "none" as const }
+  }
+
   async function handleSecurityAction(
     targetType: "alert" | "ip" | "route",
     targetKey: string,
@@ -320,7 +412,7 @@ export default function KiPage() {
   const activeBlocks = overview?.activeBlocks ?? []
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-[#0f4f8c]">KI Einstellungen</h2>
         <p className="mt-1 text-sm text-zinc-500">
@@ -339,6 +431,491 @@ export default function KiPage() {
         <AlertBanner alerts={alerts} />
       )}
 
+      {/* ── Tages-Übersicht ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base text-zinc-800">Tages-Übersicht</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loadingAnalytics ? (
+            <p className="text-sm text-zinc-400">Wird geladen…</p>
+          ) : analytics ? (
+            <>
+              {/* Lagezeile */}
+              {(() => {
+                const total = analytics.pendingCount + analytics.newTrialCount
+                if (total > 0) {
+                  const parts: string[] = []
+                  if (analytics.pendingCount > 0) parts.push(`${analytics.pendingCount} Anmeldung${analytics.pendingCount !== 1 ? "en" : ""}`)
+                  if (analytics.newTrialCount > 0) parts.push(`${analytics.newTrialCount} Probetraining${analytics.newTrialCount !== 1 ? "s" : ""}`)
+                  return (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+                      Freigaben offen: {parts.join(" · ")}.{" "}
+                      <a href="/verwaltung/freigaben" className="font-semibold underline hover:no-underline">Jetzt prüfen →</a>
+                    </div>
+                  )
+                }
+                if (analytics.todayCheckins > 0) {
+                  const n = analytics.todaySessions.length
+                  return (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-700">
+                      Heute {analytics.todayCheckins} Check-in{analytics.todayCheckins !== 1 ? "s" : ""} in {n} Einheit{n !== 1 ? "en" : ""}.
+                    </div>
+                  )
+                }
+                return (
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-400">
+                    Heute noch keine Check-ins vorhanden.
+                  </div>
+                )
+              })()}
+
+              {/* KI-Zusammenfassung */}
+              {analytics.summary && (
+                <div className="rounded-xl border border-[#b9cde2] bg-[#f4f9ff] px-4 py-3 text-xs text-[#154c83]">
+                  {analytics.summary}
+                </div>
+              )}
+
+              {/* Kennzahlen */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <KennzahlBox label="Heute Check-ins" value={String(analytics.todayCheckins)} />
+                <KennzahlBox label="Einheiten heute" value={String(analytics.todaySessions.length)} />
+                <KennzahlBox label="Mitglieder gesamt" value={String(analytics.totalMembers)} />
+                <KennzahlBox
+                  label="Offene Freigaben"
+                  value={String(analytics.pendingCount + analytics.newTrialCount)}
+                  highlight={analytics.pendingCount + analytics.newTrialCount > 0 ? "amber" : undefined}
+                />
+              </div>
+
+              {/* Mini-Gruppen-Highlights + Nächste Einheit */}
+              {(analytics.topGroup7d ?? analytics.topGroup30d ?? analytics.weakGroup30d ?? analytics.nextSession !== undefined) && (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Stärkste Gruppe 7 Tage</div>
+                    {analytics.topGroup7d ? (
+                      <>
+                        <div className="mt-0.5 truncate text-xs font-medium text-zinc-800">{analytics.topGroup7d.group}</div>
+                        <div className="text-[11px] text-zinc-400">{analytics.topGroup7d.count7d} Check-ins</div>
+                      </>
+                    ) : (
+                      <div className="mt-0.5 text-[11px] text-zinc-400">Keine Daten</div>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Stärkste Gruppe 30 Tage</div>
+                    {analytics.topGroup30d ? (
+                      <>
+                        <div className="mt-0.5 truncate text-xs font-medium text-zinc-800">{analytics.topGroup30d.group}</div>
+                        <div className="text-[11px] text-zinc-400">{analytics.topGroup30d.count30d} Check-ins</div>
+                      </>
+                    ) : (
+                      <div className="mt-0.5 text-[11px] text-zinc-400">Keine Daten</div>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Schwächste Gruppe 30 Tage</div>
+                    {analytics.weakGroup30d ? (
+                      <>
+                        <div className="mt-0.5 truncate text-xs font-medium text-zinc-800">{analytics.weakGroup30d.group}</div>
+                        <div className="text-[11px] text-zinc-400">{analytics.weakGroup30d.count30d} Check-ins</div>
+                      </>
+                    ) : (
+                      <div className="mt-0.5 text-[11px] text-zinc-400">Keine Daten</div>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Nächste Einheit</div>
+                    {analytics.nextSession ? (
+                      <>
+                        <div className="mt-0.5 truncate text-xs font-medium text-zinc-800">{analytics.nextSession.group}</div>
+                        <div className="text-[11px] text-zinc-400">{analytics.nextSession.start}–{analytics.nextSession.end}</div>
+                      </>
+                    ) : (
+                      <div className="mt-0.5 text-[11px] text-zinc-400">Heute keine weitere</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Heutige Sessions */}
+              {analytics.todaySessions.length > 0 ? (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                    {analytics.todaySessions.length} Einheit{analytics.todaySessions.length !== 1 ? "en" : ""} heute
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {analytics.todaySessions.map((s) => (
+                      <span key={s.id} className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-700">
+                        <span className="font-medium">{s.group}</span>
+                        <span className="ml-1.5 text-zinc-400">{s.start}–{s.end}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-400">Heute keine Einheiten vorhanden.</p>
+              )}
+              {/* Aktionsleiste */}
+              <div className="flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
+                <a
+                  href="/verwaltung/freigaben"
+                  className={`rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition ${
+                    analytics.pendingCount + analytics.newTrialCount > 0
+                      ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                      : "border-zinc-200 bg-zinc-50 text-zinc-500 hover:bg-zinc-100"
+                  }`}
+                >
+                  Freigaben{analytics.pendingCount + analytics.newTrialCount > 0 ? ` (${analytics.pendingCount + analytics.newTrialCount})` : ""}
+                </a>
+                <a
+                  href="/verwaltung/mitglieder"
+                  className="rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-1.5 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100"
+                >
+                  Mitglieder
+                </a>
+                <a
+                  href="/verwaltung/checkins"
+                  className="rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-1.5 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100"
+                >
+                  Check-ins
+                </a>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-zinc-400">Keine Daten verfügbar.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Check-in-Auswertung ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base text-zinc-800">Check-in-Auswertung</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loadingAnalytics ? (
+            <p className="text-sm text-zinc-400">Wird ausgewertet…</p>
+          ) : analytics ? (
+            <>
+              {/* Gruppen-Stats */}
+              {analytics.groupStats.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Gruppen-Besuch</p>
+                  <div className="space-y-1.5">
+                    {analytics.groupStats.slice(0, 8).map((g) => (
+                      <div key={g.group} className="flex items-center gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5">
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-700">{g.group}</span>
+                        <span className="text-[11px] text-zinc-400">7T: <span className="font-semibold text-zinc-700">{g.count7d}</span></span>
+                        <span className="text-[11px] text-zinc-400">30T: <span className="font-semibold text-zinc-700">{g.count30d}</span></span>
+                        {g.count30d === 0 && (
+                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">schwach</span>
+                        )}
+                      </div>
+                    ))}
+                    {analytics.groupStats.length > 8 && (
+                      <p className="text-[11px] text-zinc-400 px-1">+{analytics.groupStats.length - 8} weitere Gruppen</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Stoßzeiten */}
+              {analytics.peakHours.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Stoßzeiten (30 Tage)</p>
+                  <div className="space-y-1">
+                    {analytics.peakHours.slice(0, 6).map((h) => {
+                      const maxCount = Math.max(...analytics.peakHours.map((x) => x.count), 1)
+                      return (
+                        <div key={h.label} className="flex items-center gap-3">
+                          <span className="w-10 shrink-0 text-[11px] font-medium text-zinc-600">{h.label} Uhr</span>
+                          <div className="flex-1 overflow-hidden rounded-full bg-zinc-200" style={{ height: "5px" }}>
+                            <div
+                              className="h-full rounded-full bg-[#154c83] opacity-60"
+                              style={{ width: `${Math.round((h.count / maxCount) * 100)}%` }}
+                            />
+                          </div>
+                          <span className="w-7 text-right text-[11px] text-zinc-400">{h.count}×</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* Stille Mitglieder */}
+                <div>
+                  <p className={`mb-2 text-xs font-semibold uppercase tracking-wide ${analytics.silentMembers14d.length > 0 ? "text-zinc-600" : "text-zinc-400"}`}>
+                    Keine Aktivität seit 14+ Tagen ({analytics.silentMembers14d.length})
+                  </p>
+                  {analytics.silentMembers14d.length === 0 ? (
+                    <p className="text-xs text-zinc-400">Keine Auffälligkeiten.</p>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5">
+                        {analytics.silentMembers14d.slice(0, 6).map((m) => (
+                          <div key={m.id} className="flex items-center gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5">
+                            <span className="flex-1 truncate text-xs font-medium text-zinc-700">{m.name}</span>
+                            <span className="text-[11px] text-zinc-400 shrink-0">{m.group}</span>
+                          </div>
+                        ))}
+                        {analytics.silentMembers14d.length > 6 && (
+                          <p className="text-[11px] text-zinc-400">+{analytics.silentMembers14d.length - 6} weitere</p>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        Details in der{" "}
+                        <a href="/verwaltung/mitglieder" className="text-zinc-600 underline hover:no-underline">Mitgliederverwaltung</a>{" "}
+                        prüfen.
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {/* Mitglieder mit Rückgang */}
+                <div>
+                  <p className={`mb-2 text-xs font-semibold uppercase tracking-wide ${analytics.decliningMembers.length > 0 ? "text-zinc-600" : "text-zinc-400"}`}>
+                    Rückläufige Aktivität ({analytics.decliningMembers.length})
+                  </p>
+                  {analytics.decliningMembers.length === 0 ? (
+                    <p className="text-xs text-zinc-400">Keine Auffälligkeiten.</p>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5">
+                        {analytics.decliningMembers.slice(0, 6).map((m) => (
+                          <div key={m.id} className="flex items-center gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5">
+                            <span className="flex-1 truncate text-xs font-medium text-zinc-700">{m.name}</span>
+                            <span className="text-[11px] text-zinc-400 shrink-0">{m.prev}× → {m.now}×</span>
+                          </div>
+                        ))}
+                        {analytics.decliningMembers.length > 6 && (
+                          <p className="text-[11px] text-zinc-400">+{analytics.decliningMembers.length - 6} weitere</p>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        Details in der{" "}
+                        <a href="/verwaltung/mitglieder" className="text-zinc-600 underline hover:no-underline">Mitgliederverwaltung</a>{" "}
+                        prüfen.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-zinc-400">Keine Auswertung verfügbar.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Intelligente Suche ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base text-zinc-800">Schnellsuche</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="z. B. ohne freigabe, gruppe, rückgang, einheiten heute…"
+            className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-700 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#154c83]/40"
+          />
+          {/* Hint-Chips */}
+          {!searchQuery && (
+            <div className="flex flex-wrap gap-1.5">
+              {SEARCH_HINTS.map((h) => (
+                <button
+                  key={h.label}
+                  type="button"
+                  onClick={() => handleSearch(h.label)}
+                  className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-0.5 text-[11px] text-zinc-600 hover:bg-zinc-100"
+                >
+                  {h.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Suchergebnisse */}
+          {searchQuery && analytics && (() => {
+            const result = searchResults(searchQuery)
+            if (!result) return null
+            if (result.type === "none") return <p className="text-xs text-zinc-400">Kein passendes Ergebnis für „{searchQuery}".</p>
+            if (result.type === "pending") return (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <span className="font-semibold">{analytics.pendingCount} Anmeldung{analytics.pendingCount !== 1 ? "en" : ""}</span> warten auf Freigabe
+                {analytics.newTrialCount > 0 && `, ${analytics.newTrialCount} Probetraining`}.{" "}
+                <a href="/verwaltung/freigaben" className="font-semibold underline hover:no-underline">→ Jetzt in Freigaben prüfen</a>
+              </div>
+            )
+            if (result.type === "trial") return (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                <span className="font-semibold">{analytics.newTrialCount} Probetraining-Anfrage{analytics.newTrialCount !== 1 ? "n" : ""}</span> offen.{" "}
+                <a href="/verwaltung/freigaben" className="font-semibold underline hover:no-underline">→ Jetzt in Freigaben prüfen</a>
+              </div>
+            )
+            if (result.type === "silent") return (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Keine Aktivität seit 14+ Tagen ({analytics.silentMembers14d.length})</p>
+                {analytics.silentMembers14d.length === 0
+                  ? <p className="text-xs text-zinc-400">Keine Auffälligkeiten.</p>
+                  : <>
+                    {analytics.silentMembers14d.slice(0, 6).map((m) => (
+                      <div key={m.id} className="flex items-center gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5">
+                        <span className="flex-1 truncate text-xs font-medium text-zinc-700">{m.name}</span>
+                        <span className="text-[11px] text-zinc-400 shrink-0">{m.group}</span>
+                      </div>
+                    ))}
+                    {analytics.silentMembers14d.length > 6 && (
+                      <p className="text-[11px] text-zinc-400">+{analytics.silentMembers14d.length - 6} weitere</p>
+                    )}
+                    <p className="pt-0.5 text-[11px] text-zinc-400"><a href="/verwaltung/mitglieder" className="text-zinc-600 underline hover:no-underline">Mitgliederverwaltung</a> für Details nutzen.</p>
+                  </>
+                }
+              </div>
+            )
+            if (result.type === "declining") return (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Rückläufige Aktivität ({analytics.decliningMembers.length})</p>
+                {analytics.decliningMembers.length === 0
+                  ? <p className="text-xs text-zinc-400">Keine Auffälligkeiten.</p>
+                  : <>
+                    {analytics.decliningMembers.slice(0, 6).map((m) => (
+                      <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5">
+                        <span className="flex-1 truncate text-xs font-medium text-zinc-700">{m.name}</span>
+                        <span className="text-[11px] text-zinc-500 shrink-0">{m.prev}× → {m.now}×</span>
+                      </div>
+                    ))}
+                    {analytics.decliningMembers.length > 6 && (
+                      <p className="text-[11px] text-zinc-400">+{analytics.decliningMembers.length - 6} weitere</p>
+                    )}
+                    <p className="pt-0.5 text-[11px] text-zinc-400"><a href="/verwaltung/mitglieder" className="text-zinc-600 underline hover:no-underline">Mitgliederverwaltung</a> für Details nutzen.</p>
+                  </>
+                }
+              </div>
+            )
+            if (result.type === "top") return (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Meiste Check-ins (30 Tage)</p>
+                {analytics.topMembers.length === 0
+                  ? <p className="text-xs text-zinc-400">Keine Daten verfügbar.</p>
+                  : <>
+                    {analytics.topMembers.slice(0, 8).map((m, i) => (
+                      <div key={m.id} className="flex items-center gap-3 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5">
+                        <span className="w-5 shrink-0 text-center text-[11px] font-bold text-zinc-400">{i + 1}.</span>
+                        <span className="flex-1 truncate text-xs font-medium text-zinc-700">{m.name}</span>
+                        <span className="text-[11px] text-zinc-400 shrink-0">{m.group}</span>
+                        <span className="text-xs font-bold text-[#154c83] shrink-0">{m.count}×</span>
+                      </div>
+                    ))}
+                    {analytics.topMembers.length > 8 && (
+                      <p className="text-[11px] text-zinc-400">+{analytics.topMembers.length - 8} weitere</p>
+                    )}
+                  </>
+                }
+              </div>
+            )
+            if (result.type === "peaks") return (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Stoßzeiten (letzte 30 Tage)</p>
+                {analytics.peakHours.length === 0
+                  ? <p className="text-xs text-zinc-400">Keine Auffälligkeiten.</p>
+                  : <div className="space-y-1.5">
+                    {analytics.peakHours.slice(0, 8).map((h) => (
+                      <div key={h.label} className="flex items-center gap-3 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5">
+                        <span className="w-10 shrink-0 text-xs font-medium text-zinc-700">{h.label} Uhr</span>
+                        <div className="flex-1 overflow-hidden rounded-full bg-zinc-200" style={{ height: "6px" }}>
+                          <div
+                            className="h-full rounded-full bg-[#154c83] opacity-60"
+                            style={{ width: `${Math.round((h.count / Math.max(...analytics.peakHours.map((x) => x.count), 1)) * 100)}%` }}
+                          />
+                        </div>
+                        <span className="w-8 text-right text-[11px] text-zinc-500">{h.count}×</span>
+                      </div>
+                    ))}
+                  </div>
+                }
+              </div>
+            )
+            if (result.type === "groups") return (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Gruppen-Besuch ({analytics.groupStats.length})</p>
+                {analytics.groupStats.length === 0
+                  ? <p className="text-xs text-zinc-400">Keine Gruppendaten vorhanden.</p>
+                  : <>
+                    {analytics.groupStats.slice(0, 8).map((g) => (
+                      <div key={g.group} className="flex items-center gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5">
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-700">{g.group}</span>
+                        <span className="text-[11px] text-zinc-400">7T: <span className="font-semibold text-zinc-700">{g.count7d}</span></span>
+                        <span className="text-[11px] text-zinc-400">30T: <span className="font-semibold text-zinc-700">{g.count30d}</span></span>
+                        {g.count30d === 0 && (
+                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">schwach</span>
+                        )}
+                      </div>
+                    ))}
+                    {analytics.groupStats.length > 8 && (
+                      <p className="text-[11px] text-zinc-400">+{analytics.groupStats.length - 8} weitere Gruppen</p>
+                    )}
+                  </>
+                }
+              </div>
+            )
+            if (result.type === "sessions") return (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  {analytics.todaySessions.length === 0
+                    ? "Heute keine Einheiten vorhanden"
+                    : `${analytics.todaySessions.length} Einheit${analytics.todaySessions.length !== 1 ? "en" : ""} heute · ${analytics.todayCheckins} Check-in${analytics.todayCheckins !== 1 ? "s" : ""}`}
+                </p>
+                {analytics.todaySessions.length === 0
+                  ? <p className="text-xs text-zinc-400">Heute keine Einheiten vorhanden.</p>
+                  : <div className="space-y-1">
+                    {analytics.todaySessions.map((s) => (
+                      <div key={s.id} className="flex items-center gap-3 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5">
+                        <span className="flex-1 truncate text-xs font-medium text-zinc-700">{s.group}</span>
+                        <span className="text-[11px] text-zinc-400 shrink-0">{s.start}–{s.end}</span>
+                      </div>
+                    ))}
+                  </div>
+                }
+              </div>
+            )
+            if (result.type === "overview") return (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                    <div className="text-[11px] text-zinc-500">Check-ins heute</div>
+                    <div className="mt-0.5 text-lg font-bold text-[#154c83]">{analytics.todayCheckins}</div>
+                  </div>
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                    <div className="text-[11px] text-zinc-500">Einheiten heute</div>
+                    <div className="mt-0.5 text-lg font-bold text-[#154c83]">{analytics.todaySessions.length}</div>
+                  </div>
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                    <div className="text-[11px] text-zinc-500">Mitglieder gesamt</div>
+                    <div className="mt-0.5 text-lg font-bold text-[#154c83]">{analytics.totalMembers}</div>
+                  </div>
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                    <div className="text-[11px] text-zinc-500">Offene Freigaben</div>
+                    <div className="mt-0.5 text-lg font-bold text-[#154c83]">{analytics.pendingCount}</div>
+                  </div>
+                </div>
+                {analytics.summary ? (
+                  <p className="text-xs text-zinc-500 line-clamp-2">{analytics.summary}</p>
+                ) : null}
+              </div>
+            )
+            return null
+          })()}
+        </CardContent>
+      </Card>
+
+      <div className="mt-4 border-t border-zinc-100 pt-5 pb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400/70 px-1">Sicherheit &amp; Überwachung</p>
+      </div>
       {/* ── Status ── */}
       <Card>
         <CardHeader>
@@ -435,17 +1012,91 @@ export default function KiPage() {
               )}
 
               {/* KI-Zusammenfassung */}
-              <div className="rounded-xl border border-[#b9cde2] bg-[#f4f9ff] px-4 py-3 text-sm text-[#154c83]">
+              <div className="rounded-xl border border-[#b9cde2] bg-[#f4f9ff] px-4 py-3 text-xs text-[#154c83]">
                 <span className="font-semibold">KI-Einschätzung: </span>
                 {analysis.summaryText}
               </div>
             </>
           ) : (
-            <p className="text-sm text-zinc-400">Noch keine Sicherheitsereignisse vorhanden.</p>
+            <p className="text-xs text-zinc-400">Noch keine Sicherheitsereignisse vorhanden.</p>
           )}
         </CardContent>
       </Card>
 
+      {/* ── Warnungen ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base text-zinc-800">Warnungen</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loadingOverview ? (
+            <p className="text-sm text-zinc-400">Wird analysiert…</p>
+          ) : alerts.length === 0 ? (
+            <p className="text-xs text-zinc-400">Aktuell keine aktiven Warnungen.</p>
+          ) : (
+            <div className="space-y-3">
+              {alerts.map((alert) => (
+                <AlertCard
+                  key={alert.id}
+                  alert={alert}
+                  actionState={actionStates[alert.id]}
+                  onAction={(actionType, note) => handleSecurityAction("alert", alert.id, actionType, note)}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Aktive Schutzmaßnahmen ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base text-zinc-800">Aktive Schutzmaßnahmen</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loadingOverview ? (
+            <p className="text-sm text-zinc-400">Wird geladen…</p>
+          ) : activeBlocks.length === 0 ? (
+            <p className="text-xs text-zinc-400">Keine aktiven Sperren.</p>
+          ) : (
+            <div className="space-y-2">
+              {activeBlocks.map((block) => (
+                <div key={block.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                        block.target_type === "ip" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                      }`}>
+                        {block.target_type === "ip" ? "IP" : "Route"}
+                      </span>
+                      <span className="text-xs font-mono text-zinc-800">{block.target_key}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-600">{block.block_reason}</p>
+                    <p className="text-[10px] text-zinc-400">
+                      {block.expires_at ? `Ablauf: ${formatBlockExpiry(block.expires_at)}` : "Dauerhaft"}
+                      {block.created_by && ` · von ${block.created_by}`}
+                    </p>
+                    {block.note && (
+                      <p className="text-[10px] italic text-zinc-500">{block.note}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUnblock(block.id, block.target_key)}
+                    className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                  >
+                    Freigeben
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="mt-4 border-t border-zinc-100 pt-5 pb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400/70 px-1">Analyse &amp; Verlauf</p>
+      </div>
       {/* ── Dashboard ── */}
       <Card>
         <CardHeader>
@@ -482,7 +1133,7 @@ export default function KiPage() {
                   Ereignisverlauf
                 </p>
                 {trendBuckets.length === 0 || trendBuckets.every((b) => b.total === 0) ? (
-                  <p className="text-sm text-zinc-400">Keine Ereignisse im Zeitraum.</p>
+                  <p className="text-xs text-zinc-400">Keine Ereignisse im Zeitraum.</p>
                 ) : (
                   <TrendChart buckets={trendBuckets} />
                 )}
@@ -495,7 +1146,7 @@ export default function KiPage() {
                     Top Routen
                   </p>
                   {topRoutes.length === 0 ? (
-                    <p className="text-sm text-zinc-400">Keine Route-Daten.</p>
+                    <p className="text-xs text-zinc-400">Keine Route-Daten.</p>
                   ) : (
                     <div className="space-y-1.5">
                       {topRoutes.map((r) => {
@@ -534,7 +1185,7 @@ export default function KiPage() {
                     Top IPs (anonymisiert)
                   </p>
                   {topIps.length === 0 ? (
-                    <p className="text-sm text-zinc-400">Keine IP-Daten.</p>
+                    <p className="text-xs text-zinc-400">Keine IP-Daten.</p>
                   ) : (
                     <div className="space-y-1.5">
                       {topIps.map((ip) => {
@@ -597,7 +1248,7 @@ export default function KiPage() {
                   Ereignistypen
                 </p>
                 {eventTypeBreakdown.length === 0 ? (
-                  <p className="text-sm text-zinc-400">Keine Ereignisse.</p>
+                  <p className="text-xs text-zinc-400">Keine Ereignisse.</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {eventTypeBreakdown.map((entry) => (
@@ -621,7 +1272,7 @@ export default function KiPage() {
                   Alert-Verlauf
                 </p>
                 {alertHistory.length === 0 ? (
-                  <p className="text-sm text-zinc-400">Keine Alerts im Zeitraum.</p>
+                  <p className="text-xs text-zinc-400">Keine Alerts im Zeitraum.</p>
                 ) : (
                   <div className="space-y-2">
                     {alertHistory.map((a) => (
@@ -665,122 +1316,6 @@ export default function KiPage() {
         </CardContent>
       </Card>
 
-      {/* ── Warnungen ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base text-zinc-800">Warnungen</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loadingOverview ? (
-            <p className="text-sm text-zinc-400">Wird analysiert…</p>
-          ) : alerts.length === 0 ? (
-            <p className="text-sm text-zinc-400">Aktuell keine aktiven Warnungen.</p>
-          ) : (
-            <div className="space-y-3">
-              {alerts.map((alert) => (
-                <AlertCard
-                  key={alert.id}
-                  alert={alert}
-                  actionState={actionStates[alert.id]}
-                  onAction={(actionType, note) => handleSecurityAction("alert", alert.id, actionType, note)}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Aktive Schutzmaßnahmen ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base text-zinc-800">Aktive Schutzmaßnahmen</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loadingOverview ? (
-            <p className="text-sm text-zinc-400">Wird geladen…</p>
-          ) : activeBlocks.length === 0 ? (
-            <p className="text-sm text-zinc-400">Keine aktiven Sperren.</p>
-          ) : (
-            <div className="space-y-2">
-              {activeBlocks.map((block) => (
-                <div key={block.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                        block.target_type === "ip" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-                      }`}>
-                        {block.target_type === "ip" ? "IP" : "Route"}
-                      </span>
-                      <span className="text-xs font-mono text-zinc-800">{block.target_key}</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-600">{block.block_reason}</p>
-                    <p className="text-[10px] text-zinc-400">
-                      {block.expires_at ? `Ablauf: ${formatBlockExpiry(block.expires_at)}` : "Dauerhaft"}
-                      {block.created_by && ` · von ${block.created_by}`}
-                    </p>
-                    {block.note && (
-                      <p className="text-[10px] italic text-zinc-500">{block.note}</p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleUnblock(block.id, block.target_key)}
-                    className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
-                  >
-                    Freigeben
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Benachrichtigungen ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base text-zinc-800">Benachrichtigungen</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span
-              className={`inline-flex h-2.5 w-2.5 rounded-full ${
-                settings.admin_alerts_enabled && settings.ai_enabled ? "bg-emerald-500" : "bg-zinc-300"
-              }`}
-            />
-            <span className="text-sm text-zinc-700">
-              Mailversand:{" "}
-              <span
-                className={
-                  settings.admin_alerts_enabled && settings.ai_enabled
-                    ? "font-medium text-emerald-700"
-                    : "text-zinc-500"
-                }
-              >
-                {settings.admin_alerts_enabled && settings.ai_enabled ? "aktiv" : "inaktiv"}
-              </span>
-            </span>
-          </div>
-          {notificationState?.last_sent_at ? (
-            <div className="text-sm text-zinc-500">
-              <span className="font-medium text-zinc-600">Letzter Versand:</span>{" "}
-              {new Date(notificationState.last_sent_at).toLocaleString("de-DE")}
-            </div>
-          ) : (
-            <p className="text-sm text-zinc-400">Noch keine Benachrichtigung versandt.</p>
-          )}
-          {notificationState?.last_subject && (
-            <div className="text-sm text-zinc-500">
-              <span className="font-medium text-zinc-600">Betreff:</span>{" "}
-              {notificationState.last_subject}
-            </div>
-          )}
-          <p className="text-xs text-zinc-400">
-            Cooldown: 30 Minuten – gleiche kritische Warnung wird in diesem Zeitraum nicht erneut versandt.
-          </p>
-        </CardContent>
-      </Card>
-
       {/* ── Letzte Ereignisse ── */}
       <Card>
         <CardHeader>
@@ -790,7 +1325,7 @@ export default function KiPage() {
           {loadingOverview ? (
             <p className="text-sm text-zinc-400">Wird geladen…</p>
           ) : events.length === 0 ? (
-            <p className="text-sm text-zinc-400">Noch keine Sicherheitsereignisse vorhanden.</p>
+            <p className="text-xs text-zinc-400">Noch keine Ereignisse aufgezeichnet.</p>
           ) : (
             <div className="overflow-x-auto -mx-2">
               <table className="w-full min-w-[500px] text-sm">
@@ -828,13 +1363,61 @@ export default function KiPage() {
         </CardContent>
       </Card>
 
-      {/* ── Monitoring ── */}
+      {/* ── Benachrichtigungen ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base text-zinc-800">Monitoring</CardTitle>
+          <CardTitle className="text-base text-zinc-800">Benachrichtigungen</CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-zinc-500">
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span
+              className={`inline-flex h-2.5 w-2.5 rounded-full ${
+                settings.admin_alerts_enabled && settings.ai_enabled ? "bg-emerald-500" : "bg-zinc-300"
+              }`}
+            />
+            <span className="text-xs text-zinc-600">
+              Mailversand:{" "}
+              <span
+                className={
+                  settings.admin_alerts_enabled && settings.ai_enabled
+                    ? "font-medium text-emerald-700"
+                    : "text-zinc-400"
+                }
+              >
+                {settings.admin_alerts_enabled && settings.ai_enabled ? "aktiv" : "inaktiv"}
+              </span>
+            </span>
+          </div>
+          {notificationState?.last_sent_at ? (
+            <div className="text-xs text-zinc-500">
+              <span className="font-medium text-zinc-600">Letzter Versand:</span>{" "}
+              {new Date(notificationState.last_sent_at).toLocaleString("de-DE")}
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-400">Noch keine Benachrichtigung versandt.</p>
+          )}
+          {notificationState?.last_subject && (
+            <div className="text-xs text-zinc-500">
+              <span className="font-medium text-zinc-600">Betreff:</span>{" "}
+              {notificationState.last_subject}
+            </div>
+          )}
+          <p className="text-xs text-zinc-400">
+            Cooldown: 30 Minuten – gleiche kritische Warnung wird in diesem Zeitraum nicht erneut versandt.
+          </p>
+        </CardContent>
+      </Card>
+
+      <div className="mt-4 border-t border-zinc-100 pt-5 pb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400/70 px-1">System &amp; Konfiguration</p>
+      </div>
+      {/* ── Monitoring ── */}
+      <Card className="border-dashed bg-zinc-50/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-zinc-400">Monitoring</CardTitle>
+        </CardHeader>
+        <CardContent className="pb-4 pt-0">
+          <p className="text-xs text-zinc-400">
             Login-, API- und Sicherheitsereignisse werden hier künftig analysiert.
           </p>
         </CardContent>
@@ -892,8 +1475,8 @@ export default function KiPage() {
       </div>
 
       {/* ── Hinweisbox ── */}
-      <div className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-5 py-4 text-sm text-[#154c83]">
-        Diese Funktionen sind vorbereitet und werden schrittweise aktiviert.
+      <div className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-5 py-4 text-xs text-[#154c83]">
+        Einige dieser Funktionen sind noch in Vorbereitung und werden schrittweise aktiviert.
       </div>
 
       {/* ── Block-Dialog ── */}

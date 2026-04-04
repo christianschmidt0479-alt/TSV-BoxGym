@@ -4,8 +4,7 @@ import { useEffect, useState } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { QrCode, ShieldCheck } from "lucide-react"
-import { QRCodeSVG } from "qrcode.react"
+import { ShieldCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { formatDisplayDate, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { isValidMemberPassword, MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
-export type ProfileSection = "wettkampf" | "gewicht" | "einstellungen" | "qrcode"
+export type ProfileSection = "aktivitaet" | "wettkampf" | "gewicht" | "einstellungen" | "qrcode"
 
 type CheckinRow = {
   id: string
@@ -59,6 +58,13 @@ type MemberAreaSnapshot = {
   personalLastCheckin: CheckinRow | null
   memberAttendanceRows: CheckinRow[]
   trainingStreak: number
+  trainingStatus: "regelmäßig" | "unregelmäßig" | "pausiert"
+  lastCheckinAt: string | null
+  activityTrend: "steigend" | "stabil" | "rückläufig" | "unbekannt"
+  inactiveLevel: "none" | "7d" | "14d" | "30d"
+  memberHint: string
+  monthlyCheckinCount: number
+  weeklyCheckinCount: number
 }
 
 function getStoredString(key: string) {
@@ -152,6 +158,59 @@ function getMemberDisplayName(member: MemberRecord | null) {
   return member.name || fullName
 }
 
+function getCheckinAgeLabel(isoDate: string | null | undefined): string | null {
+  if (!isoDate) return null
+  const checkinDate = new Date(`${isoDate.slice(0, 10)}T12:00:00`)
+  const today = new Date()
+  const todayAt = new Date(`${today.toISOString().slice(0, 10)}T12:00:00`)
+  const diffDays = Math.round((todayAt.getTime() - checkinDate.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return "heute"
+  if (diffDays === 1) return "gestern"
+  if (diffDays > 1) return `vor ${diffDays} Tagen`
+  return null
+}
+
+function getWeeklyLabel(count: number): string {
+  if (count === 0) return "keine Einheit"
+  if (count <= 2) return "gering"
+  if (count <= 4) return "regelmäßig"
+  return "sehr aktiv"
+}
+
+function getMonthlyLabel(count: number): string {
+  if (count < 4) return "selten"
+  if (count <= 8) return "regelmäßig"
+  return "sehr aktiv"
+}
+
+function getCheckinFeedback(params: {
+  weeklyCheckinCount: number
+  monthlyCheckinCount: number
+  activityTrend: "steigend" | "stabil" | "rückläufig" | "unbekannt" | null
+  memberHint: string
+}): string | null {
+  const { weeklyCheckinCount, monthlyCheckinCount, activityTrend, memberHint } = params
+
+  // 1. Wiedereinstieg: aktiv diese Woche, aber insgesamt kaum Check-ins im Monat
+  if (weeklyCheckinCount >= 1 && monthlyCheckinCount <= 2) {
+    return "Wiedereinstieg nach längerer Pause."
+  }
+
+  // 2. Wochenaktivität
+  if (weeklyCheckinCount === 1) return "1 Training in dieser Woche."
+  if (weeklyCheckinCount >= 2 && weeklyCheckinCount <= 4) return `${weeklyCheckinCount} Trainings in den letzten 7 Tagen.`
+  if (weeklyCheckinCount >= 5) return "Sehr aktive Woche."
+
+  // 3. Trend (nur positiv/neutral)
+  if (activityTrend === "steigend") return "Aktivität aktuell steigend."
+  if (activityTrend === "stabil") return "Aktivität aktuell stabil."
+
+  // 4. Fallback: ersten Satz aus memberHint
+  if (memberHint) return memberHint.split(".")[0]?.trim() ? `${memberHint.split(".")[0].trim()}.` : null
+
+  return null
+}
+
 export function MemberProfilePageContent({ section }: { section: ProfileSection }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -168,6 +227,12 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
   const [personalLastCheckin, setPersonalLastCheckin] = useState<CheckinRow | null>(null)
   const [memberAttendanceRows, setMemberAttendanceRows] = useState<CheckinRow[]>([])
   const [trainingStreak, setTrainingStreak] = useState(0)
+  const [trainingStatus, setTrainingStatus] = useState<"regelmäßig" | "unregelmäßig" | "pausiert" | null>(null)
+  const [activityTrend, setActivityTrend] = useState<"steigend" | "stabil" | "rückläufig" | "unbekannt" | null>(null)
+  const [inactiveLevel, setInactiveLevel] = useState<"none" | "7d" | "14d" | "30d" | null>(null)
+  const [memberHint, setMemberHint] = useState("")
+  const [monthlyCheckinCount, setMonthlyCheckinCount] = useState(0)
+  const [weeklyCheckinCount, setWeeklyCheckinCount] = useState(0)
   const [newMemberPin, setNewMemberPin] = useState("")
   const [confirmNewMemberPin, setConfirmNewMemberPin] = useState("")
   const profileSection = section
@@ -201,6 +266,12 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
   setPersonalLastCheckin(snapshot.personalLastCheckin)
         setMemberAttendanceRows(snapshot.memberAttendanceRows)
   setTrainingStreak(snapshot.trainingStreak)
+        setTrainingStatus(snapshot.trainingStatus)
+        setActivityTrend(snapshot.activityTrend)
+        setInactiveLevel(snapshot.inactiveLevel)
+        setMemberHint(snapshot.memberHint)
+        setMonthlyCheckinCount(snapshot.monthlyCheckinCount)
+        setWeeklyCheckinCount(snapshot.weeklyCheckinCount)
         setMemberAreaData(snapshot.member)
         setProfileEmail(snapshot.member.email || "")
         setProfilePhone(snapshot.member.phone || "")
@@ -248,7 +319,6 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
     latestCompetitionWeight && firstCompetitionWeight
       ? latestCompetitionWeight.weight! - firstCompetitionWeight.weight!
       : null
-  const isSettingsSection = profileSection === "einstellungen"
 
   if (loading) {
     return (
@@ -285,68 +355,156 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
           </div>
         </div>
 
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-[#d8e3ee] bg-white p-4 shadow-[0_10px_24px_rgba(15,39,64,0.06)]">
-          <div className="flex flex-wrap gap-2.5">
-            <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-              Bereiche
-            </div>
-            <Link
-              href="/mein-bereich/profil/wettkampf"
-              className={
-                profileSection === "wettkampf"
-                  ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
-                  : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-              }
-            >
-              Digitaler Wettkampfbereich
-            </Link>
-            <Link
-              href="/mein-bereich/profil/gewicht"
-              className={
-                profileSection === "gewicht"
-                  ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
-                  : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-              }
-            >
-              Gewichtsdaten
-            </Link>
-            <Link
-              href="/mein-bereich/profil/einstellungen"
-              className={
-                profileSection === "einstellungen"
-                  ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
-                  : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-              }
-            >
-              Einstellungen
-            </Link>
-            <Link
-              href="/mein-bereich/profil/qrcode"
-              className={
-                profileSection === "qrcode"
-                  ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
-                  : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-              }
-            >
-              Mein QR-Code
-            </Link>
-          </div>
+        <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+          <Link
+            href="/mein-bereich/profil/aktivitaet"
+            className={
+              profileSection === "aktivitaet"
+                ? "rounded-xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition"
+                : "rounded-xl border border-zinc-100 bg-zinc-50 px-3.5 py-1.5 text-sm font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
+            }
+          >
+            Aktivität
+          </Link>
+          <Link
+            href="/mein-bereich/profil/einstellungen"
+            className={
+              profileSection === "einstellungen"
+                ? "rounded-xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition"
+                : "rounded-xl border border-zinc-100 bg-zinc-50 px-3.5 py-1.5 text-sm font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
+            }
+          >
+            Profil
+          </Link>
+          <Link
+            href="/mein-bereich/profil/wettkampf"
+            className={
+              profileSection === "wettkampf"
+                ? "rounded-xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition"
+                : "rounded-xl border border-zinc-100 bg-zinc-50 px-3.5 py-1.5 text-sm font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
+            }
+          >
+            Wettkampf
+          </Link>
+          <Link
+            href="/mein-bereich/profil/gewicht"
+            className={
+              profileSection === "gewicht"
+                ? "rounded-xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition"
+                : "rounded-xl border border-zinc-100 bg-zinc-50 px-3.5 py-1.5 text-sm font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
+            }
+          >
+            Gewicht
+          </Link>
+          <Link
+            href="/mein-bereich/profil/qrcode"
+            className={
+              profileSection === "qrcode"
+                ? "rounded-xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition"
+                : "rounded-xl border border-zinc-100 bg-zinc-50 px-3.5 py-1.5 text-sm font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
+            }
+          >
+            QR-Code
+          </Link>
         </div>
 
         <Card className="rounded-[24px] border-0 shadow-sm">
           <CardHeader>
-            <CardTitle>Mein Bereich</CardTitle>
+            <CardTitle>
+              {({
+                aktivitaet: "Meine Aktivität",
+                einstellungen: "Mein Profil",
+                qrcode: "QR-Code",
+                wettkampf: "Wettkampf",
+                gewicht: "Gewichtsdaten",
+              } as Record<string, string>)[profileSection] ?? "Mein Bereich"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {profileSection === "aktivitaet" ? (
+              <>
+            {trainingStatus !== null ? (
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 space-y-3">
+                {/* Check-in-Feedback */}
+                {(() => {
+                  const feedback = getCheckinFeedback({ weeklyCheckinCount, monthlyCheckinCount, activityTrend, memberHint })
+                  return feedback ? (
+                    <div className="rounded-xl border border-[#d8e3ee] bg-[#f4f9ff] px-3 py-2 text-sm font-medium text-[#154c83]">
+                      {feedback}
+                    </div>
+                  ) : null
+                })()}
+                {/* Trainingsstatus */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-semibold text-zinc-700">Trainingsstatus</div>
+                    <div className="text-xs text-zinc-400 mt-0.5">letzte 14 Tage bewertet</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span
+                      className={`rounded-full border px-3 py-1 text-sm font-bold ${
+                        trainingStatus === "regelmäßig"
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                          : trainingStatus === "unregelmäßig"
+                          ? "border-amber-300 bg-amber-100 text-amber-800"
+                          : "border-zinc-300 bg-zinc-100 text-zinc-500"
+                      }`}
+                    >
+                      {trainingStatus}
+                    </span>
+                    <span className="text-xs text-zinc-400">
+                      {trainingStatus === "regelmäßig"
+                        ? "konstante Teilnahme"
+                        : trainingStatus === "unregelmäßig"
+                        ? "schwankende Teilnahme"
+                        : "aktuell ohne Training"}
+                    </span>
+                    {activityTrend !== null && activityTrend !== "unbekannt" ? (
+                      <span
+                        className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                          activityTrend === "steigend"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : activityTrend === "stabil"
+                            ? "border-zinc-200 bg-zinc-100 text-zinc-600"
+                            : "border-red-200 bg-red-50 text-red-700"
+                        }`}
+                      >
+                        {activityTrend === "steigend" ? "↑ steigend" : activityTrend === "stabil" ? "→ stabil" : "↓ rückläufig"}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                {/* Detailkennzahlen */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-zinc-200 bg-white p-3">
+                    <div className="text-xs text-zinc-500">Letzte 7 Tage</div>
+                    <div className="mt-1 text-2xl font-bold text-[#154c83]">{weeklyCheckinCount}</div>
+                    <div className="mt-0.5 text-xs text-zinc-400">{getWeeklyLabel(weeklyCheckinCount)}</div>
+                  </div>
+                  <div className="rounded-xl border border-zinc-200 bg-white p-3">
+                    <div className="text-xs text-zinc-500">Letzte 30 Tage</div>
+                    <div className="mt-1 text-2xl font-bold text-[#154c83]">{monthlyCheckinCount}</div>
+                    <div className="mt-0.5 text-xs text-zinc-400">{getMonthlyLabel(monthlyCheckinCount)}</div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
               <div className="rounded-2xl bg-zinc-100 p-4">
-                <div className="text-sm text-zinc-500">Monat gesamt</div>
+                <div className="text-sm text-zinc-500">Dieser Monat</div>
                 <div className="mt-1 text-3xl font-bold text-[#154c83]">{personalMonthVisits}</div>
               </div>
               <div className="rounded-2xl bg-zinc-100 p-4">
                 <div className="text-sm text-zinc-500">Trainingsserie</div>
-                <div className="mt-1 text-3xl font-bold text-[#154c83]">{trainingStreak}</div>
-                <div className="mt-1 text-xs text-zinc-500">aufeinanderfolgende Trainingswochen</div>
+                {trainingStreak > 0 ? (
+                  <>
+                    <div className="mt-1 text-3xl font-bold text-[#154c83]">{trainingStreak}</div>
+                    <div className="mt-1 text-xs text-zinc-500">Wochen in Folge</div>
+                  </>
+                ) : (
+                  <div className="mt-2 text-sm text-zinc-400">Noch keine Serie</div>
+                )}
               </div>
               <div className="rounded-2xl bg-zinc-100 p-4">
                 <div className="text-sm text-zinc-500">Vormonat</div>
@@ -358,34 +516,47 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
               </div>
             </div>
 
-            <div className="rounded-2xl bg-zinc-100 p-4">
+            <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
               <div className="text-sm text-zinc-500">Letzter Check-in</div>
               <div className="mt-1 text-sm font-medium text-zinc-800">
                 {personalLastCheckin
-                  ? `${personalLastCheckin.date} · ${personalLastCheckin.time} · ${personalLastCheckin.group_name}`
+                  ? `${formatIsoDateForDisplay(personalLastCheckin.date)} \u00b7 ${personalLastCheckin.time} \u00b7 ${personalLastCheckin.group_name}`
                   : "Noch kein Check-in gespeichert"}
               </div>
+              {personalLastCheckin ? (
+                <div className="mt-1 text-xs text-zinc-400">
+                  {getCheckinAgeLabel(personalLastCheckin.date)}
+                </div>
+              ) : null}
             </div>
 
-            {isSettingsSection ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl bg-zinc-100 p-4">
-                  <div className="text-sm text-zinc-500">Mein Name</div>
-                  <div className="mt-1 text-lg font-bold text-[#154c83]">{memberAreaData.name || `${memberAreaData.first_name || ""} ${memberAreaData.last_name || ""}`.trim()}</div>
-                  <div className="mt-1 text-xs text-zinc-500">Kontaktdaten und Hinweise.</div>
+            {inactiveLevel !== null && inactiveLevel !== "none" ? (
+              <div
+                className={`rounded-xl border px-3 py-2 text-sm ${
+                  inactiveLevel === "30d"
+                    ? "border-zinc-300 bg-zinc-100 text-zinc-600"
+                    : inactiveLevel === "14d"
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : "border-zinc-200 bg-zinc-50 text-zinc-600"
+                }`}
+              >
+                <div>
+                  {inactiveLevel === "7d" && "Seit über einer Woche kein Training."}
+                  {inactiveLevel === "14d" && "Seit 14 Tagen kein Check-in."}
+                  {inactiveLevel === "30d" && (personalLastCheckin ? "Längere Trainingspause erkannt." : "Noch kein Check-in vorhanden.")}
                 </div>
-                <div className="rounded-2xl bg-zinc-100 p-4">
-                  <div className="flex items-center gap-2 text-sm text-zinc-500">
-                    <span>Mitgliedschaft</span>
-                    <InfoHint text="TSV-Mitgliedschaft, Kündigung und grundlegende Vertragsänderungen laufen direkt über den TSV Falkensee. Dieser Bereich ist nur für den Onlinebereich Boxen." />
+                {personalLastCheckin ? (
+                  <div className="mt-1 text-xs opacity-70">
+                    Letzter Check-in: {formatIsoDateForDisplay(personalLastCheckin.date)}
+                    {getCheckinAgeLabel(personalLastCheckin.date) ? ` (${getCheckinAgeLabel(personalLastCheckin.date)})` : ""}
                   </div>
-                  <div className="mt-1 text-lg font-bold text-[#154c83]">TSV BoxGym</div>
-                  <div className="mt-1 text-xs text-zinc-500">Änderungen nur über TSV Falkensee.</div>
-                </div>
+                ) : null}
               </div>
             ) : null}
+              </>
+            ) : null}
 
-            <div className="rounded-2xl border bg-white p-4">
+            <>
               {profileSection === "einstellungen" ? (
                 <div className="space-y-6">
                   <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
@@ -574,10 +745,7 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
               {profileSection === "gewicht" ? (
                 memberAreaData.is_competition_member || memberAreaData.has_competition_pass ? (
                   <div className="space-y-4">
-                    <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                      <div className="font-semibold text-zinc-900">Gewichtsdaten</div>
-                      <div className="text-sm text-zinc-500">{competitionWeightRows.length} Einträge</div>
-                    </div>
+                    <div className="text-sm text-zinc-500">{competitionWeightRows.length} Einträge</div>
 
                     <div className="grid gap-3 md:grid-cols-4">
                       <div className="rounded-2xl bg-zinc-100 p-3">
@@ -616,7 +784,7 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                           <div key={`weight-${row.id}`} className="flex flex-col gap-1 rounded-2xl bg-zinc-100 px-4 py-3 text-sm text-zinc-700 md:flex-row md:items-center md:justify-between">
                             <div className="font-medium text-zinc-900">{String(row.weight).replace(".", ",")} kg</div>
                             <div>
-                              {row.date} · {row.time} · {row.group_name}
+                              {formatIsoDateForDisplay(row.date)} · {row.time} · {row.group_name}
                             </div>
                           </div>
                         ))}
@@ -636,37 +804,18 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
 
               {profileSection === "qrcode" ? (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 font-semibold text-zinc-900">
-                    <QrCode className="h-4 w-4 text-[#154c83]" />
-                    Mein Mitglieds-QR-Code
+                  <div className="rounded-2xl border border-[#c8d8ea] bg-[#f4f9ff] p-4">
+                    <div className="text-sm font-semibold text-[#154c83]">Funktion noch nicht freigeschaltet</div>
+                    <div className="mt-1 text-sm text-zinc-600">
+                      Der Mitglieds-QR-Code ist im Sportlerbereich bereits vorgesehen, aber derzeit noch nicht für die Nutzung aktiviert.
+                    </div>
+                    <div className="mt-2 text-xs text-zinc-400">
+                      Sobald die Funktion freigeschaltet ist, wird der QR-Code hier angezeigt.
+                    </div>
                   </div>
-                  {memberAreaData.member_qr_token && memberAreaData.member_qr_active !== false ? (
-                    <div className="flex flex-col items-center gap-6 py-4">
-                      <div className="rounded-3xl border-2 border-[#c8d8ea] bg-white p-6 shadow-md">
-                        <QRCodeSVG
-                          value={memberAreaData.member_qr_token}
-                          size={220}
-                          level="M"
-                          includeMargin={false}
-                        />
-                      </div>
-                      <div className="max-w-sm space-y-2 text-center">
-                        <p className="text-sm font-medium text-zinc-800">
-                          Dieser Code ist dein persönlicher Mitglieds-Code.
-                        </p>
-                        <p className="text-sm text-zinc-500">
-                          Zeige ihn beim Check-in vor. Der Code ist nur dir zugeordnet und sollte nicht weitergegeben werden.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
-                      Dein QR-Code wurde noch nicht aktiviert. Bitte wende dich an den Trainer oder Admin.
-                    </div>
-                  )}
                 </div>
               ) : null}
-            </div>
+            </>
           </CardContent>
         </Card>
       </div>
@@ -675,5 +824,5 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
 }
 
 export default function MemberProfilePage() {
-  return <MemberProfilePageContent section="wettkampf" />
+  return <MemberProfilePageContent section="aktivitaet" />
 }

@@ -417,6 +417,62 @@ async function buildMemberSnapshot(member: MemberRecord) {
     baseGroupPosition = myIndex >= 0 ? myIndex + 1 : null
   }
 
+  // Regelbasierte Trainingshinweise (keine neuen DB-Queries)
+  const str7dAgo = addDays(liveDate, -7)
+  const str14dAgo = addDays(liveDate, -14)
+  const str28dAgo = addDays(liveDate, -28)
+  const str30dAgo = addDays(liveDate, -30)
+
+  const checkinDateRows = (allRows as Array<{ date: string }> | null) ?? []
+  const weeklyCheckinCount = checkinDateRows.filter((r) => r.date >= str7dAgo).length
+  const monthlyCheckinCount = checkinDateRows.filter((r) => r.date >= str30dAgo).length
+  const last14dCount = checkinDateRows.filter((r) => r.date >= str14dAgo).length
+  const prior14dCount = checkinDateRows.filter((r) => r.date >= str28dAgo && r.date < str14dAgo).length
+
+  const trainingStatus: "regelmäßig" | "unregelmäßig" | "pausiert" =
+    last14dCount >= 4 ? "regelmäßig" : last14dCount >= 1 ? "unregelmäßig" : "pausiert"
+
+  const lastCheckinDate = (lastRow as CheckinRow | null)?.date ?? null
+  const inactiveLevel: "none" | "7d" | "14d" | "30d" = !lastCheckinDate
+    ? "30d"
+    : lastCheckinDate < str30dAgo
+    ? "30d"
+    : lastCheckinDate < str14dAgo
+    ? "14d"
+    : lastCheckinDate < str7dAgo
+    ? "7d"
+    : "none"
+
+  const activityTrend: "steigend" | "stabil" | "rückläufig" | "unbekannt" =
+    last14dCount === 0 && prior14dCount === 0
+      ? "unbekannt"
+      : last14dCount > prior14dCount
+      ? "steigend"
+      : last14dCount === prior14dCount
+      ? "stabil"
+      : "rückläufig"
+
+  let memberHint: string
+  if (last14dCount >= 4) {
+    memberHint = `In den letzten 14 Tagen ${last14dCount}× eingecheckt – regelmäßig aktiv.`
+  } else if (inactiveLevel === "30d") {
+    memberHint = "Seit mehr als 30 Tagen kein Check-in erfasst."
+  } else if (inactiveLevel === "14d") {
+    memberHint = "Seit 14 Tagen kein Check-in erfasst."
+  } else if (inactiveLevel === "7d") {
+    memberHint = "In den letzten 7 Tagen kein Check-in erfasst."
+  } else if (activityTrend === "steigend") {
+    memberHint = "Aktivität aktuell steigend."
+  } else if (activityTrend === "rückläufig") {
+    memberHint = "Aktivität aktuell rückläufig."
+  } else if (last14dCount > 0) {
+    memberHint = `In den letzten 14 Tagen ${last14dCount} Check-in${last14dCount !== 1 ? "s" : ""} erfasst.`
+  } else {
+    memberHint = "Noch kein Check-in erfasst."
+  }
+
+  const lastCheckinAt = (lastRow as CheckinRow | null)?.created_at ?? null
+
   return {
     member: normalizedMember,
     personalMonthVisits: monthRows?.length ?? 0,
@@ -433,6 +489,13 @@ async function buildMemberSnapshot(member: MemberRecord) {
     }),
     baseGroupMonthVisits,
     baseGroupPosition,
+    trainingStatus,
+    lastCheckinAt,
+    activityTrend,
+    inactiveLevel,
+    memberHint,
+    monthlyCheckinCount,
+    weeklyCheckinCount,
   }
 }
 
