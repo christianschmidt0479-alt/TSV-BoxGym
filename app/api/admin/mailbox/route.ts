@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     const records = await listAdminMailboxRecords()
     return NextResponse.json({
       ok: true,
-      inbox: records.filter((row) => row.type === "inbox" && row.status !== "done" && row.status !== "deleted"),
+      inbox: records.filter((row) => row.status !== "done" && row.status !== "deleted" && row.type === "inbox"),
       drafts: records.filter((row) => row.type === "draft" && row.status === "draft"),
       deleted: records.filter((row) => row.status === "deleted"),
     })
