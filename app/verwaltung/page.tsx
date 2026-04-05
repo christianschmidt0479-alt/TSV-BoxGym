@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, BarChart3, Clock3, ShieldCheck, Users } from "lucide-react"
+import { BarChart3, Clock3, ShieldCheck, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
@@ -180,26 +180,18 @@ export default function VerwaltungOverviewPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-600">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            {trainerRole === "admin" ? "Adminzugang aktiv" : "Trainerzugang aktiv"}
-          </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-900">Verwaltungsübersicht</h1>
-        </div>
-        <Button asChild variant="outline" className="rounded-2xl">
-          <Link href="/">Zurück zum Check-in</Link>
-        </Button>
+    <div className="space-y-5">
+      <div className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-600">
+        <ShieldCheck className="h-3 w-3" />
+        {trainerRole === "admin" ? "Adminzugang" : "Trainerzugang"}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="hidden rounded-[24px] border-0 shadow-sm md:block">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Card className="rounded-[24px] border-0 shadow-sm">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 text-sm text-zinc-500">
               <Users className="h-4 w-4" />
-              Mitglieder gesamt
+              Mitglieder
             </div>
             <div className="mt-1 text-3xl font-bold text-zinc-900">{loading ? "…" : summary.totalMembers}</div>
           </CardContent>
@@ -234,134 +226,72 @@ export default function VerwaltungOverviewPage() {
         </Card>
       </div>
 
-      <details className="rounded-[24px] border-0 bg-white shadow-sm md:hidden">
-            <summary className="cursor-pointer list-none rounded-[24px] px-4 py-4 text-left">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-base font-semibold text-zinc-900">Stand heute</div>
-                  <div className="mt-1 text-sm text-zinc-500">Warnungen und Sammelmail kompakt.</div>
-                </div>
-                <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-zinc-400" />
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>Stand heute</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-zinc-600">
+          {boxzwergeAgingWarnings.length > 0 ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-900">
+              <div className="font-semibold">Warnung für Christian Schmidt</div>
+              <div className="mt-1">
+                {boxzwergeAgingWarnings.length} Boxzwerge sind 10 Jahre oder älter und sollten geprüft werden.
               </div>
-            </summary>
-            <div className="space-y-3 border-t border-zinc-200 px-4 py-4 text-sm text-zinc-600">
-              {boxzwergeAgingWarnings.length > 0 ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-900">
-                  <div className="font-semibold">Warnung für Christian Schmidt</div>
-                  <div className="mt-1">
-                    {boxzwergeAgingWarnings.length} Boxzwerge sind 10 Jahre oder älter und sollten geprüft werden.
+              <div className="mt-3 space-y-1 text-sm">
+                {boxzwergeAgingWarnings.map((member) => (
+                  <div key={member.id}>
+                    {getMemberDisplayName(member)} · {formatIsoDateForDisplay(member.birthdate) || "Geburtsdatum offen"} · {member.age} Jahre
                   </div>
-                  <div className="mt-3 space-y-1 text-sm">
-                    {boxzwergeAgingWarnings.map((member) => (
-                      <div key={member.id}>
-                        {getMemberDisplayName(member)} · {formatIsoDateForDisplay(member.birthdate) || "Geburtsdatum offen"} · {member.age} Jahre
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4">
-                    <Button asChild variant="outline" className="rounded-2xl border-red-200 bg-white text-red-900 hover:bg-red-100">
-                      <Link href="/verwaltung/mitglieder?gruppe=Boxzwerge">Zur Mitgliederverwaltung</Link>
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-              {trainerRole === "admin" ? (
-                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950">
-                  <div className="font-semibold">Admin-Sammelmail</div>
-                  <div className="mt-1 flex items-center gap-2 text-sm text-blue-900">
-                    <span><span className="font-semibold">{loading ? "…" : digestSummary.total}</span> offen.</span>
-                    <InfoHint text={`Versand werktags um 09:00 Uhr. Aktuell warten ${loading ? "…" : digestSummary.total} Vorgänge auf die nächste Sammelmail.`} />
-                  </div>
-                  <div className="mt-3 grid gap-2 text-sm">
-                    <div className="rounded-2xl bg-white/80 p-3">Boxbereich: <span className="font-semibold">{loading ? "…" : digestSummary.members}</span></div>
-                    <div className="rounded-2xl bg-white/80 p-3">Trainer: <span className="font-semibold">{loading ? "…" : digestSummary.trainers}</span></div>
-                    <div className="rounded-2xl bg-white/80 p-3">Boxzwerge: <span className="font-semibold">{loading ? "…" : digestSummary.boxzwerge}</span></div>
-                  </div>
-                  {digestSummary.latest ? (
-                    <div className="mt-3 text-xs text-blue-800">
-                      Letzter Eingang: {digestSummary.latest.member_name} ·{" "}
-                      {formatDisplayDateTime(new Date(digestSummary.latest.created_at))}
-                    </div>
-                  ) : (
-                    <div className="mt-3 text-xs text-blue-800">Zurzeit liegt kein offener Vorgang in der Sammelmail-Warteschlange.</div>
-                  )}
-                </div>
-              ) : null}
-              <div className="rounded-2xl bg-zinc-100 p-4">
-                Freigegebene Mitglieder: <span className="font-semibold text-zinc-900">{loading ? "…" : summary.approvedMembers}</span>
+                ))}
               </div>
-              <div className="rounded-2xl bg-zinc-100 p-4">
-                Probemitglieder: <span className="font-semibold text-zinc-900">{loading ? "…" : summary.trialMembers}</span>
-              </div>
-              <div className="rounded-2xl bg-zinc-100 p-4">
-                Gruppen im Wochenplan: <span className="font-semibold text-zinc-900">{groupOptions.length}</span>
-              </div>
-              <div className="rounded-2xl bg-zinc-100 p-4">
-                Aktive Gruppen heute: <span className="font-semibold text-zinc-900">{loading ? "…" : summary.activeGroupsToday}</span>
+              <div className="mt-4">
+                <Button asChild variant="outline" className="rounded-2xl border-red-200 bg-white text-red-900 hover:bg-red-100">
+                  <Link href="/verwaltung/mitglieder?gruppe=Boxzwerge">Zur Mitgliederverwaltung</Link>
+                </Button>
               </div>
             </div>
-      </details>
-
-      <Card className="hidden rounded-[24px] border-0 shadow-sm md:block">
-        <CardHeader className="md:items-start">
-            <CardTitle>Stand heute</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-zinc-600">
-            {boxzwergeAgingWarnings.length > 0 ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-900">
-                <div className="font-semibold">Warnung für Christian Schmidt</div>
-                <div className="mt-1">
-                  {boxzwergeAgingWarnings.length} Boxzwerge sind 10 Jahre oder älter und sollten geprüft werden.
-                </div>
-                <div className="mt-3 space-y-1 text-sm">
-                  {boxzwergeAgingWarnings.map((member) => (
-                    <div key={member.id}>
-                      {getMemberDisplayName(member)} · {formatIsoDateForDisplay(member.birthdate) || "Geburtsdatum offen"} · {member.age} Jahre
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4">
-                  <Button asChild variant="outline" className="rounded-2xl border-red-200 bg-white text-red-900 hover:bg-red-100">
-                    <Link href="/verwaltung/mitglieder?gruppe=Boxzwerge">Zur Mitgliederverwaltung</Link>
-                  </Button>
-                </div>
+          ) : null}
+          {trainerRole === "admin" ? (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950">
+              <div className="font-semibold">Admin-Sammelmail</div>
+              <div className="mt-1 flex items-center gap-2 text-sm text-blue-900">
+                <span><span className="font-semibold">{loading ? "…" : digestSummary.total}</span> offen.</span>
+                <InfoHint text={`Versand werktags um 09:00 Uhr. Aktuell warten ${loading ? "…" : digestSummary.total} Vorgänge auf die nächste Sammelmail.`} />
               </div>
-            ) : null}
-            {trainerRole === "admin" ? (
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950">
-                <div className="font-semibold">Admin-Sammelmail</div>
-                <div className="mt-1 flex items-center gap-2 text-sm text-blue-900">
-                  <span><span className="font-semibold">{loading ? "…" : digestSummary.total}</span> offen.</span>
-                  <InfoHint text={`Versand werktags um 09:00 Uhr. Aktuell warten ${loading ? "…" : digestSummary.total} Vorgänge auf die nächste Sammelmail.`} />
-                </div>
-                <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
-                  <div className="rounded-2xl bg-white/80 p-3">Boxbereich: <span className="font-semibold">{loading ? "…" : digestSummary.members}</span></div>
-                  <div className="rounded-2xl bg-white/80 p-3">Trainer: <span className="font-semibold">{loading ? "…" : digestSummary.trainers}</span></div>
-                  <div className="rounded-2xl bg-white/80 p-3">Boxzwerge: <span className="font-semibold">{loading ? "…" : digestSummary.boxzwerge}</span></div>
-                </div>
-                {digestSummary.latest ? (
-                  <div className="mt-3 text-xs text-blue-800">
-                    Letzter Eingang: {digestSummary.latest.member_name} ·{" "}
-                      {formatDisplayDateTime(new Date(digestSummary.latest.created_at))}
-                  </div>
-                ) : (
-                  <div className="mt-3 text-xs text-blue-800">Zurzeit liegt kein offener Vorgang in der Sammelmail-Warteschlange.</div>
-                )}
+              <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                <div className="rounded-2xl bg-white/80 p-3">Boxbereich: <span className="font-semibold">{loading ? "…" : digestSummary.members}</span></div>
+                <div className="rounded-2xl bg-white/80 p-3">Trainer: <span className="font-semibold">{loading ? "…" : digestSummary.trainers}</span></div>
+                <div className="rounded-2xl bg-white/80 p-3">Boxzwerge: <span className="font-semibold">{loading ? "…" : digestSummary.boxzwerge}</span></div>
               </div>
-            ) : null}
-            <div className="rounded-2xl bg-zinc-100 p-4">
-              Freigegebene Mitglieder: <span className="font-semibold text-zinc-900">{loading ? "…" : summary.approvedMembers}</span>
+              {digestSummary.latest ? (
+                <div className="mt-3 text-xs text-blue-800">
+                  Letzter Eingang: {digestSummary.latest.member_name} ·{" "}
+                  {formatDisplayDateTime(new Date(digestSummary.latest.created_at))}
+                </div>
+              ) : (
+                <div className="mt-3 text-xs text-blue-800">Zurzeit liegt kein offener Vorgang in der Sammelmail-Warteschlange.</div>
+              )}
             </div>
-            <div className="rounded-2xl bg-zinc-100 p-4">
-              Probemitglieder: <span className="font-semibold text-zinc-900">{loading ? "…" : summary.trialMembers}</span>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-zinc-100 px-3 py-2.5">
+              <div className="text-xs text-zinc-500">Freigegeben</div>
+              <div className="mt-0.5 text-xl font-bold text-zinc-900">{loading ? "…" : summary.approvedMembers}</div>
             </div>
-            <div className="rounded-2xl bg-zinc-100 p-4">
-              Gruppen im Wochenplan: <span className="font-semibold text-zinc-900">{groupOptions.length}</span>
+            <div className="rounded-xl bg-zinc-100 px-3 py-2.5">
+              <div className="text-xs text-zinc-500">Probe</div>
+              <div className="mt-0.5 text-xl font-bold text-zinc-900">{loading ? "…" : summary.trialMembers}</div>
             </div>
-            <div className="rounded-2xl bg-zinc-100 p-4">
-              Aktive Gruppen heute: <span className="font-semibold text-zinc-900">{loading ? "…" : summary.activeGroupsToday}</span>
+            <div className="rounded-xl bg-zinc-100 px-3 py-2.5">
+              <div className="text-xs text-zinc-500">Gruppen Wochenplan</div>
+              <div className="mt-0.5 text-xl font-bold text-zinc-900">{groupOptions.length}</div>
             </div>
-          </CardContent>
+            <div className="rounded-xl bg-zinc-100 px-3 py-2.5">
+              <div className="text-xs text-zinc-500">Gruppen aktiv heute</div>
+              <div className="mt-0.5 text-xl font-bold text-zinc-900">{loading ? "…" : summary.activeGroupsToday}</div>
+            </div>
+          </div>
+        </CardContent>
       </Card>
     </div>
   )
