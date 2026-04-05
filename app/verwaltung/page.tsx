@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, BarChart3, Clock3, Settings, ShieldCheck, Users } from "lucide-react"
+import { ArrowRight, BarChart3, Clock3, ShieldCheck, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
@@ -33,18 +33,6 @@ type AdminDigestQueueRow = {
   member_name: string
   created_at: string
   sent_at: string | null
-}
-
-type OverviewAction = {
-  href: string
-  title: string
-  description: string
-}
-
-type OverviewSection = {
-  title: string
-  description: string
-  actions: OverviewAction[]
 }
 
 function getDayKey(dateString: string) {
@@ -171,116 +159,6 @@ export default function VerwaltungOverviewPage() {
     }
   }, [digestQueueRows])
 
-  const overviewSections = useMemo<OverviewSection[]>(() => {
-    const operationsSection = {
-      title: "Betrieb",
-      description: "Tagesgeschäft, Gruppen und Wettkampf.",
-      actions: [
-        {
-          href: "/verwaltung/heute",
-          title: "Heute",
-          description: "Kompakte Tagesansicht öffnen.",
-        },
-        {
-          href: "/verwaltung/checkins",
-          title: "Check-ins",
-          description: "Tageslisten und Verlauf prüfen.",
-        },
-        {
-          href: "/verwaltung/excel-abgleich",
-          title: "Excel-Abgleich",
-          description: "Gruppenlisten mit Mitgliederdaten abgleichen.",
-        },
-        {
-          href: "/verwaltung/gruppen",
-          title: "Gruppen",
-          description: "Gruppen und Wochenbezug öffnen.",
-        },
-        {
-          href: "/verwaltung/wettkampf",
-          title: "Wettkampf",
-          description: "Kampfdaten und L-Gruppe pflegen.",
-        },
-        {
-          href: "/verwaltung/qr-codes",
-          title: "QR-Codes",
-          description: "Alle Registrierungs- und Check-in-Codes zentral öffnen.",
-        },
-      ],
-    }
-
-    if (trainerRole === "admin") {
-      return [
-        {
-          title: "Inbox",
-          description: "Alles Offene und Dringende auf einen Blick.",
-          actions: [
-            {
-              href: "/verwaltung/inbox",
-              title: "Inbox",
-              description: "Offene Themen priorisiert sehen.",
-            },
-            {
-              href: "/verwaltung/freigaben",
-              title: "Freigaben",
-              description: "Offene Registrierungen abarbeiten.",
-            },
-          ],
-        },
-        {
-          title: "Personen",
-          description: "Mitglieder, Trainer und Rollen zusammenführen.",
-          actions: [
-            {
-              href: "/verwaltung/trainer",
-              title: "Trainer",
-              description: "Trainerkonten und Freigaben prüfen.",
-            },
-            {
-              href: "/verwaltung/personen",
-              title: "Rollen",
-              description: "Mehrfachrollen zentral zusammenführen.",
-            },
-            {
-              href: "/verwaltung/mitglieder",
-              title: "Mitglieder",
-              description: "Suche, Status und Boxzwerge 10+.",
-            },
-            {
-              href: "/verwaltung/geburtstage",
-              title: "Geburtstage",
-              description: "Nächste und vergangene Geburtstage zentral sehen.",
-            },
-          ],
-        },
-        operationsSection,
-        {
-          title: "System",
-          description: "Mail, Sicherheit und Einstellungen.",
-          actions: [
-            {
-              href: "/verwaltung/mail",
-              title: "Mail",
-              description: "Queues und Mailstatus prüfen.",
-            },
-            {
-              href: "/verwaltung/sicherheit",
-              title: "Sicherheit",
-              description: "Audit-Log und Schutzmechanismen.",
-            },
-            {
-              href: "/verwaltung/einstellungen",
-              title: "Einstellungen",
-              description: "Mail, System und Direktwerkzeuge.",
-            },
-          ],
-        },
-      ]
-    }
-
-    return [operationsSection]
-  }, [trainerRole])
-
   if (!authResolved) {
     return <div className="text-sm text-zinc-500">Zugriff wird geprüft...</div>
   }
@@ -356,42 +234,7 @@ export default function VerwaltungOverviewPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.45fr_0.95fr]">
-        <div className="space-y-4 md:hidden">
-          {overviewSections.map((section) => (
-            <details key={section.title} className="rounded-[24px] border-0 bg-white shadow-sm">
-              <summary className="cursor-pointer list-none rounded-[24px] px-4 py-4 text-left">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-base font-semibold text-zinc-900">{section.title}</div>
-                    <div className="mt-1 text-sm text-zinc-500">{section.description}</div>
-                  </div>
-                  <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-zinc-400" />
-                </div>
-              </summary>
-              <div className="space-y-2 border-t border-zinc-200 px-4 py-4">
-                {section.actions.map((action) => (
-                  <Link
-                    key={action.href}
-                    href={action.href}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3 transition hover:border-[#154c83] hover:bg-white"
-                  >
-                    <div>
-                      <div className="font-semibold text-zinc-900">{action.title}</div>
-                      <div className="mt-1 text-xs leading-5 text-zinc-600">{action.description}</div>
-                    </div>
-                    {action.href === "/verwaltung/einstellungen" ? (
-                      <Settings className="h-4 w-4 shrink-0 text-zinc-400" />
-                    ) : (
-                      <ArrowRight className="h-4 w-4 shrink-0 text-zinc-400" />
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </details>
-          ))}
-
-          <details className="rounded-[24px] border-0 bg-white shadow-sm">
+      <details className="rounded-[24px] border-0 bg-white shadow-sm md:hidden">
             <summary className="cursor-pointer list-none rounded-[24px] px-4 py-4 text-left">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -457,44 +300,10 @@ export default function VerwaltungOverviewPage() {
                 Aktive Gruppen heute: <span className="font-semibold text-zinc-900">{loading ? "…" : summary.activeGroupsToday}</span>
               </div>
             </div>
-          </details>
-        </div>
+      </details>
 
-        <div className="hidden gap-4 md:grid md:grid-cols-2">
-          {overviewSections.map((section) => (
-            <Card key={section.title} className="rounded-[24px] border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>{section.title}</CardTitle>
-                <div className="flex items-center gap-2 text-sm text-zinc-500">
-                  <span>Kompakter Überblick.</span>
-                  <InfoHint text={section.description} />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {section.actions.map((action) => (
-                  <Link
-                    key={action.href}
-                    href={action.href}
-                    className="flex items-start justify-between gap-4 rounded-3xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-[#154c83] hover:bg-white"
-                  >
-                    <div>
-                      <div className="font-semibold text-zinc-900">{action.title}</div>
-                      <div className="mt-1 text-sm text-zinc-600">{action.description}</div>
-                    </div>
-                    {action.href === "/verwaltung/einstellungen" ? (
-                      <Settings className="mt-1 h-4 w-4 shrink-0 text-zinc-400" />
-                    ) : (
-                      <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-zinc-400" />
-                    )}
-                  </Link>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <Card className="hidden rounded-[24px] border-0 shadow-sm md:block">
-          <CardHeader className="md:items-start">
+      <Card className="hidden rounded-[24px] border-0 shadow-sm md:block">
+        <CardHeader className="md:items-start">
             <CardTitle>Stand heute</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-zinc-600">
@@ -553,8 +362,7 @@ export default function VerwaltungOverviewPage() {
               Aktive Gruppen heute: <span className="font-semibold text-zinc-900">{loading ? "…" : summary.activeGroupsToday}</span>
             </div>
           </CardContent>
-        </Card>
-      </div>
+      </Card>
     </div>
   )
 }

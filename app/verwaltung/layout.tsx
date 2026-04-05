@@ -2,53 +2,57 @@ import Image from "next/image"
 import Link from "next/link"
 import type { ReactNode } from "react"
 import { cookies } from "next/headers"
-import { ChevronLeft, LayoutPanelLeft, Settings } from "lucide-react"
+import { ChevronLeft, LayoutPanelLeft } from "lucide-react"
 import { TRAINER_SESSION_COOKIE, verifyTrainerSessionToken } from "@/lib/authSession"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { AdminMobileNav } from "@/components/admin-mobile-nav"
+import { AdminTopNav } from "@/components/admin-top-nav"
 import { TrainerLogoutButton } from "@/components/trainer-logout-button"
-
-type NavItem = {
-  href: string
-  label: string
-  icon?: ReactNode
-}
 
 export default async function VerwaltungLayout({ children }: { children: ReactNode }) {
   const cookieStore = await cookies()
   const trainerAccess = await verifyTrainerSessionToken(cookieStore.get(TRAINER_SESSION_COOKIE)?.value)
   const checkinSettings = await readCheckinSettings()
   const isAdmin = trainerAccess?.role === "admin" || trainerAccess?.accountRole === "admin"
-  const startItems: NavItem[] = [
-    { href: "/verwaltung", label: "Übersicht" },
-    { href: "/verwaltung/inbox", label: "Inbox" },
-  ]
-  const peopleItems: NavItem[] = [
-    { href: "/verwaltung/freigaben", label: "Freigaben" },
-    { href: "/verwaltung/mitglieder", label: "Mitglieder" },
-    ...(isAdmin ? [{ href: "/verwaltung/geburtstage", label: "Geburtstage" }] : []),
-    ...(isAdmin ? [{ href: "/verwaltung/personen", label: "Rollen" }, { href: "/verwaltung/trainer", label: "Trainer" }] : []),
-  ]
-  const operationsItems: NavItem[] = [
-    { href: "/verwaltung/heute", label: "Heute" },
-    { href: "/verwaltung/checkins", label: "Check-ins" },
-    { href: "/verwaltung/excel-abgleich", label: "Excel-Abgleich" },
-    { href: "/verwaltung/gruppen", label: "Gruppen" },
-    { href: "/verwaltung/wettkampf", label: "Wettkampf" },
-    { href: "/verwaltung/qr-codes", label: "QR-Codes" },
-  ]
-  const systemItems: NavItem[] = [
-    { href: "/verwaltung/postfach", label: "Postfach" },
-    { href: "/verwaltung/mail", label: "Mail" },
-    ...(isAdmin ? [{ href: "/verwaltung/sicherheit", label: "Sicherheit" }] : []),
-    ...(isAdmin ? [{ href: "/verwaltung/einstellungen", label: "Einstellungen", icon: <Settings className="h-4 w-4" /> }] : []),
-    ...(isAdmin ? [{ href: "/verwaltung/ki", label: "KI" }] : []),
-  ]
   const mobileSections = [
-    { title: "Start", items: startItems.map(({ href, label }) => ({ href, label })) },
-    { title: "Personen", items: peopleItems.map(({ href, label }) => ({ href, label })) },
-    { title: "Betrieb", items: operationsItems.map(({ href, label }) => ({ href, label })) },
-    { title: "System", items: systemItems.map(({ href, label }) => ({ href, label })) },
+    {
+      title: "Übersicht",
+      items: [
+        { href: "/verwaltung", label: "Start" },
+        { href: "/verwaltung/heute", label: "Heute" },
+        { href: "/verwaltung/inbox", label: "Inbox" },
+      ],
+    },
+    {
+      title: "Mitglieder",
+      items: [
+        { href: "/verwaltung/freigaben", label: "Freigaben" },
+        { href: "/verwaltung/mitglieder", label: "Mitglieder" },
+        ...(isAdmin ? [{ href: "/verwaltung/geburtstage", label: "Geburtstage" }] : []),
+        ...(isAdmin ? [{ href: "/verwaltung/personen", label: "Rollen" }, { href: "/verwaltung/trainer", label: "Trainer" }] : []),
+      ],
+    },
+    {
+      title: "Training",
+      items: [
+        { href: "/verwaltung/heute", label: "Heute" },
+        { href: "/verwaltung/checkins", label: "Check-ins" },
+        { href: "/verwaltung/excel-abgleich", label: "Excel-Abgleich" },
+        { href: "/verwaltung/gruppen", label: "Gruppen" },
+        { href: "/verwaltung/wettkampf", label: "Wettkampf" },
+        { href: "/verwaltung/qr-codes", label: "QR-Codes" },
+      ],
+    },
+    {
+      title: "System",
+      items: [
+        { href: "/verwaltung/postfach", label: "Postfach" },
+        { href: "/verwaltung/mail", label: "Mail" },
+        ...(isAdmin ? [{ href: "/verwaltung/sicherheit", label: "Sicherheit" }] : []),
+        ...(isAdmin ? [{ href: "/verwaltung/einstellungen", label: "Einstellungen" }] : []),
+        ...(isAdmin ? [{ href: "/verwaltung/ki", label: "KI" }] : []),
+      ],
+    },
   ]
 
   return (
@@ -94,141 +98,9 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                 </div>
               </div>
 
-              <nav className="hidden flex-wrap gap-2.5 border-t border-[#e2e8f0] pt-2.5 md:flex">
-                <Link
-                  href="/verwaltung"
-                  className="rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
-                >
-                  Übersicht
-                </Link>
-                <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                  Start
-                </div>
-                <Link
-                  href="/verwaltung/inbox"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Inbox
-                </Link>
-                <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                  Personen
-                </div>
-                <Link
-                  href="/verwaltung/freigaben"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Freigaben
-                </Link>
-                <Link
-                  href="/verwaltung/mitglieder"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Mitglieder
-                </Link>
-                {isAdmin ? (
-                  <Link
-                    href="/verwaltung/geburtstage"
-                    className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                  >
-                    Geburtstage
-                  </Link>
-                ) : null}
-                {isAdmin ? (
-                  <Link
-                    href="/verwaltung/personen"
-                    className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                  >
-                    Rollen
-                  </Link>
-                ) : null}
-                {isAdmin ? (
-                  <Link
-                    href="/verwaltung/trainer"
-                    className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                  >
-                    Trainer
-                  </Link>
-                ) : null}
-                <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                  Betrieb
-                </div>
-                <Link
-                  href="/verwaltung/heute"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Heute
-                </Link>
-                <Link
-                  href="/verwaltung/checkins"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Check-ins
-                </Link>
-                <Link
-                  href="/verwaltung/excel-abgleich"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Excel-Abgleich
-                </Link>
-                <Link
-                  href="/verwaltung/gruppen"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Gruppen
-                </Link>
-                <Link
-                  href="/verwaltung/wettkampf"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Wettkampf
-                </Link>
-                <Link
-                  href="/verwaltung/qr-codes"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  QR-Codes
-                </Link>
-                <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                  System
-                </div>
-                <Link
-                  href="/verwaltung/postfach"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Postfach
-                </Link>
-                <Link
-                  href="/verwaltung/mail"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Mail
-                </Link>
-                {isAdmin ? (
-                  <Link
-                    href="/verwaltung/sicherheit"
-                    className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                  >
-                    Sicherheit
-                  </Link>
-                ) : null}
-                {isAdmin ? (
-                  <Link
-                    href="/verwaltung/einstellungen"
-                    className="inline-flex items-center gap-2 rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                  >
-                    <Settings className="h-4 w-4" />
-                    Einstellungen
-                  </Link>
-                ) : null}
-                {isAdmin ? (
-                  <Link
-                    href="/verwaltung/ki"
-                    className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                  >
-                    KI
-                  </Link>
-                ) : null}
-              </nav>
+              <div className="hidden border-t border-[#e2e8f0] pt-2.5 md:block">
+                <AdminTopNav isAdmin={isAdmin} />
+              </div>
             </div>
           </div>
         </div>
