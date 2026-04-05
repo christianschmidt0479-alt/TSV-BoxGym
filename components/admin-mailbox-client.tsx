@@ -27,7 +27,7 @@ type MailboxPayload = {
   deleted: AdminMailboxRecord[]
 }
 
-type MailboxTab = "inbox" | "drafts" | "compose" | "sent" | "deleted" | "eingehend"
+type MailboxTab = "inbox" | "drafts" | "compose" | "sent" | "deleted"
 
 type InboundEmail = {
   id: string
@@ -43,7 +43,6 @@ function getTabFromSearchParam(value: string | null): MailboxTab {
   if (value === "compose") return "compose"
   if (value === "sent") return "sent"
   if (value === "deleted") return "deleted"
-  if (value === "eingehend") return "eingehend"
   return "inbox"
 }
 
@@ -90,6 +89,7 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
   const [inboundLoading, setInboundLoading] = useState(false)
   const [inboundError, setInboundError] = useState("")
   const [selectedInboundId, setSelectedInboundId] = useState<string | null>(null)
+  const [inboxSubTab, setInboxSubTab] = useState<"aufgaben" | "emails">("aufgaben")
   const activeTab = getTabFromSearchParam(searchParams.get("tab"))
   const isDetailPage = Boolean(detailId)
 
@@ -160,11 +160,11 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
 
   useEffect(() => {
     if (!authResolved || trainerRole !== "admin") return
-    if (activeTab === "eingehend") {
+    if (activeTab === "inbox" && inboxSubTab === "emails") {
       void loadInboundEmails()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, authResolved, trainerRole])
+  }, [activeTab, inboxSubTab, authResolved, trainerRole])
 
   // Inbox: alle offenen Nachrichten
   const visibleInbox = useMemo(() => data.inbox, [data.inbox])
@@ -708,7 +708,9 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
         <TabsList variant="line" className="flex-wrap rounded-2xl border border-[#d8e3ee] bg-white p-1">
           <TabsTrigger value="inbox" className="rounded-xl px-4 py-2" onClick={() => switchTab("inbox", null)}>
             Eingang
-            <Badge variant="outline" className="ml-2 border-zinc-200 bg-zinc-100 text-zinc-700">{visibleInbox.length}</Badge>
+            {(visibleInbox.length + inboundEmails.length) > 0 && (
+              <Badge variant="outline" className="ml-2 border-zinc-200 bg-zinc-100 text-zinc-700">{visibleInbox.length + inboundEmails.length}</Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="drafts" className="rounded-xl px-4 py-2" onClick={() => switchTab("drafts", null)}>
             Entwürfe
@@ -729,12 +731,7 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
               <Badge variant="outline" className="ml-2 border-red-200 bg-red-50 text-red-700">{visibleDeleted.length}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="eingehend" className="rounded-xl px-4 py-2" onClick={() => switchTab("eingehend", null)}>
-            Eingehend
-            {inboundEmails.length > 0 && (
-              <Badge variant="outline" className="ml-2 border-zinc-200 bg-zinc-100 text-zinc-700">{inboundEmails.length}</Badge>
-            )}
-          </TabsTrigger>
+
         </TabsList>
       </Tabs>
 
@@ -743,6 +740,48 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
 
       {/* Eingang */}
       {activeTab === "inbox" && !isDetailPage && (
+        <div className="space-y-4">
+
+        {/* Unter-Navigation: Aufgaben / E-Mails */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+              inboxSubTab === "aufgaben"
+                ? "bg-[#154c83] text-white"
+                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+            }`}
+            onClick={() => setInboxSubTab("aufgaben")}
+          >
+            Aufgaben
+            {visibleInbox.length > 0 && (
+              <span className={`ml-2 rounded-full px-1.5 py-0.5 text-xs ${
+                inboxSubTab === "aufgaben" ? "bg-white/20 text-white" : "bg-zinc-200 text-zinc-700"
+              }`}>{visibleInbox.length}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+              inboxSubTab === "emails"
+                ? "bg-[#154c83] text-white"
+                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+            }`}
+            onClick={() => {
+              setInboxSubTab("emails")
+              if (inboundEmails.length === 0 && !inboundLoading) void loadInboundEmails()
+            }}
+          >
+            E-Mails
+            {inboundEmails.length > 0 && (
+              <span className={`ml-2 rounded-full px-1.5 py-0.5 text-xs ${
+                inboxSubTab === "emails" ? "bg-white/20 text-white" : "bg-zinc-200 text-zinc-700"
+              }`}>{inboundEmails.length}</span>
+            )}
+          </button>
+        </div>
+
+        {inboxSubTab === "aufgaben" && (
         <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
           <Card className="rounded-[24px] border-0 shadow-sm">
             <CardContent className="space-y-3 pt-6">
@@ -849,6 +888,78 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
             </CardHeader>
             <CardContent>{detailContent}</CardContent>
           </Card>
+        </div>
+        )}
+
+        {inboxSubTab === "emails" && (
+        <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <Card className="rounded-[24px] border-0 shadow-sm">
+            <CardContent className="space-y-3 pt-6">
+              {inboundLoading ? (
+                <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Wird geladen…</div>
+              ) : inboundError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{inboundError}</div>
+              ) : inboundEmails.length === 0 ? (
+                <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Keine eingehenden E-Mails vorhanden.</div>
+              ) : (
+                inboundEmails.map((item) => {
+                  const active = item.id === selectedInboundId
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`w-full rounded-3xl border p-4 text-left transition ${
+                        active ? "border-[#154c83] bg-[#eef4fb]" : "border-zinc-200 bg-zinc-50 hover:border-[#154c83] hover:bg-white"
+                      }`}
+                      onClick={() => setSelectedInboundId(item.id)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="truncate font-semibold text-zinc-900">{item.subject || "(Kein Betreff)"}</div>
+                          <div className="text-xs text-zinc-500">{item.from_email || "—"}</div>
+                        </div>
+                        <div className="shrink-0 text-right text-xs text-zinc-500">{formatDisplayDateTime(new Date(item.received_at))}</div>
+                      </div>
+                    </button>
+                  )
+                })
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[24px] border-0 shadow-sm">
+            <CardHeader>
+              <CardTitle>Eingegangene E-Mail</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const selected = inboundEmails.find((e) => e.id === selectedInboundId)
+                if (!selected) {
+                  return (
+                    <div className="rounded-3xl border border-dashed border-zinc-300 bg-zinc-50 p-6 text-sm text-zinc-500">
+                      {inboundLoading ? "Wird geladen…" : "Keine E-Mail ausgewählt."}
+                    </div>
+                  )
+                }
+                return (
+                  <div className="space-y-4">
+                    <div className="space-y-1 text-sm text-zinc-600">
+                      <div><span className="font-medium">Von:</span> {selected.from_email || "—"}</div>
+                      <div><span className="font-medium">An:</span> {selected.to_email || "—"}</div>
+                      <div><span className="font-medium">Betreff:</span> {selected.subject || "—"}</div>
+                      <div><span className="font-medium">Empfangen:</span> {formatDisplayDateTime(new Date(selected.received_at))}</div>
+                    </div>
+                    <div className="whitespace-pre-wrap rounded-3xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-6 text-zinc-800">
+                      {selected.text || "(Kein Textinhalt)"}
+                    </div>
+                  </div>
+                )
+              })()}
+            </CardContent>
+          </Card>
+        </div>
+        )}
+
         </div>
       )}
 
@@ -1280,75 +1391,7 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
         </Card>
       )}
 
-      {/* Eingehend */}
-      {activeTab === "eingehend" && !isDetailPage && (
-        <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <Card className="rounded-[24px] border-0 shadow-sm">
-            <CardContent className="space-y-3 pt-6">
-              {inboundLoading ? (
-                <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Wird geladen…</div>
-              ) : inboundError ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{inboundError}</div>
-              ) : inboundEmails.length === 0 ? (
-                <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Keine eingehenden E-Mails vorhanden.</div>
-              ) : (
-                inboundEmails.map((item) => {
-                  const active = item.id === selectedInboundId
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={`w-full rounded-3xl border p-4 text-left transition ${
-                        active ? "border-[#154c83] bg-[#eef4fb]" : "border-zinc-200 bg-zinc-50 hover:border-[#154c83] hover:bg-white"
-                      }`}
-                      onClick={() => setSelectedInboundId(item.id)}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 space-y-1">
-                          <div className="truncate font-semibold text-zinc-900">{item.subject || "(Kein Betreff)"}</div>
-                          <div className="text-xs text-zinc-500">{item.from_email || "—"}</div>
-                        </div>
-                        <div className="shrink-0 text-right text-xs text-zinc-500">{formatDisplayDateTime(new Date(item.received_at))}</div>
-                      </div>
-                    </button>
-                  )
-                })
-              )}
-            </CardContent>
-          </Card>
 
-          <Card className="rounded-[24px] border-0 shadow-sm">
-            <CardHeader>
-              <CardTitle>Eingegangene E-Mail</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {(() => {
-                const selected = inboundEmails.find((e) => e.id === selectedInboundId)
-                if (!selected) {
-                  return (
-                    <div className="rounded-3xl border border-dashed border-zinc-300 bg-zinc-50 p-6 text-sm text-zinc-500">
-                      {inboundLoading ? "Wird geladen\u2026" : "Keine E-Mail ausgewählt."}
-                    </div>
-                  )
-                }
-                return (
-                  <div className="space-y-4">
-                    <div className="space-y-1 text-sm text-zinc-600">
-                      <div><span className="font-medium">Von:</span> {selected.from_email || "—"}</div>
-                      <div><span className="font-medium">An:</span> {selected.to_email || "—"}</div>
-                      <div><span className="font-medium">Betreff:</span> {selected.subject || "—"}</div>
-                      <div><span className="font-medium">Empfangen:</span> {formatDisplayDateTime(new Date(selected.received_at))}</div>
-                    </div>
-                    <div className="whitespace-pre-wrap rounded-3xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-6 text-zinc-800">
-                      {selected.text || "(Kein Textinhalt)"}
-                    </div>
-                  </div>
-                )
-              })()}
-            </CardContent>
-          </Card>
-        </div>
-      )}
 
       {/* Detailansicht */}
       {isDetailPage && (
