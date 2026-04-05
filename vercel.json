@@ -3,10 +3,6 @@
     {
       "path": "/api/admin-digest",
       "schedule": "0 8 * * 1-5"
-    },
-    {
-      "path": "/api/inbound-email/imap",
-      "schedule": "0 7 * * *"
     }
   ]
 }

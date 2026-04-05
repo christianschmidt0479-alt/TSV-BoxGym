@@ -1,0 +1,19 @@
+name: IMAP Inbound Mail Cron
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-imap-import:
+    runs-on: ubuntu-latest
+
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+    steps:
+      - name: Call IMAP Endpoint
+        run: |
+          curl -sf -X POST https://www.tsvboxgym.de/api/inbound-email/imap \
+            -H "Authorization: Bearer $CRON_SECRET"
