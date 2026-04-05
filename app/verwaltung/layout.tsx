@@ -35,7 +35,6 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
     {
       title: "Training",
       items: [
-        { href: "/verwaltung/heute", label: "Heute" },
         { href: "/verwaltung/checkins", label: "Check-ins" },
         { href: "/verwaltung/excel-abgleich", label: "Excel-Abgleich" },
         { href: "/verwaltung/gruppen", label: "Gruppen" },
@@ -79,7 +78,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 md:flex-wrap md:gap-3">
+                <div className="flex items-center gap-2 md:gap-3">
                   <div className="md:hidden">
                     <AdminMobileNav sections={mobileSections} />
                   </div>
@@ -89,9 +88,8 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                     </div>
                   ) : null}
                   <TrainerLogoutButton
-                    className="rounded-xl border-[#cfd9e4] bg-white px-2 py-1.5 text-sm font-medium text-zinc-700 hover:border-[#154c83] hover:bg-[#f7fbff] sm:px-3 md:px-3.5"
-                    label=""
-                    pendingLabel=""
+                    iconOnly
+                    className="rounded-xl border-[#cfd9e4] bg-white px-2 py-1.5 text-sm font-medium text-zinc-700 hover:border-[#154c83] hover:bg-[#f7fbff] md:hidden"
                   />
                   <Link
                     href="/"
@@ -103,8 +101,12 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                 </div>
               </div>
 
-              <div className="hidden border-t border-[#e2e8f0] pt-2.5 md:block">
+              <div className="hidden items-center justify-between border-t border-[#e2e8f0] pt-2.5 md:flex">
                 <AdminTopNav isAdmin={isAdmin} />
+                <TrainerLogoutButton
+                  label="Ausloggen"
+                  className="ml-3 shrink-0 rounded-xl border-[#d0dff0] bg-[#eef4fb] px-3 py-1.5 text-sm font-medium text-[#154c83] hover:border-[#154c83] hover:bg-[#dfeaf7]"
+                />
               </div>
             </div>
           </div>

@@ -718,7 +718,15 @@ export async function POST(request: Request) {
         return new NextResponse("Kein verknuepftes Mitglied gefunden.", { status: 404 })
       }
 
-      return NextResponse.json(await buildMemberSnapshot(member))
+      if (!hasAcceptedPrivacy(member)) {
+        return privacyConsentRequiredResponse()
+      }
+
+      const response = NextResponse.json(await buildMemberSnapshot(member))
+      return await applyMemberAreaSessionCookie(response, {
+        memberId: member.id,
+        email: member.email ?? "",
+      })
     }
 
     if (body.action === "parent_session") {

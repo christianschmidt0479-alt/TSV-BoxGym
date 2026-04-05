@@ -103,9 +103,10 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div ref={navRef} className="flex flex-wrap gap-1.5">
-      {menu.map((section) => {
+      {menu.map((section, index) => {
         const active = isSectionActive(section)
         const isOpen = openMenu === section.id
+        const alignRight = index >= menu.length - 2
         return (
           <div key={section.id} className="relative">
             <button
@@ -129,7 +130,7 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
                   className="fixed inset-0 z-30 bg-black/5"
                   onClick={() => setOpenMenu(null)}
                 />
-                <div className="absolute left-0 top-full z-40 mt-1.5 min-w-[160px] max-w-[240px] rounded-xl border border-[#d8e3ee] bg-white p-1.5 shadow-lg">
+                <div className={`absolute ${alignRight ? "right-0" : "left-0"} top-full z-40 mt-1.5 min-w-[160px] max-w-[240px] rounded-xl border border-[#d8e3ee] bg-white p-1.5 shadow-lg`}>
                   <div className="grid grid-cols-1 gap-0.5">
                     {section.items.map((item) => {
                       const itemActive =
