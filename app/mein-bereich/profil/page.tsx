@@ -238,13 +238,10 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
   const profileSection = section
 
   useEffect(() => {
-    const email = getStoredString("tsv_member_area_email")
-    if (!email) {
-      router.replace("/mein-bereich")
-      return
+    const storedEmail = getStoredString("tsv_member_area_email")
+    if (storedEmail) {
+      setMemberAreaEmail(storedEmail)
     }
-
-    setMemberAreaEmail(email)
 
     ;(async () => {
       try {
@@ -260,12 +257,17 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
         }
 
         const snapshot = (await response.json()) as MemberAreaSnapshot
-  setPersonalMonthVisits(snapshot.personalMonthVisits)
-  setPreviousMonthVisits(snapshot.previousMonthVisits)
-  setPersonalYearVisits(snapshot.personalYearVisits)
-  setPersonalLastCheckin(snapshot.personalLastCheckin)
+          const resolvedEmail = snapshot.member.email?.trim().toLowerCase() || storedEmail
+          if (resolvedEmail) {
+            setMemberAreaEmail(resolvedEmail)
+            localStorage.setItem("tsv_member_area_email", JSON.stringify(resolvedEmail))
+          }
+          setPersonalMonthVisits(snapshot.personalMonthVisits)
+          setPreviousMonthVisits(snapshot.previousMonthVisits)
+          setPersonalYearVisits(snapshot.personalYearVisits)
+          setPersonalLastCheckin(snapshot.personalLastCheckin)
         setMemberAttendanceRows(snapshot.memberAttendanceRows)
-  setTrainingStreak(snapshot.trainingStreak)
+          setTrainingStreak(snapshot.trainingStreak)
         setTrainingStatus(snapshot.trainingStatus)
         setActivityTrend(snapshot.activityTrend)
         setInactiveLevel(snapshot.inactiveLevel)
