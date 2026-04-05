@@ -90,6 +90,8 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
   const [inboundError, setInboundError] = useState("")
   const [selectedInboundId, setSelectedInboundId] = useState<string | null>(null)
   const [inboxSubTab, setInboxSubTab] = useState<"aufgaben" | "emails">("aufgaben")
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const activeTab = getTabFromSearchParam(searchParams.get("tab"))
   const isDetailPage = Boolean(detailId)
 
@@ -165,6 +167,36 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, inboxSubTab, authResolved, trainerRole])
+
+  // Auto-Polling: alle 15 Minuten abrufen solange E-Mails-Tab offen ist
+  useEffect(() => {
+    if (activeTab !== "inbox" || inboxSubTab !== "emails") return
+    const interval = setInterval(() => {
+      void handleSync()
+    }, 15 * 60 * 1000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, inboxSubTab])
+
+  async function handleSync() {
+    try {
+      setSyncBusy(true)
+      const response = await fetch("/api/admin/inbound-emails/sync", { method: "POST", cache: "no-store" })
+      const payload = (await response.json()) as { ok?: boolean; imported?: number; error?: string }
+      if (payload.ok) {
+        setLastSyncedAt(new Date())
+        if ((payload.imported ?? 0) > 0) {
+          void loadInboundEmails()
+        }
+      } else {
+        setInboundError(typeof payload.error === "string" ? payload.error : "Abruf fehlgeschlagen.")
+      }
+    } catch {
+      setInboundError("Abruf fehlgeschlagen.")
+    } finally {
+      setSyncBusy(false)
+    }
+  }
 
   // Inbox: alle offenen Nachrichten
   const visibleInbox = useMemo(() => data.inbox, [data.inbox])
@@ -895,6 +927,20 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
         <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
           <Card className="rounded-[24px] border-0 shadow-sm">
             <CardContent className="space-y-3 pt-6">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 rounded-xl bg-[#154c83] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#123d69] disabled:opacity-60"
+                  disabled={syncBusy}
+                  onClick={() => void handleSync()}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 ${syncBusy ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                  {syncBusy ? "Wird abgerufen…" : "Jetzt abrufen"}
+                </button>
+                {lastSyncedAt && (
+                  <span className="text-xs text-zinc-400">Zuletzt: {lastSyncedAt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr</span>
+                )}
+              </div>
               {inboundLoading ? (
                 <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Wird geladen…</div>
               ) : inboundError ? (
