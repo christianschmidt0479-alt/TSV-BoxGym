@@ -39,9 +39,9 @@ export async function GET(request: Request) {
     const records = await listAdminMailboxRecords()
     return NextResponse.json({
       ok: true,
-      inbox: records.filter((row) => row.type === "inbox" && !INBOX_HIDDEN_STATUSES.has(row.status)),
-      drafts: records.filter((row) => row.type === "draft" && row.status === "draft"),
-      deleted: records.filter((row) => row.status === "deleted"),
+      inbox: records.filter((row) => row.type === "inbox" && !INBOX_HIDDEN_STATUSES.has(String(row.status))),
+      drafts: records.filter((row) => row.type === "draft" && String(row.status) === "draft"),
+      deleted: records.filter((row) => String(row.status) === "deleted"),
     })
   } catch (error) {
     console.error("admin mailbox list failed", error)
