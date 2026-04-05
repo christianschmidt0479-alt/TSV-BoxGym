@@ -7,6 +7,8 @@ type MailboxActionBody =
   | { action: "reply"; sourceId: string }
   | { action: "inbound_reply"; fromEmail: string; subject: string; text: string }
 
+const INBOX_HIDDEN_STATUSES = new Set(["done", "deleted"])
+
 function jsonError(message: string, status: number) {
   return NextResponse.json({ ok: false, error: message }, { status })
 }
@@ -37,7 +39,7 @@ export async function GET(request: Request) {
     const records = await listAdminMailboxRecords()
     return NextResponse.json({
       ok: true,
-      inbox: records.filter((row) => row.status !== "done" && row.status !== "deleted" && row.type === "inbox"),
+      inbox: records.filter((row) => row.type === "inbox" && !INBOX_HIDDEN_STATUSES.has(row.status)),
       drafts: records.filter((row) => row.type === "draft" && row.status === "draft"),
       deleted: records.filter((row) => row.status === "deleted"),
     })
