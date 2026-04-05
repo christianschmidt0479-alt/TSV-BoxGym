@@ -88,14 +88,17 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                       Ferienmodus aktiv
                     </div>
                   ) : null}
-                  <TrainerLogoutButton className="rounded-2xl border-[#cfd9e4] bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-[#154c83] hover:bg-[#f7fbff] md:px-3.5" />
+                  <TrainerLogoutButton
+                    className="rounded-xl border-[#cfd9e4] bg-white px-2 py-1.5 text-sm font-medium text-zinc-700 hover:border-[#154c83] hover:bg-[#f7fbff] sm:px-3 md:px-3.5"
+                    label=""
+                    pendingLabel=""
+                  />
                   <Link
                     href="/"
-                    className="inline-flex items-center gap-2 rounded-2xl border border-[#cfd9e4] bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff] md:px-3.5"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#cfd9e4] bg-white px-2 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff] sm:px-3 md:px-3.5"
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-4 w-4 shrink-0" />
                     <span className="hidden sm:inline">Startseite</span>
-                    <span className="sm:hidden">Start</span>
                   </Link>
                 </div>
               </div>
