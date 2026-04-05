@@ -181,45 +181,45 @@ export default function VerwaltungOverviewPage() {
 
   return (
     <div className="space-y-5">
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-600">
+      <div className="inline-flex items-center gap-1.5 rounded-full bg-[#eef4fb] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#154c83]">
         <ShieldCheck className="h-3 w-3" />
         {trainerRole === "admin" ? "Adminzugang" : "Trainerzugang"}
       </div>
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Card className="rounded-[24px] border-0 shadow-sm">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <div className="flex items-center gap-2 text-sm text-zinc-500">
               <Users className="h-4 w-4" />
               Mitglieder
             </div>
-            <div className="mt-1 text-3xl font-bold text-zinc-900">{loading ? "…" : summary.totalMembers}</div>
+            <div className="mt-1 text-2xl font-bold text-zinc-900 sm:text-3xl">{loading ? "…" : summary.totalMembers}</div>
           </CardContent>
         </Card>
         <Card className="rounded-[24px] border-0 shadow-sm">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <div className="flex items-center gap-2 text-sm text-zinc-500">
               <BarChart3 className="h-4 w-4" />
               Check-ins heute
             </div>
-            <div className="mt-1 text-3xl font-bold text-[#154c83]">{loading ? "…" : summary.todayCheckins}</div>
+            <div className="mt-1 text-2xl font-bold text-[#154c83] sm:text-3xl">{loading ? "…" : summary.todayCheckins}</div>
           </CardContent>
         </Card>
         <Card className="rounded-[24px] border-0 shadow-sm">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <div className="flex items-center gap-2 text-sm text-zinc-500">
               <Clock3 className="h-4 w-4" />
               Trainings heute
             </div>
-            <div className="mt-1 text-3xl font-bold text-zinc-900">{loading ? "…" : summary.todaySessions}</div>
+            <div className="mt-1 text-2xl font-bold text-zinc-900 sm:text-3xl">{loading ? "…" : summary.todaySessions}</div>
           </CardContent>
         </Card>
         <Card className="rounded-[24px] border-0 shadow-sm">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <div className="text-sm text-zinc-500">
-              {trainerRole === "admin" ? "Offene Freigaben" : "Aktive Gruppen heute"}
+              {trainerRole === "admin" ? "Freigaben offen" : "Gruppen aktiv"}
             </div>
-            <div className="mt-1 text-3xl font-bold text-emerald-700">
+            <div className="mt-1 text-2xl font-bold text-emerald-700 sm:text-3xl">
               {loading ? "…" : trainerRole === "admin" ? summary.pendingApprovals : summary.activeGroupsToday}
             </div>
           </CardContent>
@@ -258,7 +258,7 @@ export default function VerwaltungOverviewPage() {
                 <span><span className="font-semibold">{loading ? "…" : digestSummary.total}</span> offen.</span>
                 <InfoHint text={`Versand werktags um 09:00 Uhr. Aktuell warten ${loading ? "…" : digestSummary.total} Vorgänge auf die nächste Sammelmail.`} />
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+              <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
                 <div className="rounded-2xl bg-white/80 p-3">Boxbereich: <span className="font-semibold">{loading ? "…" : digestSummary.members}</span></div>
                 <div className="rounded-2xl bg-white/80 p-3">Trainer: <span className="font-semibold">{loading ? "…" : digestSummary.trainers}</span></div>
                 <div className="rounded-2xl bg-white/80 p-3">Boxzwerge: <span className="font-semibold">{loading ? "…" : digestSummary.boxzwerge}</span></div>
