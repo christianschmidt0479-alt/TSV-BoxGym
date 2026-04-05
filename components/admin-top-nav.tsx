@@ -102,20 +102,19 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
   }
 
   return (
-    <div ref={navRef} className="relative">
-      <div className="flex flex-wrap gap-1.5">
-        {menu.map((section) => {
-          const active = isSectionActive(section)
-          const isOpen = openMenu === section.id
-          return (
+    <div ref={navRef} className="flex flex-wrap gap-1.5">
+      {menu.map((section) => {
+        const active = isSectionActive(section)
+        const isOpen = openMenu === section.id
+        return (
+          <div key={section.id} className="relative">
             <button
-              key={section.id}
               type="button"
               onClick={() => setOpenMenu(isOpen ? null : section.id)}
               className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium transition ${
                 active || isOpen
                   ? "bg-[#154c83] text-white"
-                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                  : "bg-[#eef4fb] text-[#154c83] hover:bg-[#dfeaf7]"
               }`}
             >
               {section.label}
@@ -123,47 +122,42 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
                 className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`}
               />
             </button>
-          )
-        })}
-      </div>
 
-      {openMenu !== null &&
-        (() => {
-          const section = menu.find((s) => s.id === openMenu)
-          if (!section) return null
-          return (
-            <>
-              <div
-                className="fixed inset-0 z-30 bg-black/5"
-                onClick={() => setOpenMenu(null)}
-              />
-              <div className="absolute left-0 top-full z-40 mt-1.5 min-w-[160px] max-w-[280px] rounded-xl border border-zinc-200 bg-white p-1.5 shadow-lg">
-                <div className="grid grid-cols-1 gap-0.5">
-                  {section.items.map((item) => {
-                    const itemActive =
-                      pathname === item.href ||
-                      (item.href !== "/verwaltung" &&
-                        pathname.startsWith(item.href + "/"))
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setOpenMenu(null)}
-                        className={`rounded-lg px-3 py-2.5 text-sm transition hover:bg-zinc-50 ${
-                          itemActive
-                            ? "bg-[#eef4fb] font-semibold text-[#154c83]"
-                            : "text-zinc-700"
-                        }`}
-                      >
-                        {item.label}
-                      </Link>
-                    )
-                  })}
+            {isOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-30 bg-black/5"
+                  onClick={() => setOpenMenu(null)}
+                />
+                <div className="absolute left-0 top-full z-40 mt-1.5 min-w-[160px] max-w-[240px] rounded-xl border border-[#d8e3ee] bg-white p-1.5 shadow-lg">
+                  <div className="grid grid-cols-1 gap-0.5">
+                    {section.items.map((item) => {
+                      const itemActive =
+                        pathname === item.href ||
+                        (item.href !== "/verwaltung" &&
+                          pathname.startsWith(item.href + "/"))
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setOpenMenu(null)}
+                          className={`rounded-lg px-3 py-2.5 text-sm transition hover:bg-[#eef4fb] ${
+                            itemActive
+                              ? "bg-[#eef4fb] font-semibold text-[#154c83]"
+                              : "text-zinc-700"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            </>
-          )
-        })()}
+              </>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

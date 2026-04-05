@@ -57,12 +57,12 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(21,76,131,0.16),_transparent_34%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fa_44%,_#eef3f8_100%)] text-zinc-900">
-      <header className="sticky top-0 z-20 border-b border-[#cdd9e6] bg-white/92 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-[#cdd9e6] bg-[#f4f8fd]/95 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-2 md:px-6">
-          <div className="relative rounded-[22px] border border-[#d8e3ee] bg-white shadow-[0_10px_24px_rgba(15,39,64,0.06)]">
+          <div className="relative rounded-[22px] border border-[#d0dff0] bg-white shadow-[0_4px_16px_rgba(21,76,131,0.08)]">
             <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[22px]">
-              <div className="absolute inset-x-0 top-0 h-1.5 bg-[#154c83]" />
-              <div className="absolute -right-8 top-0 h-14 w-14 rounded-full bg-[#e6332a]/8 blur-2xl" />
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#154c83] to-[#2a6fc8]" />
+              <div className="absolute -right-8 top-0 h-14 w-14 rounded-full bg-[#154c83]/6 blur-2xl" />
             </div>
 
             <div className="flex flex-col gap-2 px-4 py-3 md:gap-3 md:px-5 md:py-3.5">
@@ -72,10 +72,10 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                   <div className="min-w-0">
                     <div className="inline-flex items-center gap-2 rounded-full bg-[#eef4fb] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#154c83] md:px-3 md:text-[11px] md:tracking-[0.18em]">
                       <LayoutPanelLeft className="h-3.5 w-3.5" />
-                      <span className="hidden md:inline">Admin-Modus</span>
+                      <span className="hidden md:inline">Verwaltung</span>
                       <span className="md:hidden">Admin</span>
                     </div>
-                    <h1 className="mt-1 text-sm font-black tracking-tight text-[#0f4f8c] sm:text-base md:mt-1.5 md:text-xl">Verwaltung</h1>
+                    <h1 className="mt-1 text-sm font-bold tracking-tight text-[#154c83] sm:text-base md:mt-1.5 md:text-lg">TSV BoxGym</h1>
                   </div>
                 </div>
 
