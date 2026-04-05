@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/inbound-email/imap",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 7 * * *"
     }
   ]
 }
