@@ -59,9 +59,11 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(21,76,131,0.16),_transparent_34%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fa_44%,_#eef3f8_100%)] text-zinc-900">
       <header className="sticky top-0 z-20 border-b border-[#cdd9e6] bg-white/92 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-2 md:px-6">
-          <div className="relative overflow-hidden rounded-[22px] border border-[#d8e3ee] bg-white shadow-[0_10px_24px_rgba(15,39,64,0.06)]">
-            <div className="absolute inset-x-0 top-0 h-1.5 bg-[#154c83]" />
-            <div className="absolute -right-8 top-0 h-14 w-14 rounded-full bg-[#e6332a]/8 blur-2xl" />
+          <div className="relative rounded-[22px] border border-[#d8e3ee] bg-white shadow-[0_10px_24px_rgba(15,39,64,0.06)]">
+            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[22px]">
+              <div className="absolute inset-x-0 top-0 h-1.5 bg-[#154c83]" />
+              <div className="absolute -right-8 top-0 h-14 w-14 rounded-full bg-[#e6332a]/8 blur-2xl" />
+            </div>
 
             <div className="flex flex-col gap-2 px-4 py-3 md:gap-3 md:px-5 md:py-3.5">
               <div className="flex flex-row items-center justify-between gap-3 lg:flex-row lg:items-center lg:justify-between">

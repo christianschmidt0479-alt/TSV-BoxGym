@@ -17,7 +17,6 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
         { label: "Start", href: "/verwaltung" },
         { label: "Heute", href: "/verwaltung/heute" },
         { label: "Inbox", href: "/verwaltung/inbox" },
-        { label: "KI-Lage", href: "/verwaltung/ki" },
       ],
     },
     {
