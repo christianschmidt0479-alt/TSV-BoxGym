@@ -65,11 +65,11 @@ export function WorkspaceSwitcher() {
     }
   }, [pathname])
 
-  function switchWorkspace(nextWorkspace: "trainer" | "admin") {
+  function persistWorkspace(nextWorkspace: "trainer" | "admin") {
     if (typeof window === "undefined") return
 
     const currentAccess = readTrainerAccess()
-    if (!currentAccess.sessionUntil || currentAccess.sessionUntil <= Date.now()) return
+    if (!currentAccess.sessionUntil) return
 
     persistTrainerAccess(
       nextWorkspace === "admin" ? "admin" : "trainer",
@@ -82,8 +82,6 @@ export function WorkspaceSwitcher() {
         lastName: currentAccess.accountLastName,
       }
     )
-
-    router.push(nextWorkspace === "admin" ? "/verwaltung" : "/trainer")
   }
 
   async function handleLogout() {
@@ -138,27 +136,29 @@ export function WorkspaceSwitcher() {
           </Button>
 
           <Button
-            type="button"
+            asChild
             size="sm"
             variant={currentWorkspace === "trainer" ? "default" : "outline"}
             className={`rounded-xl ${currentWorkspace === "trainer" ? "bg-[#154c83] text-white hover:bg-[#123d69]" : ""}`}
             disabled={!resolved || !hasTrainerAccess}
-            onClick={() => switchWorkspace("trainer")}
           >
-            <Users className="mr-2 h-4 w-4" />
-            Trainer
+            <Link href="/trainer" onClick={() => persistWorkspace("trainer")}>
+              <Users className="mr-2 h-4 w-4" />
+              Trainer
+            </Link>
           </Button>
 
           <Button
-            type="button"
+            asChild
             size="sm"
             variant={currentWorkspace === "admin" ? "default" : "outline"}
             className={`rounded-xl ${currentWorkspace === "admin" ? "bg-[#0f4f8c] text-white hover:bg-[#0c406f]" : ""}`}
             disabled={!resolved || !hasAdminAccess}
-            onClick={() => switchWorkspace("admin")}
           >
-            <ShieldCheck className="mr-2 h-4 w-4" />
-            Admin
+            <Link href="/verwaltung" onClick={() => persistWorkspace("admin")}>
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Admin
+            </Link>
           </Button>
 
           {showLogoutButton ? (
