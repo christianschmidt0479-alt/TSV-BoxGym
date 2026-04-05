@@ -2,7 +2,7 @@ import Image from "next/image"
 import Link from "next/link"
 import type { ReactNode } from "react"
 import { cookies } from "next/headers"
-import { ChevronLeft, LayoutPanelLeft } from "lucide-react"
+import { LayoutPanelLeft } from "lucide-react"
 import { TRAINER_SESSION_COOKIE, verifyTrainerSessionToken } from "@/lib/authSession"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { AdminMobileNav } from "@/components/admin-mobile-nav"
@@ -66,7 +66,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
 
             <div className="flex flex-col gap-2 px-4 py-3 md:gap-3 md:px-5 md:py-3.5">
               <div className="flex flex-row items-center justify-between gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex items-center gap-2 sm:gap-3">
+                <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80 sm:gap-3">
                   <Image src="/boxgym-headline-old.png" alt="TSV Falkensee BoxGym" width={40} height={17} className="h-auto w-[17px] object-contain sm:w-[20px] md:w-auto" priority />
                   <div className="min-w-0">
                     <div className="inline-flex items-center gap-2 rounded-full bg-[#eef4fb] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#154c83] md:px-3 md:text-[11px] md:tracking-[0.18em]">
@@ -76,7 +76,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                     </div>
                     <h1 className="mt-1 text-sm font-bold tracking-tight text-[#154c83] sm:text-base md:mt-1.5 md:text-lg">TSV BoxGym</h1>
                   </div>
-                </div>
+                </Link>
 
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="md:hidden">
@@ -91,25 +91,11 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                     iconOnly
                     className="rounded-xl border-[#cfd9e4] bg-white px-2 py-1.5 text-sm font-medium text-zinc-700 hover:border-[#154c83] hover:bg-[#f7fbff] md:hidden"
                   />
-                  <Link
-                    href="/"
-                    className="inline-flex items-center gap-2 rounded-xl border border-[#cfd9e4] bg-white px-2 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff] md:hidden sm:px-3"
-                  >
-                    <ChevronLeft className="h-4 w-4 shrink-0" />
-                    <span className="hidden sm:inline">Startseite</span>
-                  </Link>
                 </div>
               </div>
 
               <div className="hidden items-center justify-between border-t border-[#e2e8f0] pt-2.5 md:flex">
                 <AdminTopNav isAdmin={isAdmin} />
-                <Link
-                  href="/"
-                  className="ml-3 inline-flex shrink-0 items-center gap-2 rounded-xl border border-[#cfd9e4] bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff]"
-                >
-                  <ChevronLeft className="h-4 w-4 shrink-0" />
-                  Startseite
-                </Link>
               </div>
             </div>
           </div>
