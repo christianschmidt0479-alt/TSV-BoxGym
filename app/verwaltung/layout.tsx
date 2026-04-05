@@ -93,7 +93,7 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
                   />
                   <Link
                     href="/"
-                    className="inline-flex items-center gap-2 rounded-xl border border-[#cfd9e4] bg-white px-2 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff] sm:px-3 md:px-3.5"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#cfd9e4] bg-white px-2 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff] md:hidden sm:px-3"
                   >
                     <ChevronLeft className="h-4 w-4 shrink-0" />
                     <span className="hidden sm:inline">Startseite</span>
@@ -103,10 +103,13 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
 
               <div className="hidden items-center justify-between border-t border-[#e2e8f0] pt-2.5 md:flex">
                 <AdminTopNav isAdmin={isAdmin} />
-                <TrainerLogoutButton
-                  label="Ausloggen"
-                  className="ml-3 shrink-0 rounded-xl border-[#d0dff0] bg-[#eef4fb] px-3 py-1.5 text-sm font-medium text-[#154c83] hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                />
+                <Link
+                  href="/"
+                  className="ml-3 inline-flex shrink-0 items-center gap-2 rounded-xl border border-[#cfd9e4] bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff]"
+                >
+                  <ChevronLeft className="h-4 w-4 shrink-0" />
+                  Startseite
+                </Link>
               </div>
             </div>
           </div>
