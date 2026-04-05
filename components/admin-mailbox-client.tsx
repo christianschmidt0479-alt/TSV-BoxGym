@@ -88,6 +88,7 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
   const [inboundEmails, setInboundEmails] = useState<InboundEmail[]>([])
   const [inboundLoading, setInboundLoading] = useState(false)
   const [inboundError, setInboundError] = useState("")
+  const [inboundBusy, setInboundBusy] = useState(false)
   const [selectedInboundId, setSelectedInboundId] = useState<string | null>(null)
   const [inboxSubTab, setInboxSubTab] = useState<"aufgaben" | "emails">("aufgaben")
   const [syncBusy, setSyncBusy] = useState(false)
@@ -168,12 +169,19 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, inboxSubTab, authResolved, trainerRole])
 
-  // Auto-Polling: alle 15 Minuten abrufen solange E-Mails-Tab offen ist
+  // Viewed-At in localStorage schreiben wenn E-Mails-Tab geöffnet wird
+  useEffect(() => {
+    if (activeTab === "inbox" && inboxSubTab === "emails") {
+      localStorage.setItem("tsv_admin_emails_viewed_at", new Date().toISOString())
+    }
+  }, [activeTab, inboxSubTab])
+
+  // Auto-Polling: jede Minute abrufen solange E-Mails-Tab offen ist
   useEffect(() => {
     if (activeTab !== "inbox" || inboxSubTab !== "emails") return
     const interval = setInterval(() => {
       void handleSync()
-    }, 15 * 60 * 1000)
+    }, 60 * 1000)
     return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, inboxSubTab])
@@ -195,6 +203,59 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
       setInboundError("Abruf fehlgeschlagen.")
     } finally {
       setSyncBusy(false)
+    }
+  }
+
+  async function handleDeleteInbound(id: string) {
+    try {
+      setInboundBusy(true)
+      setInboundError("")
+      const response = await fetch(`/api/admin/inbound-emails/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        cache: "no-store",
+      })
+      const payload = (await response.json()) as { ok?: boolean; error?: string }
+      if (payload.ok) {
+        setInboundEmails((prev) => {
+          const next = prev.filter((e) => e.id !== id)
+          setSelectedInboundId(next[0]?.id ?? null)
+          return next
+        })
+      } else {
+        setInboundError(typeof payload.error === "string" ? payload.error : "Löschen fehlgeschlagen.")
+      }
+    } catch {
+      setInboundError("Löschen fehlgeschlagen.")
+    } finally {
+      setInboundBusy(false)
+    }
+  }
+
+  async function handleReplyToInbound(email: InboundEmail) {
+    try {
+      setInboundBusy(true)
+      setInboundError("")
+      const response = await fetch("/api/admin/mailbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "inbound_reply",
+          fromEmail: email.from_email,
+          subject: email.subject,
+          text: email.text,
+        }),
+      })
+      const payload = (await response.json()) as { ok?: boolean; draft?: { id: string }; error?: string }
+      if (payload.ok && payload.draft) {
+        await loadMailbox()
+        switchTab("compose", payload.draft.id)
+      } else {
+        setInboundError(typeof payload.error === "string" ? payload.error : "Antwort konnte nicht erstellt werden.")
+      }
+    } catch {
+      setInboundError("Antwort konnte nicht erstellt werden.")
+    } finally {
+      setInboundBusy(false)
     }
   }
 
@@ -997,6 +1058,26 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
                     </div>
                     <div className="whitespace-pre-wrap rounded-3xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-6 text-zinc-800">
                       {selected.text || "(Kein Textinhalt)"}
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                        disabled={inboundBusy}
+                        onClick={() => void handleReplyToInbound(selected)}
+                      >
+                        <MailPlus className="h-4 w-4" />
+                        Antworten
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-2xl text-red-600 hover:border-red-300 hover:bg-red-50"
+                        disabled={inboundBusy}
+                        onClick={() => void handleDeleteInbound(selected.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Löschen
+                      </Button>
                     </div>
                   </div>
                 )

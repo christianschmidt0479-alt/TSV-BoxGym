@@ -240,6 +240,33 @@ function buildReplyBody(source: AdminMailboxRecord) {
   return `Hallo,\n\nvielen Dank für deine Nachricht.\n\nIch habe folgenden Punkt aufgenommen:\n${fallbackSummary}\n\nIch melde mich zeitnah mit einer Rückmeldung.\n\nSportliche Grüße\nTSV BoxGym`
 }
 
+function buildInboundReplyBody(fromEmail: string, subject: string, originalText: string) {
+  const quoted = originalText
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n")
+  return `Hallo,\n\nvielen Dank für deine Nachricht.\n\n\n\nSportliche Grüße\nTSV BoxGym\n\n--- Originalnachricht von ${fromEmail} ---\n${quoted}`
+}
+
+export async function createAdminMailboxDraftFromInbound(inbound: {
+  fromEmail: string
+  subject: string
+  text: string
+}) {
+  const { randomUUID } = await import("crypto")
+  return persistMailboxRecord({
+    id: randomUUID(),
+    from: getReplyToAddress(),
+    to: inbound.fromEmail,
+    subject: buildReplySubject(inbound.subject),
+    snippet: createMailboxSnippet(buildInboundReplyBody(inbound.fromEmail, inbound.subject, inbound.text)),
+    content: buildInboundReplyBody(inbound.fromEmail, inbound.subject, inbound.text),
+    status: "draft",
+    type: "draft",
+    created_at: new Date().toISOString(),
+  })
+}
+
 export async function listAdminMailboxRecords() {
   return getMergedMailboxRecords()
 }
@@ -264,6 +291,33 @@ export async function updateAdminMailboxRecord(id: string, patch: Partial<Pick<A
     ...nextPatch,
     snippet: createMailboxSnippet(nextPatch.content ?? current.content),
   })
+}
+
+export async function deleteAdminMailboxRecord(id: string) {
+  const supabase = getServerSupabase()
+
+  // For legacy inbox rows: suppress the admin_notification_queue source so it won't reappear.
+  if (id.startsWith(LEGACY_INBOX_PREFIX)) {
+    const sourceId = id.slice(LEGACY_INBOX_PREFIX.length)
+    const { error } = await supabase
+      .from("admin_notification_queue")
+      .update({ sent_at: new Date().toISOString() })
+      .eq("id", sourceId)
+    if (error && !isMissingSchemaEntity(error, "admin_notification_queue")) {
+      throw error
+    }
+  }
+
+  // For legacy draft rows: suppress the outgoing_mail_queue source.
+  if (id.startsWith(LEGACY_ADMIN_DRAFT_PREFIX) || id.startsWith(LEGACY_PARENT_DRAFT_PREFIX)) {
+    await markLegacyDraftSourceAsSent(id)
+  }
+
+  // Hard-delete from admin_mailbox (no-op if the record was never persisted there).
+  const { error } = await supabase.from("admin_mailbox").delete().eq("id", id)
+  if (error && !isMissingMailboxTableError(error)) {
+    throw error
+  }
 }
 
 export async function createAdminMailboxReplyDraft(sourceId: string) {

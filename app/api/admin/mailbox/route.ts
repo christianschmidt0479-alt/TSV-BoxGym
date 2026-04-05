@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
-import { createAdminMailboxReplyDraft, listAdminMailboxRecords } from "@/lib/adminMailboxDb"
+import { createAdminMailboxDraftFromInbound, createAdminMailboxReplyDraft, listAdminMailboxRecords } from "@/lib/adminMailboxDb"
 
-type MailboxActionBody = {
-  action?: "reply"
-  sourceId?: string
-}
+type MailboxActionBody =
+  | { action: "reply"; sourceId: string }
+  | { action: "inbound_reply"; fromEmail: string; subject: string; text: string }
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ ok: false, error: message }, { status })
@@ -38,8 +37,9 @@ export async function GET(request: Request) {
     const records = await listAdminMailboxRecords()
     return NextResponse.json({
       ok: true,
-      inbox: records.filter((row) => row.type === "inbox" && row.status !== "done"),
+      inbox: records.filter((row) => row.type === "inbox" && row.status !== "done" && row.status !== "deleted"),
       drafts: records.filter((row) => row.type === "draft" && row.status === "draft"),
+      deleted: records.filter((row) => row.status === "deleted"),
     })
   } catch (error) {
     console.error("admin mailbox list failed", error)
@@ -58,12 +58,28 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as MailboxActionBody
-    if (body.action !== "reply" || !body.sourceId?.trim()) {
-      return jsonError("Ungültige Mailbox-Aktion.", 400)
+
+    if (body.action === "reply") {
+      if (!body.sourceId?.trim()) {
+        return jsonError("Ungültige Mailbox-Aktion.", 400)
+      }
+      const draft = await createAdminMailboxReplyDraft(body.sourceId.trim())
+      return NextResponse.json({ ok: true, draft })
     }
 
-    const draft = await createAdminMailboxReplyDraft(body.sourceId.trim())
-    return NextResponse.json({ ok: true, draft })
+    if (body.action === "inbound_reply") {
+      if (!body.fromEmail?.trim()) {
+        return jsonError("Ungültige Mailbox-Aktion.", 400)
+      }
+      const draft = await createAdminMailboxDraftFromInbound({
+        fromEmail: body.fromEmail.trim(),
+        subject: body.subject ?? "",
+        text: body.text ?? "",
+      })
+      return NextResponse.json({ ok: true, draft })
+    }
+
+    return jsonError("Ungültige Mailbox-Aktion.", 400)
   } catch (error) {
     console.error("admin mailbox action failed", error)
     return jsonError(error instanceof Error ? error.message : "Mailbox-Aktion fehlgeschlagen.", 500)
