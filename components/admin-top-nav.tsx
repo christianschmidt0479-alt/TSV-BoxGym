@@ -14,20 +14,20 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
       id: "uebersicht",
       label: "Übersicht",
       items: [
-        { label: "Start", href: "/verwaltung" },
-        { label: "Heute", href: "/verwaltung/heute" },
         { label: "Inbox", href: "/verwaltung/inbox" },
+        { label: "Heute", href: "/verwaltung/heute" },
+        { label: "Start", href: "/verwaltung" },
       ],
     },
     {
       id: "mitglieder",
       label: "Mitglieder",
       items: [
-        { label: "Mitgliederliste", href: "/verwaltung/mitglieder" },
         { label: "Freigaben", href: "/verwaltung/freigaben" },
+        { label: "Mitglieder", href: "/verwaltung/mitglieder" },
+        { label: "QR-Codes", href: "/verwaltung/qr-codes" },
         ...(isAdmin ? [{ label: "Geburtstage", href: "/verwaltung/geburtstage" }] : []),
         ...(isAdmin ? [{ label: "Rollen", href: "/verwaltung/personen" }] : []),
-        { label: "QR-Codes", href: "/verwaltung/qr-codes" },
       ],
     },
     {
@@ -37,7 +37,7 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
         { label: "Check-ins", href: "/verwaltung/checkins" },
         { label: "Gruppen", href: "/verwaltung/gruppen" },
         { label: "Wettkampf", href: "/verwaltung/wettkampf" },
-        { label: "Excel-Abgleich", href: "/verwaltung/excel-abgleich" },
+        { label: "Abgleich", href: "/verwaltung/excel-abgleich" },
       ],
     },
     {
@@ -114,7 +114,7 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
               onClick={() => setOpenMenu(isOpen ? null : section.id)}
               className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium transition ${
                 active || isOpen
-                  ? "bg-zinc-900 text-white"
+                  ? "bg-[#154c83] text-white"
                   : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
               }`}
             >
@@ -137,8 +137,8 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
                 className="fixed inset-0 z-30 bg-black/5"
                 onClick={() => setOpenMenu(null)}
               />
-              <div className="absolute left-0 top-full z-40 mt-1.5 min-w-[280px] max-w-[400px] rounded-xl border border-zinc-200 bg-white p-3 shadow-lg">
-                <div className="grid grid-cols-2 gap-1">
+              <div className="absolute left-0 top-full z-40 mt-1.5 min-w-[160px] max-w-[280px] rounded-xl border border-zinc-200 bg-white p-1.5 shadow-lg">
+                <div className="grid grid-cols-1 gap-0.5">
                   {section.items.map((item) => {
                     const itemActive =
                       pathname === item.href ||
@@ -149,9 +149,9 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
                         key={item.href}
                         href={item.href}
                         onClick={() => setOpenMenu(null)}
-                        className={`rounded-lg px-3 py-2 text-sm transition hover:bg-zinc-100 ${
+                        className={`rounded-lg px-3 py-2.5 text-sm transition hover:bg-zinc-50 ${
                           itemActive
-                            ? "bg-zinc-100 font-semibold text-zinc-900"
+                            ? "bg-[#eef4fb] font-semibold text-[#154c83]"
                             : "text-zinc-700"
                         }`}
                       >
