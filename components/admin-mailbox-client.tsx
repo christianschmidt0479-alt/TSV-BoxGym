@@ -90,6 +90,7 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
   const [inboundError, setInboundError] = useState("")
   const [inboundBusy, setInboundBusy] = useState(false)
   const [selectedInboundId, setSelectedInboundId] = useState<string | null>(null)
+  const [selectedInboundIds, setSelectedInboundIds] = useState<string[]>([])
   const [inboxSubTab, setInboxSubTab] = useState<"aufgaben" | "emails">("aufgaben")
   const [syncBusy, setSyncBusy] = useState(false)
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
@@ -221,11 +222,39 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
           setSelectedInboundId(next[0]?.id ?? null)
           return next
         })
+        setSelectedInboundIds((prev) => prev.filter((x) => x !== id))
       } else {
         setInboundError(typeof payload.error === "string" ? payload.error : "Löschen fehlgeschlagen.")
       }
     } catch {
       setInboundError("Löschen fehlgeschlagen.")
+    } finally {
+      setInboundBusy(false)
+    }
+  }
+
+  async function handleBulkDeleteInbound(ids: string[]) {
+    try {
+      setInboundBusy(true)
+      setInboundError("")
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/admin/inbound-emails/${encodeURIComponent(id)}`, {
+            method: "DELETE",
+            cache: "no-store",
+          })
+        )
+      )
+      setInboundEmails((prev) => {
+        const next = prev.filter((e) => !ids.includes(e.id))
+        setSelectedInboundId((current) =>
+          current && !ids.includes(current) ? current : (next[0]?.id ?? null)
+        )
+        return next
+      })
+      setSelectedInboundIds([])
+    } catch {
+      setInboundError("Sammel-Löschen fehlgeschlagen.")
     } finally {
       setInboundBusy(false)
     }
@@ -1009,27 +1038,78 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
               ) : inboundEmails.length === 0 ? (
                 <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Keine eingehenden E-Mails vorhanden.</div>
               ) : (
-                inboundEmails.map((item) => {
-                  const active = item.id === selectedInboundId
-                  return (
+                <>
+                  <div className="flex items-center justify-between gap-2 pb-1">
                     <button
-                      key={item.id}
                       type="button"
-                      className={`w-full rounded-3xl border p-4 text-left transition ${
-                        active ? "border-[#154c83] bg-[#eef4fb]" : "border-zinc-200 bg-zinc-50 hover:border-[#154c83] hover:bg-white"
-                      }`}
-                      onClick={() => setSelectedInboundId(item.id)}
+                      className="text-xs text-zinc-500 hover:text-zinc-700"
+                      onClick={() => {
+                        if (selectedInboundIds.length === inboundEmails.length) {
+                          setSelectedInboundIds([])
+                        } else {
+                          setSelectedInboundIds(inboundEmails.map((e) => e.id))
+                        }
+                      }}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 space-y-1">
-                          <div className="truncate font-semibold text-zinc-900">{item.subject || "(Kein Betreff)"}</div>
-                          <div className="text-xs text-zinc-500">{item.from_email || "—"}</div>
-                        </div>
-                        <div className="shrink-0 text-right text-xs text-zinc-500">{formatDisplayDateTime(new Date(item.received_at))}</div>
-                      </div>
+                      {selectedInboundIds.length === inboundEmails.length ? "Auswahl aufheben" : "Alle auswählen"}
                     </button>
-                  )
-                })
+                    {selectedInboundIds.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500">{selectedInboundIds.length} ausgewählt</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl text-red-600 hover:border-red-300 hover:bg-red-50"
+                          disabled={inboundBusy}
+                          onClick={() => void handleBulkDeleteInbound(selectedInboundIds)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Auswahl löschen
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  {inboundEmails.map((item) => {
+                    const active = item.id === selectedInboundId
+                    const checked = selectedInboundIds.includes(item.id)
+                    return (
+                      <div key={item.id} className="flex items-start gap-2">
+                        <div
+                          className="flex-shrink-0 pt-3.5 pl-0.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setSelectedInboundIds((prev) =>
+                                checked ? prev.filter((x) => x !== item.id) : [...prev, item.id]
+                              )
+                            }
+                            disabled={inboundBusy}
+                            className="h-4 w-4 cursor-pointer rounded accent-[#154c83] disabled:cursor-not-allowed"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className={`min-w-0 flex-1 rounded-3xl border p-4 text-left transition ${
+                            active ? "border-[#154c83] bg-[#eef4fb]" : "border-zinc-200 bg-zinc-50 hover:border-[#154c83] hover:bg-white"
+                          }`}
+                          onClick={() => setSelectedInboundId(item.id)}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 space-y-1">
+                              <div className="truncate font-semibold text-zinc-900">{item.subject || "(Kein Betreff)"}</div>
+                              <div className="text-xs text-zinc-500">{item.from_email || "—"}</div>
+                            </div>
+                            <div className="shrink-0 text-right text-xs text-zinc-500">{formatDisplayDateTime(new Date(item.received_at))}</div>
+                          </div>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </>
               )}
             </CardContent>
           </Card>
