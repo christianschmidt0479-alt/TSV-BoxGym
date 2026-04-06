@@ -1,13 +1,15 @@
+import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
-import { createCheckin, createMember, findMemberByFirstLastAndBirthdate, updateMemberProfile, updateTrialMember } from "@/lib/boxgymDb"
+import { createCheckin, createMember, findMemberByFirstLastAndBirthdate, updateMemberProfile, updateMemberRegistrationData, updateTrialMember } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
+import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { getMemberCheckinMode, getSessionsForDate } from "@/lib/memberCheckin"
 import { readQrAccessFromHeaders, verifyQrAccessToken } from "@/lib/qrAccess"
 import { getQrAccessToken } from "@/lib/qrAccessServer"
-import { sendCustomEmail } from "@/lib/resendClient"
+import { sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 const supabase = createServerSupabaseServiceClient()
@@ -140,7 +142,7 @@ export async function POST(request: Request) {
         email,
         phone,
         is_trial: true,
-        is_approved: true,
+        is_approved: false,
         base_group: selectedSession.group,
       })
       isNewTrialMember = true
@@ -183,22 +185,40 @@ export async function POST(request: Request) {
     })
 
     if (isNewTrialMember) {
+      const emailToken = randomUUID()
       try {
-        await Promise.all([
-          sendCustomEmail({
-            to: email,
-            subject: "TSV BoxGym: Dein Probetraining",
-            text: `Hallo ${firstName},\n\nschön, dass du beim TSV BoxGym ein Probetraining machst!\n\nDein Check-in für die Gruppe „${selectedSession.group}" am ${liveDate.split("-").reverse().join(".")} wurde erfolgreich registriert.\n\nDu kannst insgesamt bis zu 3 Probetrainings absolvieren. Bei Fragen melde dich gerne bei uns.\n\nSportliche Grüße\nTSV BoxGym`,
-          }),
-          enqueueAdminNotification({
-            kind: "member",
-            memberName: `${firstName} ${lastName} (Probetraining)`,
-            email,
-            group: selectedSession.group,
-          }),
-        ])
+        await updateMemberRegistrationData(member.id, {
+          email_verified: false,
+          email_verified_at: null,
+          email_verification_token: emailToken,
+        })
+      } catch (tokenError) {
+        console.error("trial verification token update failed", tokenError)
+      }
+
+      const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
+      const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${emailToken}`
+
+      try {
+        await sendVerificationEmail({
+          email,
+          name: `${firstName} ${lastName}`.trim(),
+          link: verificationLink,
+          kind: "member",
+        })
+      } catch (mailError) {
+        console.error("trial verification mail failed", mailError)
+      }
+
+      try {
+        await enqueueAdminNotification({
+          kind: "member",
+          memberName: `${firstName} ${lastName} (Probetraining)`,
+          email,
+          group: selectedSession.group,
+        })
       } catch (notifyError) {
-        console.error("trial notification failed", notifyError)
+        console.error("trial admin notification failed", notifyError)
       }
     }
 
