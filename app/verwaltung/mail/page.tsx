@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
 import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type MailConfigResponse = {
@@ -71,12 +72,42 @@ type ManualParentOutboxRow = {
 
 type ManualAdminOutboxRow = {
   id: string
-  kind: "approval_notice"
+  kind: string
   to: string
   name: string | null
   subject: string
   body: string
+  request?: Record<string, unknown>
   created_at: string
+}
+
+function getAdminDraftKindLabel(kind: string) {
+  switch (kind) {
+    case "approval_notice":
+      return "Freigabe"
+    case "competition_assigned":
+      return "Wettkämpfer zugewiesen"
+    case "competition_removed":
+      return "Wettkämpfer entfernt"
+    case "medical_exam_reminder":
+      return "Untersuchung Erinnerung"
+    default:
+      return "Entwurf"
+  }
+}
+
+function getAdminDraftBadgeColor(kind: string) {
+  switch (kind) {
+    case "approval_notice":
+      return "border-emerald-200 bg-emerald-100 text-emerald-800"
+    case "competition_assigned":
+    case "competition_removed":
+      return "border-blue-200 bg-blue-100 text-blue-800"
+    case "medical_exam_reminder":
+      return "border-amber-200 bg-amber-100 text-amber-800"
+    default:
+      return "border-zinc-200 bg-zinc-100 text-zinc-800"
+  }
 }
 
 function getKindLabel(kind: AdminQueueRow["kind"]) {
@@ -599,26 +630,49 @@ TSV BoxGym`
           {manualAdminOutboxRows.length === 0 ? null : (
             <div className="space-y-4">
               <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-                <div className="font-semibold text-zinc-900">Freigabe-Entwürfe</div>
-                <div className="mt-1">Diese Mails wurden beim Freigeben in den manuellen Postausgang gelegt und gehen nicht automatisch verloren.</div>
+                <div className="font-semibold text-zinc-900">Mail-Entwürfe zur Prüfung</div>
+                <div className="mt-1">Diese Mails warten auf deine Prüfung und werden erst nach bewusstem Senden zugestellt. Du kannst sie hier einsehen oder im Postfach bearbeiten und versenden.</div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button asChild variant="outline" className="rounded-2xl border-[#154c83] text-[#154c83] hover:bg-blue-50">
+                  <Link href="/verwaltung/postfach?tab=drafts">Alle Entwürfe im Postfach öffnen</Link>
+                </Button>
               </div>
 
               {manualAdminOutboxRows.map((row) => {
-                const params = new URLSearchParams({
-                  subject: row.subject,
-                  body: row.body,
-                })
+                const composeHref = row.request
+                  ? buildAdminMailComposeHref({
+                      title: `${getAdminDraftKindLabel(row.kind)}: Prüfen & Senden`,
+                      returnTo: "/verwaltung/mail",
+                      requests: [row.request as Parameters<typeof buildAdminMailComposeHref>[0]["requests"][number]],
+                      sourceQueueIds: [row.id],
+                    })
+                  : null
 
                 return (
                   <div key={row.id} className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div className="space-y-2">
-                        <div className="text-lg font-semibold text-zinc-900">{row.name || row.to}</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-lg font-semibold text-zinc-900">{row.name || row.to}</div>
+                          <Badge variant="outline" className={getAdminDraftBadgeColor(row.kind)}>
+                            {getAdminDraftKindLabel(row.kind)}
+                          </Badge>
+                        </div>
                         <div className="text-sm text-zinc-600">{row.to}</div>
                         <div className="text-xs text-zinc-500">Im Postausgang seit {formatDisplayDateTime(new Date(row.created_at))}</div>
                       </div>
 
                       <div className="flex flex-wrap gap-3 xl:justify-end">
+                        {composeHref ? (
+                          <Button asChild className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]">
+                            <Link href={composeHref}>Prüfen & Senden</Link>
+                          </Button>
+                        ) : null}
+                        <Button asChild variant="outline" className="rounded-2xl">
+                          <Link href="/verwaltung/postfach?tab=drafts">Im Postfach bearbeiten</Link>
+                        </Button>
                         <Button
                           type="button"
                           variant="outline"
@@ -629,9 +683,6 @@ TSV BoxGym`
                           }}
                         >
                           Text kopieren
-                        </Button>
-                        <Button asChild className="rounded-2xl bg-[#e6332a] text-white hover:bg-[#c92b23]">
-                          <a href={`mailto:${row.to}?${params.toString()}`}>Mail manuell senden</a>
                         </Button>
                       </div>
                     </div>
@@ -763,8 +814,8 @@ TSV BoxGym`
 
           <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
             <div className="flex items-center gap-2">
-              <span className="font-semibold">Automatischer Versand werktags um 09:00 Uhr.</span>
-              <InfoHint text="Wettkämpfer-Mails werden gesammelt und automatisch werktags um 09:00 Uhr verschickt. Bei Bedarf kannst du den Versand oben sofort auslösen." />
+              <span className="font-semibold">Wettkampf- und Untersuchungsmails werden zur Admin-Prüfung vorbereitet.</span>
+              <InfoHint text="Neue Wettkampf- und Untersuchungsmails werden automatisch als Entwurf im Postausgang angelegt. Der Versand erfolgt erst nach manueller Prüfung und Freigabe im Postfach oder über die Compose-Ansicht." />
             </div>
           </div>
 

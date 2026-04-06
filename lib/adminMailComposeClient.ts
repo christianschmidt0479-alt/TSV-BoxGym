@@ -4,6 +4,7 @@ export type AdminMailComposeRoutePayload = {
   title?: string
   returnTo?: string
   requests: AdminMailDraftRequest[]
+  sourceQueueIds?: string[]
 }
 
 export function buildAdminMailComposeHref(payload: AdminMailComposeRoutePayload) {

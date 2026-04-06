@@ -169,6 +169,18 @@ export async function getManualAdminMailDrafts(limit = 200) {
   return ((data as OutgoingMailQueueRow[] | null) ?? []).map(toDraft).filter((row): row is ManualAdminMailDraft => Boolean(row))
 }
 
+export async function markManualAdminMailDraftSent(queueId: string) {
+  const supabase = getServerSupabase()
+  const { error } = await supabase
+    .from("outgoing_mail_queue")
+    .update({ sent_at: new Date().toISOString() })
+    .eq("id", queueId)
+
+  if (error && !isMissingContextKeyError(error)) {
+    throw error
+  }
+}
+
 export async function convertQueueItemToAdminDraft(
   itemId: string,
   payload: {

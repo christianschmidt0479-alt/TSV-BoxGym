@@ -14,6 +14,7 @@ type RoutePayload = {
   title?: string
   returnTo?: string
   requests?: AdminMailDraftRequest[]
+  sourceQueueIds?: string[]
 }
 
 type EditableDraft = AdminMailDraftPreview & {
@@ -118,6 +119,7 @@ export default function MailVerfassenPage() {
             subject: draft.subject,
             body: draft.body,
           })),
+          sourceQueueIds: payload?.sourceQueueIds,
         }),
       })
 

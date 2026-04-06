@@ -6,6 +6,7 @@ import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { buildAdminMailDraftPreview, type AdminMailDraftRequest } from "@/lib/adminMailComposer"
 import { validateEmail } from "@/lib/formValidation"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
+import { markManualAdminMailDraftSent } from "@/lib/manualAdminMailOutboxDb"
 import { sendCustomEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { reportAppError } from "@/lib/appErrorReporter"
@@ -21,6 +22,7 @@ type SendBody = {
     subject?: string
     body?: string
   }>
+  sourceQueueIds?: string[]
 }
 
 function jsonError(message: string, status: number) {
@@ -164,6 +166,13 @@ export async function PUT(request: Request) {
         successMessage: preview.successMessage,
         delivery,
       })
+    }
+
+    const sourceQueueIds = Array.isArray(body.sourceQueueIds) ? body.sourceQueueIds : []
+    for (const queueId of sourceQueueIds) {
+      if (typeof queueId === "string" && queueId.trim()) {
+        await markManualAdminMailDraftSent(queueId.trim())
+      }
     }
 
     return NextResponse.json({ ok: true, deliveries })
