@@ -350,48 +350,50 @@ export default function TrainerverwaltungPage() {
                         Freigabe erst nach E-Mail-Bestätigung möglich
                       </div>
                     )}
-                    <Button
-                      className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
-                      disabled={!trainer.email_verified}
-                      onClick={async () => {
-                        try {
-                          await runTrainerAction({
-                            action: "approve_trainer",
-                            trainerId: trainer.id,
-                          })
-                          await loadTrainers()
-                          router.push(
-                            buildAdminMailComposeHref({
-                              title: "Trainer-Freigabemail bearbeiten",
-                              returnTo: "/verwaltung/trainer",
-                              requests: [
-                                {
-                                  kind: "approval_notice",
-                                  email: trainer.email,
-                                  name: getTrainerDisplayName(trainer),
-                                  targetKind: "trainer",
-                                },
-                              ],
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                        disabled={!trainer.email_verified}
+                        onClick={async () => {
+                          try {
+                            await runTrainerAction({
+                              action: "approve_trainer",
+                              trainerId: trainer.id,
                             })
-                          )
-                        } catch (error) {
-                          console.error(error)
-                          alert("Fehler bei der Trainerfreigabe.")
-                        }
-                      }}
-                    >
-                      Freigeben
-                    </Button>
+                            await loadTrainers()
+                            router.push(
+                              buildAdminMailComposeHref({
+                                title: "Trainer-Freigabemail bearbeiten",
+                                returnTo: "/verwaltung/trainer",
+                                requests: [
+                                  {
+                                    kind: "approval_notice",
+                                    email: trainer.email,
+                                    name: getTrainerDisplayName(trainer),
+                                    targetKind: "trainer",
+                                  },
+                                ],
+                              })
+                            )
+                          } catch (error) {
+                            console.error(error)
+                            alert("Fehler bei der Trainerfreigabe.")
+                          }
+                        }}
+                      >
+                        Freigeben
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="rounded-2xl border-red-200 text-red-700 hover:bg-red-50"
+                        disabled={deletingId === trainer.id}
+                        onClick={() => void handleDeletePending(trainer)}
+                      >
+                        {deletingId === trainer.id ? "Wird gelöscht…" : "Löschen"}
+                      </Button>
+                    </div>
                     <Button asChild variant="outline" className="rounded-2xl">
                       <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="rounded-2xl border-red-200 text-red-700 hover:bg-red-50"
-                      disabled={deletingId === trainer.id}
-                      onClick={() => void handleDeletePending(trainer)}
-                    >
-                      {deletingId === trainer.id ? "Wird gelöscht…" : "Löschen"}
                     </Button>
                   </div>
                 </div>
