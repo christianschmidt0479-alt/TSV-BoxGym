@@ -6,7 +6,9 @@ import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
 import { getMemberCheckinMode, getSessionsForDate } from "@/lib/memberCheckin"
 import { readQrAccessFromHeaders, verifyQrAccessToken } from "@/lib/qrAccess"
 import { getQrAccessToken } from "@/lib/qrAccessServer"
-import { supabase } from "@/lib/supabaseClient"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+
+const supabase = createServerSupabaseServiceClient()
 
 type TrialCheckinBody = {
   firstName?: string

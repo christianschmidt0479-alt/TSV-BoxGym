@@ -1,12 +1,13 @@
-import { createServerSupabaseServiceClient, hasSupabaseServiceRoleKey } from "./serverSupabase"
-import { supabase as anonSupabase } from "./supabaseClient"
+import { createServerSupabaseServiceClient } from "./serverSupabase"
 import { trainerLicenseOptions, type TrainerLicense } from "./trainerLicense"
 import { hashTrainerPin } from "./trainerPin"
 import { isInternalTrainerTestEmail } from "./trainerAdmin"
 export { trainerLicenseOptions }
 export type { TrainerLicense }
 
-const supabase = hasSupabaseServiceRoleKey() ? createServerSupabaseServiceClient() : anonSupabase
+// trainerDb wird ausschließlich serverseitig aufgerufen.
+// Fehlt der Service-Key, schlägt dies explizit fehl statt auf den anon-Key zu fallen.
+const supabase = createServerSupabaseServiceClient()
 
 type SupabaseErrorLike = {
   code?: string

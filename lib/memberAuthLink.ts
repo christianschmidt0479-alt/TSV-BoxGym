@@ -32,6 +32,19 @@ function isDuplicateAuthUserError(error: { message?: string; code?: string; stat
   )
 }
 
+// Supabase „Leaked Password Protection" lehnt bekannte kompromittierte Passwörter ab.
+// Der Shadow-Account-Sync scheitert dann – die eigentliche App-Authentifizierung
+// (custom password_hash) funktioniert aber weiterhin. Fehler wird daher ignoriert.
+function isLeakedPasswordError(error: { message?: string; code?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  return (
+    error?.code === "weak_password" ||
+    message.includes("compromised") ||
+    message.includes("leaked") ||
+    message.includes("pwned")
+  )
+}
+
 async function findAuthUserByEmail(email: string) {
   const supabase = createServerSupabaseServiceClient()
 
@@ -100,7 +113,12 @@ export async function ensureMemberAuthUserLink(input: EnsureMemberAuthUserLinkIn
     }
 
     const { data, error } = await supabase.auth.admin.updateUserById(user.id, updatePayload)
-    if (error) throw error
+    if (error) {
+      // Kompromittiertes Passwort: Shadow-Account-Sync überspringen,
+      // Custom-Auth funktioniert weiterhin unabhängig.
+      if (isLeakedPasswordError(error)) return user.id
+      throw error
+    }
     user = data.user ?? user
   } else {
     const { data, error } = await supabase.auth.admin.createUser({
@@ -110,13 +128,23 @@ export async function ensureMemberAuthUserLink(input: EnsureMemberAuthUserLinkIn
     })
 
     if (error) {
-      if (!isDuplicateAuthUserError(error)) {
+      if (isLeakedPasswordError(error)) {
+        // Kompromittiertes Passwort: Shadow-Account ohne Passwort anlegen.
+        // Custom-Auth funktioniert weiterhin unabhängig.
+        const { data: fallbackData, error: fallbackError } = await supabase.auth.admin.createUser({
+          email: normalizedEmail,
+          password: buildFallbackPassword(),
+          email_confirm: input.emailVerified === true,
+        })
+        if (fallbackError && !isDuplicateAuthUserError(fallbackError)) throw fallbackError
+        user = fallbackData?.user ?? await findAuthUserByEmail(normalizedEmail)
+      } else if (!isDuplicateAuthUserError(error)) {
         throw error
-      }
-
-      user = await findAuthUserByEmail(normalizedEmail)
-      if (!user) {
-        throw error
+      } else {
+        user = await findAuthUserByEmail(normalizedEmail)
+        if (!user) {
+          throw error
+        }
       }
     } else {
       user = data.user ?? null

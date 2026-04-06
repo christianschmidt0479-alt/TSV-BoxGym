@@ -1,5 +1,9 @@
-import { supabase } from "./supabaseClient"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { hashAuthSecret, isBcryptHash, verifyAuthSecret } from "./authSecret"
+
+// Elternkonten werden ausschließlich serverseitig per service_role aufgerufen.
+// Kein anon-Key: nach RLS-Aktivierung wäre Anon-Zugriff blockiert.
+const supabase = createServerSupabaseServiceClient()
 
 export const PARENT_SETUP_PENDING_HASH = "__parent_setup_pending__"
 

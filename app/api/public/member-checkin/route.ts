@@ -4,8 +4,10 @@ import { createCheckin, findMemberByEmailAndPin } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { applyMemberDeviceCookie, clearMemberDeviceCookie, createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
 import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
-import { supabase } from "@/lib/supabaseClient"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+
+const supabase = createServerSupabaseServiceClient()
 
 type MemberCheckinBody = {
   email?: string

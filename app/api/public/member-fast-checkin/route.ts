@@ -11,8 +11,10 @@ import {
   verifyMemberDeviceToken,
 } from "@/lib/memberDeviceSession"
 import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
-import { supabase } from "@/lib/supabaseClient"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+
+const supabase = createServerSupabaseServiceClient()
 
 type MemberFastCheckinBody = {
   qrAccessToken?: string

@@ -1,12 +1,13 @@
-import { createServerSupabaseServiceClient, hasSupabaseServiceRoleKey } from "./serverSupabase"
-import { supabase as anonSupabase } from "./supabaseClient"
+import { createServerSupabaseServiceClient } from "./serverSupabase"
 import { hashAuthSecret, isBcryptHash, verifyAuthSecret } from "./authSecret"
 import type { MemberCheckinMode } from "./memberCheckin"
 import { generateMemberQrToken } from "./memberQrToken"
 import { verifyTrainerPinHash } from "./trainerPin"
 import { normalizeTrainingGroup } from "./trainingGroups"
 
-const supabase = hasSupabaseServiceRoleKey() ? createServerSupabaseServiceClient() : anonSupabase
+// boxgymDb wird ausschließlich serverseitig aufgerufen.
+// Fehlt der Service-Key, schlägt dies explizit fehl statt auf den anon-Key zu fallen.
+const supabase = createServerSupabaseServiceClient()
 
 function isMissingColumnError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
