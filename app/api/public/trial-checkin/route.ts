@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     const checkinSettings = await readCheckinSettings()
     const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
 
-    if (!isSessionOpenForCheckin(selectedSession, now)) {
+    if (checkinMode !== "ferien" && !isSessionOpenForCheckin(selectedSession, now)) {
       return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
     }
 
