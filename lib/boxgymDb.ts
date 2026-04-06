@@ -22,12 +22,20 @@ function withoutOptionalMemberFields<T extends Record<string, unknown>>(payload:
     Object.entries(payload).filter(
       ([key]) =>
         key !== "guardian_name" &&
-        key !== "gender" &&
+        key !== "gender"
+    )
+  ) as Omit<T, "guardian_name" | "gender">
+}
+
+function withoutLegacyMemberFallbackFields<T extends Record<string, unknown>>(payload: T) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(
+      ([key]) =>
         key !== "privacy_accepted_at" &&
         key !== "member_qr_token" &&
         key !== "member_qr_active"
     )
-  ) as Omit<T, "guardian_name" | "gender" | "privacy_accepted_at" | "member_qr_token" | "member_qr_active">
+  ) as Omit<T, "privacy_accepted_at" | "member_qr_token" | "member_qr_active">
 }
 
 function withNormalizedBaseGroup<T extends { base_group?: string | null }>(row: T): T {
@@ -269,14 +277,34 @@ export async function createMember(input: MemberInput) {
     throw primary.error
   }
 
+  console.warn("[createMember] primary insert failed (missing column); retrying without optional fields", primary.error?.message)
+
   const fallback = await supabase
     .from("members")
     .insert([withoutOptionalMemberFields(payload)])
     .select()
     .single()
 
-  if (fallback.error) throw fallback.error
-  return fallback.data
+  if (!fallback.error) {
+    console.warn("[createMember] fallback path used (optional fields stripped); privacy+QR preserved")
+    return fallback.data
+  }
+
+  if (!isMissingColumnError(fallback.error)) {
+    throw fallback.error
+  }
+
+  console.warn("[createMember] fallback also failed; using last-resort legacy path (privacy+QR stripped)", fallback.error?.message)
+
+  const legacyFallback = await supabase
+    .from("members")
+    .insert([withoutLegacyMemberFallbackFields(withoutOptionalMemberFields(payload))])
+    .select()
+    .single()
+
+  if (legacyFallback.error) throw legacyFallback.error
+  console.warn("[createMember] last-resort legacy path used; privacy_accepted_at and QR fields were NOT written")
+  return legacyFallback.data
 }
 
 export async function updateTrialMember(

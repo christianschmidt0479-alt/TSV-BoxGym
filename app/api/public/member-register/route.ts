@@ -203,9 +203,10 @@ export async function POST(request: Request) {
       console.error("member admin notification failed", error)
     }
 
+    console.info("[member-register] success", { memberId: member.id, email, verificationSent })
     return NextResponse.json({ ok: true, verificationSent })
   } catch (error) {
-    console.error("public member register failed", error)
+    console.error("[member-register] failed", error)
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }
