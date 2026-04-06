@@ -445,3 +445,97 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
     return jsonError("Internal server error", 500, details)
   }
 }
+
+// ─── DELETE /api/admin/trainer-account/[trainerId] ────────────────────────────
+// Löscht ausschließlich offene (nicht-freigegebene, nicht-admin) Trainerzugänge.
+export async function DELETE(request: Request, context: { params: Promise<{ trainerId: string }> }) {
+  try {
+    const authError = await requireAdminSession(request)
+    if (authError) return authError
+
+    const session = await readTrainerSessionFromHeaders(request)
+    if (!session || session.accountRole !== "admin") {
+      return jsonError("Unauthorized", 401)
+    }
+
+    const rateLimit = await checkRateLimitAsync(`admin-trainer-account-delete:${getRequestIp(request)}`, 20, 10 * 60 * 1000)
+    if (!rateLimit.ok) {
+      return jsonError("Too many requests", 429)
+    }
+
+    const { trainerId } = await context.params
+    const normalizedTrainerId = trainerId?.trim() ?? ""
+    if (!normalizedTrainerId) {
+      return jsonError("Missing trainer id", 400)
+    }
+
+    const supabase = getServerSupabase()
+
+    // Trainer laden und Schutzprüfungen serverseitig durchführen
+    const { data: trainerRow, error: fetchError } = await supabase
+      .from("trainer_accounts")
+      .select("id, first_name, last_name, email, is_approved, role")
+      .eq("id", normalizedTrainerId)
+      .maybeSingle()
+
+    if (fetchError) throw fetchError
+
+    if (!trainerRow) {
+      console.warn("[trainer-account DELETE] trainer not found", { trainerId: normalizedTrainerId, adminId: session.accountEmail })
+      return jsonError("Trainer nicht gefunden", 404)
+    }
+
+    const trainerName = `${trainerRow.first_name ?? ""} ${trainerRow.last_name ?? ""}`.trim() || trainerRow.email || "—"
+
+    // Schutz 1: Keine freigegebenen Trainer löschen
+    if (trainerRow.is_approved === true) {
+      console.warn("[trainer-account DELETE] rejected – already approved", { trainerId: normalizedTrainerId, adminId: session.accountEmail })
+      return jsonError("Freigegebene Trainer können nicht gelöscht werden.", 403)
+    }
+
+    // Schutz 2: Keine Admin-Konten löschen
+    if (trainerRow.role === "admin") {
+      console.warn("[trainer-account DELETE] rejected – admin account", { trainerId: normalizedTrainerId, adminId: session.accountEmail })
+      return jsonError("Admin-Konten können nicht gelöscht werden.", 403)
+    }
+
+    // Schutz 3: Keine Trainer mit zugewiesenen Trainingsplänen löschen
+    const { count: planCount, error: planError } = await supabase
+      .from("training_plans")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_trainer_id", normalizedTrainerId)
+
+    if (planError) throw planError
+
+    if ((planCount ?? 0) > 0) {
+      console.warn("[trainer-account DELETE] rejected – has assigned training plans", { trainerId: normalizedTrainerId, planCount, adminId: session.accountEmail })
+      return jsonError(`Dieser Trainerzugang hat ${planCount} zugewiesene Trainingspläne und kann nicht gelöscht werden.`, 409)
+    }
+
+    // KI-Profil löschen (keine Nutzungsdaten, sicher zu entfernen)
+    await supabase.from("training_trainer_profiles").delete().eq("trainer_id", normalizedTrainerId)
+
+    // Trainer-Account löschen
+    const { error: deleteError } = await supabase
+      .from("trainer_accounts")
+      .delete()
+      .eq("id", normalizedTrainerId)
+
+    if (deleteError) throw deleteError
+
+    await writeAdminAuditLog({
+      session,
+      action: "trainer_account_deleted",
+      targetType: "trainer",
+      targetId: normalizedTrainerId,
+      targetName: trainerName,
+      details: `Offener Trainerzugang gelöscht. E-Mail: ${trainerRow.email ?? "—"}`,
+    })
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error("admin trainer account delete failed", error)
+    const details = error instanceof Error ? error.message : typeof error === "object" && error !== null && "message" in error ? String((error as { message: unknown }).message) : undefined
+    return jsonError("Internal server error", 500, details)
+  }
+}

@@ -41,6 +41,7 @@ export default function TrainerverwaltungPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [trainers, setTrainers] = useState<TrainerAccountRecord[]>([])
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   async function loadTrainers() {
     setLoading(true)
     try {
@@ -85,6 +86,36 @@ export default function TrainerverwaltungPage() {
 
     if (!response.ok) {
       throw new Error(await readResponseError(response, "Traineraktion konnte nicht gespeichert werden."))
+    }
+  }
+
+  async function handleDeletePending(trainer: TrainerAccountRecord) {
+    const name = getTrainerDisplayName(trainer)
+    const confirmed = window.confirm(
+      `Offenen Trainerzugang löschen?\n\n` +
+      `Name: ${name}\n` +
+      `E-Mail: ${trainer.email}\n\n` +
+      `Es wird nur dieser noch nicht freigegebene Zugang entfernt.\n` +
+      `Freigegebene Trainer und Admin-Konten sind nicht betroffen.`
+    )
+    if (!confirmed) return
+
+    setDeletingId(trainer.id)
+    try {
+      const response = await fetch(`/api/admin/trainer-account/${trainer.id}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        const msg = await readResponseError(response, "Löschen nicht möglich.")
+        alert(`Fehler: ${msg}`)
+        return
+      }
+      await loadTrainers()
+    } catch (error) {
+      console.error(error)
+      alert("Fehler beim Löschen des Trainerzugangs.")
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -353,6 +384,14 @@ export default function TrainerverwaltungPage() {
                     </Button>
                     <Button asChild variant="outline" className="rounded-2xl">
                       <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="rounded-2xl border-red-200 text-red-700 hover:bg-red-50"
+                      disabled={deletingId === trainer.id}
+                      onClick={() => void handleDeletePending(trainer)}
+                    >
+                      {deletingId === trainer.id ? "Wird gelöscht…" : "Löschen"}
                     </Button>
                   </div>
                 </div>
