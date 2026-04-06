@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, createMember, findMemberByFirstLastAndBirthdate, updateMemberProfile, updateTrialMember } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
@@ -6,6 +7,7 @@ import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
 import { getMemberCheckinMode, getSessionsForDate } from "@/lib/memberCheckin"
 import { readQrAccessFromHeaders, verifyQrAccessToken } from "@/lib/qrAccess"
 import { getQrAccessToken } from "@/lib/qrAccessServer"
+import { sendCustomEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 const supabase = createServerSupabaseServiceClient()
@@ -128,6 +130,7 @@ export async function POST(request: Request) {
     }
 
     let member = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
+    let isNewTrialMember = false
 
     if (!member) {
       member = await createMember({
@@ -140,6 +143,7 @@ export async function POST(request: Request) {
         is_approved: true,
         base_group: selectedSession.group,
       })
+      isNewTrialMember = true
     } else if (!member.is_trial) {
       return new NextResponse(
         "Diese Person ist bereits als Mitglied erfasst. Probetraining darf bestehende Mitgliedsdaten nicht ändern.",
@@ -177,6 +181,26 @@ export async function POST(request: Request) {
       year: currentYear,
       month_key: currentMonthKey,
     })
+
+    if (isNewTrialMember) {
+      try {
+        await Promise.all([
+          sendCustomEmail({
+            to: email,
+            subject: "TSV BoxGym: Dein Probetraining",
+            text: `Hallo ${firstName},\n\nschön, dass du beim TSV BoxGym ein Probetraining machst!\n\nDein Check-in für die Gruppe „${selectedSession.group}" am ${liveDate.split("-").reverse().join(".")} wurde erfolgreich registriert.\n\nDu kannst insgesamt bis zu 3 Probetrainings absolvieren. Bei Fragen melde dich gerne bei uns.\n\nSportliche Grüße\nTSV BoxGym`,
+          }),
+          enqueueAdminNotification({
+            kind: "member",
+            memberName: `${firstName} ${lastName} (Probetraining)`,
+            email,
+            group: selectedSession.group,
+          }),
+        ])
+      } catch (notifyError) {
+        console.error("trial notification failed", notifyError)
+      }
+    }
 
     return NextResponse.json({ ok: true })
   } catch (error) {
