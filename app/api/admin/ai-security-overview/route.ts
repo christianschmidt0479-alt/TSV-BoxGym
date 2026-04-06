@@ -19,6 +19,7 @@ import { getActionStatesForTargets } from "@/lib/aiSecurityActionsDb"
 import type { ActionState } from "@/lib/aiSecurityActionsDb"
 import { getBlockStatesForTargets, listAiSecurityBlocks, cleanupExpiredAiSecurityBlocks } from "@/lib/aiSecurityBlocksDb"
 import type { BlockState } from "@/lib/aiSecurityBlocksDb"
+import { reportAppError } from "@/lib/appErrorReporter"
 
 // Admin-Aktionen die als sicherheitsrelevant gelten
 const HIGH_SEVERITY_AUDIT_ACTIONS = new Set(["member_deleted"])
@@ -177,6 +178,7 @@ export async function GET(request: Request) {
     })
   } catch (error) {
     console.error("ai-security-overview GET failed", error)
+    void reportAppError("ai_security", "overview_failed", "medium", error, { route: "/api/admin/ai-security-overview" })
     return new NextResponse("Internal server error", { status: 500 })
   }
 }

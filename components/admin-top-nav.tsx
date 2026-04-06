@@ -56,6 +56,7 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
             items: [
               { label: "KI", href: "/verwaltung/ki" },
               { label: "Sicherheit", href: "/verwaltung/sicherheit" },
+              { label: "Fehler", href: "/verwaltung/fehler" },
             ],
           },
         ]

@@ -8,6 +8,7 @@ import { validateEmail } from "@/lib/formValidation"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { sendCustomEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { reportAppError } from "@/lib/appErrorReporter"
 
 type PreviewBody = {
   requests?: AdminMailDraftRequest[]
@@ -165,6 +166,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: true, deliveries })
   } catch (error) {
     console.error("admin mail compose send failed", error)
+    void reportAppError("mail", "send_failed", "high", error, { route: "/api/admin/mail-compose" })
     return jsonError(error instanceof Error ? error.message : "Mail konnte nicht versendet werden.", 500)
   }
 }

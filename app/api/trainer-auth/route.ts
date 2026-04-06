@@ -15,6 +15,7 @@ import { findTrainerByEmailAndPin } from "@/lib/boxgymDb"
 import { createAiSecurityEventSafe } from "@/lib/aiSecurityEventsDb"
 import { SECURITY_EVENT_TYPES } from "@/lib/aiSecurity"
 import { getActiveAiSecurityBlock } from "@/lib/aiSecurityBlocksDb"
+import { reportAppError } from "@/lib/appErrorReporter"
 
 type TrainerAuthBody = {
   email?: string
@@ -136,6 +137,7 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("trainer-auth failed", error)
+    void reportAppError("auth", "unexpected_auth_error", "high", error, { route: "/api/trainer-auth" })
     return new NextResponse("Internal server error", { status: 500 })
   }
 }

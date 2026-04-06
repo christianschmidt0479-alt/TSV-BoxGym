@@ -47,7 +47,8 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
         { href: "/verwaltung/postfach", label: "Postfach" },
         ...(isAdmin ? [{ href: "/verwaltung/sicherheit", label: "Sicherheit" }] : []),
         ...(isAdmin ? [{ href: "/verwaltung/einstellungen", label: "Einstellungen" }] : []),
-        ...(isAdmin ? [{ href: "/verwaltung/ki", label: "KI" }] : []),
+      ...(isAdmin ? [{ href: '/verwaltung/ki', label: 'KI' }] : []),
+        ...(isAdmin ? [{ href: '/verwaltung/fehler', label: 'Fehler' }] : []),
       ],
     },
   ]
