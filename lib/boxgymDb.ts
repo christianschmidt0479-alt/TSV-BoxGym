@@ -22,9 +22,10 @@ function withoutOptionalMemberFields<T extends Record<string, unknown>>(payload:
     Object.entries(payload).filter(
       ([key]) =>
         key !== "guardian_name" &&
-        key !== "gender"
+        key !== "gender" &&
+        key !== "created_from_excel"
     )
-  ) as Omit<T, "guardian_name" | "gender">
+  ) as Omit<T, "guardian_name" | "gender" | "created_from_excel">
 }
 
 function withoutLegacyMemberFallbackFields<T extends Record<string, unknown>>(payload: T) {

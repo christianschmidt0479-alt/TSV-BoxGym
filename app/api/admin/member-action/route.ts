@@ -182,6 +182,19 @@ export async function POST(request: Request) {
       if (!approvedGroup) {
         return jsonError("Bitte eine gültige Stammgruppe auswählen.", 400)
       }
+
+      const { data: preApproveCheck, error: preApproveError } = await supabase
+        .from("members")
+        .select("id, email_verified")
+        .eq("id", body.memberId)
+        .maybeSingle()
+
+      if (preApproveError) throw preApproveError
+      if (!preApproveCheck) return jsonError("Mitglied nicht gefunden", 404)
+      if (!preApproveCheck.email_verified) {
+        return jsonError("Die E-Mail-Adresse wurde noch nicht bestätigt. Freigabe erst nach E-Mail-Bestätigung möglich.", 400)
+      }
+
       const updatePayload: Record<string, unknown> = {
         is_approved: true,
         base_group: approvedGroup,
@@ -261,6 +274,16 @@ export async function POST(request: Request) {
         link: verificationLink,
         kind: "member",
       })
+
+      // Update last_verification_sent_at — optional column, ignore if column doesn't exist yet
+      try {
+        await supabase
+          .from("members")
+          .update({ last_verification_sent_at: new Date().toISOString() })
+          .eq("id", member.id)
+      } catch {
+        // column not yet deployed — safe to ignore
+      }
 
       await writeAdminAuditLog({
         session,

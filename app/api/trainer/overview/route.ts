@@ -26,21 +26,51 @@ export async function GET(request: Request) {
     }
 
     const today = new URL(request.url).searchParams.get("today")?.trim()
-    if (!today) {
-      return new NextResponse("Missing today", { status: 400 })
+    const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+    if (!today || !DATE_PATTERN.test(today)) {
+      return new NextResponse("Missing or invalid today", { status: 400 })
     }
 
+    // Inaktivitäts-Hint: Mitglieder die 3+ Wochen fehlten, aber davor aktiv waren
+    // Kein Namenbezug – nur Zählwert für den Gruppenhinweis
+    const threeWeeksAgo = new Date(today)
+    threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21)
+    const eightWeeksAgo = new Date(today)
+    eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56)
+    const threeWeeksAgoStr = threeWeeksAgo.toISOString().slice(0, 10)
+    const eightWeeksAgoStr = eightWeeksAgo.toISOString().slice(0, 10)
+
     const supabase = getServerSupabase()
-    const [checkinsResponse, membersResponse] = await Promise.all([
+    const [checkinsResponse, membersResponse, recentCheckinsResponse, olderCheckinsResponse] = await Promise.all([
       supabase
         .from("checkins")
         .select("id, member_id, group_name, date, members(id, name, first_name, last_name, birthdate, is_trial)")
         .eq("date", today),
       supabase.from("members").select("id, name, first_name, last_name, birthdate, base_group, needs_trainer_assist_checkin"),
+      // Mitglieder die in den letzten 3 Wochen da waren
+      supabase
+        .from("checkins")
+        .select("member_id")
+        .gte("date", threeWeeksAgoStr)
+        .lt("date", today),
+      // Mitglieder die in den 3-8 Wochen davor da waren
+      supabase
+        .from("checkins")
+        .select("member_id")
+        .gte("date", eightWeeksAgoStr)
+        .lt("date", threeWeeksAgoStr),
     ])
 
     if (checkinsResponse.error) throw checkinsResponse.error
     if (membersResponse.error) throw membersResponse.error
+
+    // Inaktivitäts-Zahl berechnen – kein Namenbezug, nur Anzahl
+    const recentMemberIds = new Set((recentCheckinsResponse.data ?? []).map((r) => r.member_id))
+    const olderActiveMemberIds = new Set((olderCheckinsResponse.data ?? []).map((r) => r.member_id))
+    let inactiveSinceThreeWeeks = 0
+    for (const memberId of olderActiveMemberIds) {
+      if (!recentMemberIds.has(memberId)) inactiveSinceThreeWeeks += 1
+    }
 
     const normalizedMembers = (membersResponse.data ?? []).map((row) => ({
       ...row,
@@ -88,8 +118,11 @@ export async function GET(request: Request) {
         (a, b) => a.group_name.localeCompare(b.group_name, "de") || a.display_name.localeCompare(b.display_name, "de")
       ),
       memberRows: normalizedMembers.map((row) => ({
-        ...row,
+        id: row.id,
+        base_group: row.base_group,
+        needs_trainer_assist_checkin: row.needs_trainer_assist_checkin,
       })),
+      inactiveSinceThreeWeeks,
     })
   } catch (error) {
     console.error("trainer overview failed", error)

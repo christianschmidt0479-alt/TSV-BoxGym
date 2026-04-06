@@ -48,6 +48,7 @@ type ResultRow = {
   isTrainerLinked?: boolean
   hasTrainerAccount?: boolean
   email?: string
+  phone?: string
   firstName: string
   lastName: string
   birthdate: string
@@ -1282,6 +1283,7 @@ export async function POST(request: Request) {
           isTrainerLinked: false,
           hasTrainerAccount: trainerAccountEmails.has(buildEmailKey(excelRow.email)),
           email: excelRow.email || "",
+          phone: excelRow.phone || "",
           firstName: excelRow.firstName,
           lastName: excelRow.lastName,
           birthdate: excelRow.birthdate || "—",
@@ -1307,6 +1309,7 @@ export async function POST(request: Request) {
         isTrainerLinked: linkedTrainerMemberIds.has(member.id),
         hasTrainerAccount: linkedTrainerMemberIds.has(member.id) || trainerAccountEmails.has(buildEmailKey(member.email || "")),
         email: member.email || excelRow.email || "",
+        phone: member.phone || excelRow.phone || "",
         firstName: member.first_name || excelRow.firstName,
         lastName: member.last_name || excelRow.lastName,
         birthdate: member.birthdate || excelRow.birthdate || "—",
@@ -1350,6 +1353,7 @@ export async function POST(request: Request) {
         isTrainerLinked: linkedTrainerMemberIds.has(member.id),
         hasTrainerAccount: linkedTrainerMemberIds.has(member.id) || trainerAccountEmails.has(buildEmailKey(member.email || "")),
         email: member.email || "",
+        phone: member.phone || "",
         firstName: member.first_name || "",
         lastName: member.last_name || "",
         birthdate: member.birthdate || "—",

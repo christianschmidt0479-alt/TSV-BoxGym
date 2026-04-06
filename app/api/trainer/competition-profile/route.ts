@@ -53,8 +53,12 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as TrainerCompetitionProfileBody
+    const memberId = body.memberId?.trim()
+    if (!memberId) {
+      return new NextResponse("Missing memberId", { status: 400 })
+    }
     const rateLimit = await checkRateLimitAsync(
-      `trainer-competition-profile:${getRequestIp(request)}:${body.memberId?.trim() || "__member__"}`,
+      `trainer-competition-profile:${getRequestIp(request)}:${memberId}`,
       60,
       10 * 60 * 1000
     )
@@ -83,7 +87,7 @@ export async function POST(request: Request) {
     let { data, error } = await supabase
       .from("members")
       .update(updatePayload)
-      .eq("id", body.memberId)
+      .eq("id", memberId)
       .select(TRAINER_COMPETITION_PROFILE_SELECT)
       .single()
 

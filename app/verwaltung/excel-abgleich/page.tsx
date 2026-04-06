@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AlertCircle, FileSpreadsheet, Upload } from "lucide-react"
@@ -41,6 +41,7 @@ type ReconcileRow = {
   isTrainerLinked?: boolean
   hasTrainerAccount?: boolean
   email?: string
+  phone?: string
   firstName: string
   lastName: string
   birthdate: string
@@ -80,6 +81,25 @@ type ReconcileResponse = {
 type UploadDraft = {
   file: File
   group: string
+}
+
+type ExcelCreateDraft = {
+  firstName: string
+  lastName: string
+  birthDate: string
+  email: string
+  phone: string
+  baseGroup: string
+  sendVerification: boolean
+}
+
+type DuplicateMatch = {
+  id: string
+  name: string
+  birthdate: string | null
+  email: string | null
+  phone: string | null
+  reason: string
 }
 
 function compareRows(a: ReconcileRow, b: ReconcileRow) {
@@ -152,6 +172,9 @@ export default function ExcelAbgleichPage() {
   const [loading, setLoading] = useState(false)
   const [updatingActionKey, setUpdatingActionKey] = useState<string | null>(null)
   const [error, setError] = useState("")
+  const [createDraftRowId, setCreateDraftRowId] = useState<string | null>(null)
+  const [createDraft, setCreateDraft] = useState<ExcelCreateDraft | null>(null)
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateMatch[]>([])
 
   useEffect(() => {
     if (!authResolved || trainerRole !== "admin") return
@@ -324,6 +347,29 @@ export default function ExcelAbgleichPage() {
     !isCompatibleOfficeListGroup(row.groupDb, row.groupExcel, { isTrainer: Boolean(row.isTrainerLinked) })
 
   const canActivateTrainerAccount = (row: ReconcileRow) => Boolean(row.email?.trim()) && !row.hasTrainerAccount
+
+  const canCreateMember = (row: ReconcileRow) => row.excel === "Ja" && row.db === "Nein" && !row.hasTrainerAccount
+
+  const openCreateDraft = (row: ReconcileRow) => {
+    setCreateDraftRowId(row.id)
+    setDuplicateMatches([])
+    setCreateDraft({
+      firstName: row.firstName || "",
+      lastName: row.lastName || "",
+      birthDate: row.birthdate && row.birthdate !== "—" ? row.birthdate : "",
+      email: row.email?.trim() || "",
+      phone: row.phone?.trim() || "",
+      baseGroup: row.groupExcel !== "—" ? row.groupExcel : TRAINING_GROUPS[0],
+      sendVerification: Boolean(row.email?.trim()),
+    })
+    setError("")
+  }
+
+  const closeCreateDraft = () => {
+    setCreateDraftRowId(null)
+    setCreateDraft(null)
+    setDuplicateMatches([])
+  }
 
   const getUpdatedDbRow = (entry: ReconcileRow, nextValues: Partial<ReconcileRow>): ReconcileRow => {
     const nextRow = { ...entry, ...nextValues }
@@ -545,6 +591,132 @@ export default function ExcelAbgleichPage() {
       alert("Trainerkonto angelegt. Die Bestätigungs-Mail wurde versendet.")
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Trainerkonto konnte nicht aktiviert werden.")
+    } finally {
+      setUpdatingActionKey(null)
+    }
+  }
+
+  const handleCreateMemberFromExcel = async (row: ReconcileRow) => {
+    if (!canCreateMember(row) || !createDraft) return
+
+    try {
+      setUpdatingActionKey(`create:${row.id}`)
+      setDuplicateMatches([])
+      setError("")
+
+      const response = await fetch("/api/admin/excel-abgleich/create-member", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: createDraft.firstName,
+          lastName: createDraft.lastName,
+          birthDate: createDraft.birthDate,
+          email: createDraft.email,
+          phone: createDraft.phone,
+          baseGroup: createDraft.baseGroup,
+          officeListGroup: row.groupExcel,
+          officeListCheckedAt: result?.checkedAt,
+        }),
+      })
+
+      if (response.status === 409) {
+        const payload = (await response.json()) as { error?: string; matches?: DuplicateMatch[] }
+        setDuplicateMatches(Array.isArray(payload.matches) ? payload.matches : [])
+        setError(payload.error || "Möglicher Dublettentreffer gefunden.")
+        return
+      }
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          clearTrainerAccess()
+        }
+        throw new Error(await response.text())
+      }
+
+      const payload = (await response.json()) as {
+        ok: true
+        member: {
+          id: string
+          email?: string | null
+          phone?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          birthdate?: string | null
+          is_approved?: boolean
+          base_group?: string | null
+          office_list_status?: string | null
+        }
+      }
+
+      setResult((current) => {
+        if (!current) return current
+
+        const nextRows = current.rows.map((entry) => {
+          if (entry.id !== row.id) return entry
+
+          return {
+            ...entry,
+            memberId: payload.member.id,
+            db: "Ja" as const,
+            tsvMember: payload.member.is_approved ? "Ja" as const : "Nein" as const,
+            groupDb: payload.member.base_group || createDraft.baseGroup,
+            email: payload.member.email || createDraft.email,
+            phone: payload.member.phone || createDraft.phone,
+            firstName: payload.member.first_name || createDraft.firstName,
+            lastName: payload.member.last_name || createDraft.lastName,
+            birthdate: payload.member.birthdate || createDraft.birthDate,
+            status: "green" as const,
+            statusLabel: getOfficeListStatusLabel("green"),
+            note: "Neu aus Excel angelegt",
+          }
+        })
+
+        return {
+          ...current,
+          rows: nextRows,
+          metrics: buildMetrics(nextRows),
+        }
+      })
+
+      closeCreateDraft()
+
+      let verificationSent = false
+      if (createDraft.sendVerification && payload.member.email) {
+        const verificationResponse = await fetch("/api/admin/member-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "resend_verification",
+            memberId: payload.member.id,
+          }),
+        })
+
+        if (!verificationResponse.ok) {
+          setError(`Mitglied angelegt, aber Bestätigungslink konnte nicht gesendet werden: ${await verificationResponse.text()}`)
+        } else {
+          verificationSent = true
+
+          setResult((current) => {
+            if (!current) return current
+
+            const nextRows = current.rows.map((entry) => {
+              if (entry.memberId !== payload.member.id) return entry
+              return {
+                ...entry,
+                note: "Neu aus Excel angelegt · Bestätigungslink gesendet",
+              }
+            })
+
+            return {
+              ...current,
+              rows: nextRows,
+            }
+          })
+        }
+      }
+      alert(verificationSent ? "Mitglied angelegt und Bestätigungslink gesendet." : "Mitglied angelegt.")
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Mitglied konnte nicht angelegt werden.")
     } finally {
       setUpdatingActionKey(null)
     }
@@ -894,8 +1066,8 @@ export default function ExcelAbgleichPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredRows.map((row) => (
+                    <Fragment key={row.id}>
                     <TableRow
-                      key={row.id}
                       className={getNavigableMemberId(row) ? "cursor-pointer hover:bg-zinc-50" : undefined}
                       onClick={() => {
                         const memberId = getNavigableMemberId(row)
@@ -985,26 +1157,135 @@ export default function ExcelAbgleichPage() {
                             ) : null}
                           </div>
                         ) : (
-                          canActivateTrainerAccount(row) ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 rounded-xl px-3"
-                              disabled={updatingActionKey === `trainer:${row.id}`}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                void handleActivateTrainerAccount(row)
-                              }}
-                            >
-                              {updatingActionKey === `trainer:${row.id}` ? "Aktiviert..." : "Trainerkonto aktivieren"}
-                            </Button>
-                          ) : (
-                            <span className="text-sm text-zinc-300">—</span>
-                          )
+                          <div className="flex flex-wrap gap-2">
+                            {canCreateMember(row) ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-xl px-3"
+                                disabled={updatingActionKey === `create:${row.id}`}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  openCreateDraft(row)
+                                }}
+                              >
+                                Anlegen
+                              </Button>
+                            ) : null}
+                            {canActivateTrainerAccount(row) ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-xl px-3"
+                                disabled={updatingActionKey === `trainer:${row.id}`}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void handleActivateTrainerAccount(row)
+                                }}
+                              >
+                                {updatingActionKey === `trainer:${row.id}` ? "Aktiviert..." : "Trainerkonto aktivieren"}
+                              </Button>
+                            ) : null}
+                            {!canCreateMember(row) && !canActivateTrainerAccount(row) ? <span className="text-sm text-zinc-300">—</span> : null}
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>
+                    {createDraftRowId === row.id && createDraft ? (
+                      <TableRow>
+                        <TableCell colSpan={12} className="bg-zinc-50/70 p-4">
+                          <div className="space-y-4 rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
+                            <div>
+                              <div className="font-semibold text-zinc-900">Mitglied aus Excel anlegen</div>
+                              <div className="text-sm text-zinc-500">Der Datensatz bleibt zunächst unbestätigt und nicht vollständig freigegeben.</div>
+                            </div>
+
+                            {duplicateMatches.length > 0 ? (
+                              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                <div className="font-semibold">Mögliche Dubletten gefunden</div>
+                                <div className="mt-2 space-y-2">
+                                  {duplicateMatches.map((match) => (
+                                    <div key={match.id} className="rounded-xl border border-amber-200 bg-white px-3 py-2">
+                                      <div className="font-medium text-zinc-900">{match.name}</div>
+                                      <div className="text-xs text-zinc-600">
+                                        {match.birthdate || "ohne Geburtsdatum"}
+                                        {match.email ? ` · ${match.email}` : ""}
+                                        {match.phone ? ` · ${match.phone}` : ""}
+                                      </div>
+                                      <div className="mt-1 text-xs text-amber-800">{match.reason}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                              <div className="space-y-2">
+                                <Label>Vorname</Label>
+                                <Input value={createDraft.firstName} onChange={(event) => setCreateDraft((current) => current ? { ...current, firstName: event.target.value } : current)} className="rounded-2xl" />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Nachname</Label>
+                                <Input value={createDraft.lastName} onChange={(event) => setCreateDraft((current) => current ? { ...current, lastName: event.target.value } : current)} className="rounded-2xl" />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Geburtsdatum</Label>
+                                <Input type="date" value={createDraft.birthDate} onChange={(event) => setCreateDraft((current) => current ? { ...current, birthDate: event.target.value } : current)} className="rounded-2xl" />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>E-Mail</Label>
+                                <Input type="email" value={createDraft.email} onChange={(event) => setCreateDraft((current) => current ? { ...current, email: event.target.value } : current)} className="rounded-2xl" />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Telefon</Label>
+                                <Input value={createDraft.phone} onChange={(event) => setCreateDraft((current) => current ? { ...current, phone: event.target.value } : current)} className="rounded-2xl" />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Gruppe</Label>
+                                <Select value={createDraft.baseGroup} onValueChange={(value) => setCreateDraft((current) => current ? { ...current, baseGroup: value } : current)}>
+                                  <SelectTrigger className="rounded-2xl bg-white">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {TRAINING_GROUPS.map((entry) => (
+                                      <SelectItem key={entry} value={entry}>{entry}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            {createDraft.email.trim() ? (
+                              <label className="flex items-center gap-2 text-sm text-zinc-700">
+                                <input
+                                  type="checkbox"
+                                  checked={createDraft.sendVerification}
+                                  onChange={(event) => setCreateDraft((current) => current ? { ...current, sendVerification: event.target.checked } : current)}
+                                />
+                                Anlegen + Bestätigungslink senden
+                              </label>
+                            ) : null}
+
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                                disabled={updatingActionKey === `create:${row.id}`}
+                                onClick={() => void handleCreateMemberFromExcel(row)}
+                              >
+                                {updatingActionKey === `create:${row.id}` ? "Legt an..." : createDraft.email.trim() && createDraft.sendVerification ? "Anlegen + Link senden" : "Anlegen"}
+                              </Button>
+                              <Button type="button" variant="outline" className="rounded-2xl" onClick={closeCreateDraft} disabled={updatingActionKey === `create:${row.id}`}>
+                                Abbrechen
+                              </Button>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>

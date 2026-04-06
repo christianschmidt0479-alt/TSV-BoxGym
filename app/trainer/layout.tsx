@@ -1,10 +1,62 @@
+"use client"
+
 import Image from "next/image"
 import Link from "next/link"
 import type { ReactNode } from "react"
-import { ChevronLeft, ClipboardCheck } from "lucide-react"
-import { TrainerLogoutButton } from "@/components/trainer-logout-button"
+import { useEffect, useState } from "react"
+import { usePathname } from "next/navigation"
+import { ClipboardCheck } from "lucide-react"
+import { TrainerMobileNav } from "@/components/trainer-mobile-nav"
+
+const NAV_SECTIONS = [
+  {
+    title: "Start",
+    items: [
+      { href: "/trainer", label: "Übersicht" },
+      { href: "/trainer/heute", label: "Heute" },
+    ],
+  },
+  {
+    title: "Sportler",
+    items: [
+      { href: "/trainer/boxzwerge", label: "Boxzwerge" },
+      { href: "/trainer/mitglieder", label: "Mitglieder" },
+      { href: "/trainer/wettkampf", label: "Wettkampf" },
+    ],
+  },
+]
+
+const NAV_LINKS = NAV_SECTIONS.flatMap((s) => s.items)
+
+function TrainerNavLink({ href, label, pathname }: { href: string; label: string; pathname: string }) {
+  const active = pathname === href
+  return (
+    <Link
+      href={href}
+      className={
+        active
+          ? "rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
+          : "rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
+      }
+    >
+      {label}
+    </Link>
+  )
+}
 
 export default function TrainerLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
+  const [ferienModus, setFerienModus] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/public/checkin-settings", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { disableCheckinTimeWindow?: boolean } | null) => {
+        if (data?.disableCheckinTimeWindow) setFerienModus(true)
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(230,51,42,0.12),_transparent_26%),linear-gradient(180deg,_#f7fbff_0%,_#f3f7fb_42%,_#eef3f8_100%)] text-zinc-900">
       <header className="sticky top-0 z-20 border-b border-[#cdd9e6] bg-white/92 backdrop-blur">
@@ -14,7 +66,7 @@ export default function TrainerLayout({ children }: { children: ReactNode }) {
             <div className="absolute right-0 top-0 h-14 w-14 rounded-full bg-[#e6332a]/10 blur-2xl" />
 
             <div className="flex flex-col gap-3 px-4 py-3 md:px-5 md:py-3.5">
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 sm:gap-3">
                   <Image src="/boxgym-headline-old.png" alt="TSV Falkensee BoxGym" width={40} height={17} className="h-auto w-[17px] object-contain sm:w-[20px] md:w-auto" priority />
                   <div className="min-w-0">
@@ -26,64 +78,21 @@ export default function TrainerLayout({ children }: { children: ReactNode }) {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                  <TrainerLogoutButton className="rounded-2xl border-[#cfd9e4] bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-700 hover:border-[#154c83] hover:bg-[#f7fbff]" />
-                  <Link
-                    href="/"
-                    className="inline-flex items-center gap-2 rounded-2xl border border-[#cfd9e4] bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-700 transition hover:border-[#154c83] hover:bg-[#f7fbff]"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Startseite
-                  </Link>
+                <div className="flex items-center gap-2">
+                  <TrainerMobileNav sections={NAV_SECTIONS} />
+                  {ferienModus ? (
+                    <div className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 shadow-sm">
+                      <span className="sm:hidden">Ferien</span>
+                      <span className="hidden sm:inline">Ferienmodus aktiv</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
-              <nav className="flex flex-wrap gap-2.5 border-t border-[#e2e8f0] pt-2.5">
-                <Link
-                  href="/trainer"
-                  className="rounded-2xl border border-[#154c83] bg-[#154c83] px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#123d69]"
-                >
-                  Übersicht
-                </Link>
-                <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                  Start
-                </div>
-                <Link
-                  href="/trainer/heute"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Heute
-                </Link>
-                <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                  Sportler
-                </div>
-                <Link
-                  href="/trainer/boxzwerge"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Boxzwerge
-                </Link>
-                <Link
-                  href="/trainer/mitglieder"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Mitglieder
-                </Link>
-                <Link
-                  href="/trainer/wettkampf"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Wettkampf
-                </Link>
-                <div className="self-center px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                  Mehr
-                </div>
-                <Link
-                  href="/verwaltung/checkins"
-                  className="rounded-2xl border border-[#b9cde2] bg-[#eef4fb] px-3.5 py-1.5 text-sm font-semibold text-[#154c83] transition hover:border-[#154c83] hover:bg-[#dfeaf7]"
-                >
-                  Check-ins
-                </Link>
+              <nav className="hidden flex-wrap gap-2.5 border-t border-[#e2e8f0] pt-2.5 md:flex">
+                {NAV_LINKS.map((item) => (
+                  <TrainerNavLink key={item.href} href={item.href} label={item.label} pathname={pathname} />
+                ))}
               </nav>
             </div>
           </div>

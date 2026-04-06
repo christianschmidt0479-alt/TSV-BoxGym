@@ -40,12 +40,14 @@ type PendingMemberRow = {
   office_list_status?: string | null
   office_list_group?: string | null
   office_list_checked_at?: string | null
+  last_verification_sent_at?: string | null
+  created_from_excel?: boolean | null
 }
 
 async function loadPendingMembers(supabase: ReturnType<typeof getServerSupabase>) {
   const baseSelect =
     "id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, email_verification_token, phone, guardian_name, is_trial, is_approved, base_group"
-  const optionalColumns = ["gender", "office_list_status", "office_list_group", "office_list_checked_at"] as const
+  const optionalColumns = ["gender", "office_list_status", "office_list_group", "office_list_checked_at", "last_verification_sent_at", "created_from_excel"] as const
   const selectedOptionalColumns = [...optionalColumns] as string[]
 
   while (true) {
@@ -64,6 +66,8 @@ async function loadPendingMembers(supabase: ReturnType<typeof getServerSupabase>
           office_list_status: row.office_list_status ?? null,
           office_list_group: row.office_list_group ?? null,
           office_list_checked_at: row.office_list_checked_at ?? null,
+          last_verification_sent_at: row.last_verification_sent_at ?? null,
+          created_from_excel: row.created_from_excel ?? false,
         })),
         error: null,
       }

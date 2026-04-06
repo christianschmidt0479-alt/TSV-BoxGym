@@ -37,6 +37,8 @@ type PendingMemberRecord = {
   office_list_status?: string | null
   office_list_group?: string | null
   office_list_checked_at?: string | null
+  last_verification_sent_at?: string | null
+  created_from_excel?: boolean | null
 }
 
 type CheckinCountRow = {
@@ -107,6 +109,18 @@ function formatBirthdateLabel(value?: string) {
   return formatDateInputForDisplay(value) || value?.trim() || "—"
 }
 
+function formatVerificationSentAt(value: string | null | undefined): string {
+  if (!value) return "noch nie gesendet"
+  const sent = new Date(value)
+  const diffMs = Date.now() - sent.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return "gerade eben gesendet"
+  if (diffMin < 60) return `vor ${diffMin} Minute${diffMin === 1 ? "" : "n"} gesendet`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24) return `vor ${diffH} Stunde${diffH === 1 ? "" : "n"} gesendet`
+  return `Zuletzt gesendet: ${formatDisplayDateTime(sent)}`
+}
+
 function getOfficeDifferenceParts(note?: string | null) {
   if (!note || note === "Excel und DB stimmen überein") return []
 
@@ -126,6 +140,8 @@ export default function FreigabenPage() {
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({})
   const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({})
   const [resendingVerification, setResendingVerification] = useState<Record<string, boolean>>({})
+  const [recentlySentByMember, setRecentlySentByMember] = useState<Record<string, boolean>>({})
+  const [verificationSentAtByMember, setVerificationSentAtByMember] = useState<Record<string, string | null>>({})
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [emailFilter, setEmailFilter] = useState("alle")
@@ -163,6 +179,14 @@ export default function FreigabenPage() {
       setPendingMembers(nextPending)
       setGsConfirmedAtByMemberId(payload.gsConfirmedAtByMemberId ?? {})
       setGsRejectedAtByMemberId(payload.gsRejectedAtByMemberId ?? {})
+
+      const nextSentAt: Record<string, string | null> = {}
+      for (const m of nextPending) {
+        if (m.last_verification_sent_at !== undefined) {
+          nextSentAt[m.id] = m.last_verification_sent_at ?? null
+        }
+      }
+      setVerificationSentAtByMember(nextSentAt)
 
       const counts: Record<string, number> = {}
       for (const row of (payload.checkinRows ?? [])) {
@@ -232,21 +256,27 @@ export default function FreigabenPage() {
     }
 
     setResendingVerification((prev) => ({ ...prev, [member.id]: true }))
-    router.push(
-      buildAdminMailComposeHref({
-        title: "Bestätigungs-Mail bearbeiten",
-        returnTo: "/verwaltung/freigaben",
-        requests: [
-          {
-            kind: "verification_member",
-            memberId: member.id,
-            email: member.email,
-            name: getMemberDisplayName(member),
-            targetKind: "member",
-          },
-        ],
+    try {
+      const response = await fetch("/api/admin/member-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resend_verification", memberId: member.id }),
       })
-    )
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      showToast("Bestätigungslink wurde gesendet.", "success")
+      setVerificationSentAtByMember((prev) => ({ ...prev, [member.id]: new Date().toISOString() }))
+      setRecentlySentByMember((prev) => ({ ...prev, [member.id]: true }))
+      window.setTimeout(() => {
+        setRecentlySentByMember((prev) => ({ ...prev, [member.id]: false }))
+      }, 60000)
+    } catch (error) {
+      console.error(error)
+      showToast(error instanceof Error ? error.message : "Bestätigungslink konnte nicht gesendet werden.", "error")
+    } finally {
+      setResendingVerification((prev) => ({ ...prev, [member.id]: false }))
+    }
   }
 
   async function deletePendingMember(member: PendingMemberRecord) {
@@ -586,15 +616,20 @@ export default function FreigabenPage() {
                           variant="outline"
                           className={
                             member.email_verified
-                              ? "border-blue-200 bg-blue-100 text-blue-800"
-                              : "border-zinc-200 bg-zinc-100 text-zinc-700"
+                              ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                              : "border-red-200 bg-red-100 text-red-700"
                           }
                         >
-                          {member.email_verified ? "E-Mail bestätigt" : "Wartet auf E-Mail"}
+                          {member.email_verified ? "E-Mail bestätigt" : "E-Mail nicht bestätigt"}
                         </Badge>
                         {member.office_list_status ? (
                           <Badge variant="outline" className={getOfficeListStatusBadgeClass(member.office_list_status)}>
                             GS-Abgleich: {getOfficeListStatusLabel(member.office_list_status)}
+                          </Badge>
+                        ) : null}
+                        {member.created_from_excel ? (
+                          <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">
+                            Aus Excel
                           </Badge>
                         ) : null}
                       </div>
@@ -696,6 +731,12 @@ export default function FreigabenPage() {
                       >
                         {isEditing ? "Änderung schließen" : "Daten ändern"}
                       </Button>
+
+                      {!member.email_verified && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                          Freigabe erst nach E-Mail-Bestätigung möglich
+                        </div>
+                      )}
 
                       <Button
                         className={
@@ -820,10 +861,13 @@ export default function FreigabenPage() {
                             variant="outline"
                             className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
                             onClick={() => void resendVerification(member)}
-                            disabled={Boolean(resendingVerification[member.id]) || deletingMemberId === member.id}
+                            disabled={Boolean(resendingVerification[member.id]) || Boolean(recentlySentByMember[member.id]) || deletingMemberId === member.id}
                           >
-                            {resendingVerification[member.id] ? "Sende..." : "Bestätigungs-Mail erneut senden"}
+                            {resendingVerification[member.id] ? "Sende..." : recentlySentByMember[member.id] ? "Gerade gesendet" : "Bestätigungs-Mail erneut senden"}
                           </Button>
+                          <div className="text-xs text-zinc-400">
+                            {formatVerificationSentAt(verificationSentAtByMember[member.id] ?? member.last_verification_sent_at)}
+                          </div>
                           <Button
                             type="button"
                             variant="outline"

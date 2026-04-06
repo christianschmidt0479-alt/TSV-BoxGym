@@ -48,6 +48,7 @@ type MemberRecord = {
   office_list_status?: string | null
   office_list_group?: string | null
   office_list_checked_at?: string | null
+  created_from_excel?: boolean | null
 }
 
 type CheckinSummaryRow = {
@@ -131,7 +132,7 @@ function getStatusLabel(status: Exclude<MemberStatusFilter, "alle">) {
     case "wartet_auf_email":
       return "Wartet auf E-Mail"
     case "registriert":
-      return "Registriert"
+      return "E-Mail bestätigt"
     case "freigegeben":
       return "Mitglied"
   }
@@ -142,9 +143,9 @@ function getStatusBadgeClass(status: Exclude<MemberStatusFilter, "alle">) {
     case "probemitglied":
       return "bg-amber-100 text-amber-800 border-amber-200"
     case "wartet_auf_email":
-      return "bg-zinc-100 text-zinc-700 border-zinc-200"
+      return "bg-red-100 text-red-700 border-red-200"
     case "registriert":
-      return "bg-blue-100 text-blue-800 border-blue-200"
+      return "bg-emerald-100 text-emerald-800 border-emerald-200"
     case "freigegeben":
       return "bg-green-100 text-green-800 border-green-200"
   }
@@ -940,6 +941,12 @@ export default function MitgliederverwaltungPage() {
                                         {getOfficeListStatusLabel(editingMember.office_list_status)}
                                       </span>
                                       {editingMember.office_list_group ? <>{" · "}{editingMember.office_list_group}</> : null}
+                                    </div>
+                                  ) : null}
+                                  {editingMember.created_from_excel ? (
+                                    <div>
+                                      {"Herkunft: "}
+                                      <span className="font-medium text-violet-700">Aus Excel-Abgleich angelegt</span>
                                     </div>
                                   ) : null}
                                   {trainerLinksByMember[editingMember.id] ? (

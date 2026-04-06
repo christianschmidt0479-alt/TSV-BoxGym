@@ -28,7 +28,12 @@ export async function GET(request: Request) {
 
     const supabase = getServerSupabase()
     const [membersResponse, weightsResponse] = await Promise.all([
-      supabase.from("members").select(TRAINER_COMPETITION_MEMBER_SELECT).order("last_name", { ascending: true }).order("first_name", { ascending: true }),
+      supabase
+        .from("members")
+        .select(TRAINER_COMPETITION_MEMBER_SELECT)
+        .or("has_competition_pass.eq.true,is_competition_member.eq.true")
+        .order("last_name", { ascending: true })
+        .order("first_name", { ascending: true }),
       supabase
         .from("checkins")
         .select("member_id, weight, created_at, date, group_name")

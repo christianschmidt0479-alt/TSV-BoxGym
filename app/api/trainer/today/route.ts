@@ -24,8 +24,9 @@ export async function GET(request: Request) {
     }
 
     const today = new URL(request.url).searchParams.get("today")?.trim()
-    if (!today) {
-      return new NextResponse("Missing today", { status: 400 })
+    const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+    if (!today || !DATE_PATTERN.test(today)) {
+      return new NextResponse("Missing or invalid today", { status: 400 })
     }
 
     const supabase = getServerSupabase()

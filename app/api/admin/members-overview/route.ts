@@ -17,6 +17,7 @@ const MEMBER_OVERVIEW_OPTIONAL_COLUMNS = [
   "office_list_checked_at",
   "competition_target_weight",
   "needs_trainer_assist_checkin",
+  "created_from_excel",
 ] as const
 const TRAINER_LINK_OPTIONAL_COLUMNS = ["linked_member_id", "role"] as const
 const TRAINER_LINK_BASE_SELECT = "id, email, is_approved"
@@ -57,6 +58,7 @@ async function loadMembersWithFallback(supabase: ReturnType<typeof getServerSupa
           office_list_checked_at: "office_list_checked_at" in row ? row.office_list_checked_at ?? null : null,
           competition_target_weight: "competition_target_weight" in row ? row.competition_target_weight ?? null : null,
           needs_trainer_assist_checkin: "needs_trainer_assist_checkin" in row ? row.needs_trainer_assist_checkin ?? false : false,
+          created_from_excel: "created_from_excel" in row ? Boolean(row.created_from_excel) : false,
         })),
         error: null,
       }

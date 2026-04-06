@@ -18,10 +18,10 @@ type MemberRow = {
   first_name?: string
   last_name?: string
   birthdate?: string
-  email?: string | null
-  phone?: string | null
   base_group?: string | null
   is_trial?: boolean
+  lastCheckin?: string
+  recentCheckinCount?: number
 }
 
 type AttendanceRow = {
@@ -38,8 +38,16 @@ function getMemberDisplayName(member: MemberRow) {
   return full || member.name || "—"
 }
 
+function daysSince(isoDate: string): number {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const last = new Date(`${isoDate}T12:00:00`)
+  return Math.max(0, Math.floor((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24)))
+}
+
 export default function TrainerMitgliederPage() {
-  const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
+  const { resolved: authResolved, role: trainerRole, accountRole } = useTrainerAccess()
+  const isAdmin = accountRole === "admin"
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [deletingAttendanceId, setDeletingAttendanceId] = useState("")
@@ -48,17 +56,30 @@ export default function TrainerMitgliederPage() {
   const [members, setMembers] = useState<MemberRow[]>([])
   const [selectedMemberId, setSelectedMemberId] = useState("")
   const [attendanceRows, setAttendanceRows] = useState<AttendanceRow[]>([])
+  const [mobileTab, setMobileTab] = useState<"suche" | "anwesenheit">("suche")
+  const [inaktivMode, setInaktivMode] = useState(false)
+  const [urlChecked, setUrlChecked] = useState(false)
 
   useEffect(() => {
-    if (!authResolved || !trainerRole) {
-      setLoading(false)
+    const isInaktiv = new URLSearchParams(window.location.search).get("filter") === "inaktiv"
+    setInaktivMode(isInaktiv)
+    setUrlChecked(true)
+  }, [])
+
+  useEffect(() => {
+    if (!urlChecked || !authResolved || !trainerRole) {
+      if (!urlChecked || !authResolved) setLoading(true)
+      else setLoading(false)
       return
     }
 
     ;(async () => {
       try {
         setLoading(true)
-        const response = await fetch("/api/trainer/members", {
+        const url = inaktivMode
+          ? `/api/trainer/members?inaktiv=1&today=${new Date().toISOString().slice(0, 10)}`
+          : "/api/trainer/members"
+        const response = await fetch(url, {
           cache: "no-store",
         })
         if (!response.ok) {
@@ -74,7 +95,7 @@ export default function TrainerMitgliederPage() {
         setLoading(false)
       }
     })()
-  }, [authResolved, trainerRole])
+  }, [authResolved, trainerRole, inaktivMode, urlChecked])
 
   useEffect(() => {
     if (!selectedMemberId || !trainerRole) {
@@ -145,8 +166,6 @@ export default function TrainerMitgliederPage() {
 
       return (
         getMemberDisplayName(member).toLowerCase().includes(trimmed) ||
-        (member.email ?? "").toLowerCase().includes(trimmed) ||
-        (member.phone ?? "").toLowerCase().includes(trimmed) ||
         (member.birthdate ?? "").includes(trimmed) ||
         (member.base_group ?? "").toLowerCase().includes(trimmed)
       )
@@ -201,18 +220,49 @@ export default function TrainerMitgliederPage() {
         </Button>
       </div>
 
+      {/* Mobile tab navigation */}
+      <div className="flex rounded-2xl border border-zinc-200 bg-zinc-100 p-1 xl:hidden">
+        <button
+          type="button"
+          className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition ${mobileTab === "suche" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
+          onClick={() => setMobileTab("suche")}
+        >
+          Suche
+        </button>
+        <button
+          type="button"
+          className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition ${mobileTab === "anwesenheit" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
+          onClick={() => setMobileTab("anwesenheit")}
+        >
+          Anwesenheit{selectedMemberId ? ` · ${getMemberDisplayName(members.find(m => m.id === selectedMemberId) ?? { id: selectedMemberId })}`.slice(0, 28) : ""}
+        </button>
+      </div>
+
       <div className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
+        <div className={mobileTab !== "suche" ? "hidden xl:block" : ""}>
         <Card className="rounded-[24px] border-0 shadow-sm">
           <CardHeader>
             <CardTitle>Mitglieder finden</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {inaktivMode && (
+              <div className="flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                <span>Inaktiv-Filter: Mitglieder, die 3–8 Wochen lang zuletzt da waren und seitdem fehlen.</span>
+                <button
+                  type="button"
+                  className="shrink-0 font-medium underline underline-offset-2"
+                  onClick={() => { setInaktivMode(false); setSelectedMemberId(""); setAttendanceRows([]); setMobileTab("suche") }}
+                >
+                  Alle anzeigen
+                </button>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Suche</Label>
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Name, Geburtsdatum, Telefon, E-Mail oder Gruppe"
+                placeholder="Name, Geburtsdatum oder Gruppe"
                 className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
               />
             </div>
@@ -252,12 +302,17 @@ export default function TrainerMitgliederPage() {
                           ? "border-[#154c83] bg-[#eef4fb]"
                           : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50"
                       }`}
-                      onClick={() => setSelectedMemberId(member.id)}
+                      onClick={() => { setSelectedMemberId(member.id); setMobileTab("anwesenheit") }}
                     >
                       <div className="font-semibold text-zinc-900">{getMemberDisplayName(member)}</div>
                       <div className="mt-1 text-sm text-zinc-600">
                         {formatIsoDateForDisplay(member.birthdate) || "Geburtsdatum offen"} · {member.base_group || "Keine Stammgruppe"}
                       </div>
+                      {member.lastCheckin ? (
+                        <div className="mt-1 text-xs text-amber-700">
+                          Zuletzt: {formatIsoDateForDisplay(member.lastCheckin)} · Seit {daysSince(member.lastCheckin)} Tagen · {member.recentCheckinCount ?? 0}× vorher
+                        </div>
+                      ) : null}
                     </button>
                   )
                 })}
@@ -265,15 +320,27 @@ export default function TrainerMitgliederPage() {
             )}
           </CardContent>
         </Card>
+        </div>
 
+        <div className={mobileTab !== "anwesenheit" ? "hidden xl:block" : ""}>
         <Card className="rounded-[24px] border-0 shadow-sm">
           <CardHeader>
             <CardTitle>Anwesenheit</CardTitle>
           </CardHeader>
           <CardContent>
             {!selectedMember ? (
-              <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">
-                Links ein Mitglied auswählen, um den Anwesenheitsverlauf zu sehen.
+              <div className="space-y-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-2xl xl:hidden"
+                  onClick={() => setMobileTab("suche")}
+                >
+                  ← Zurück zur Suche
+                </Button>
+                <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">
+                  Zuerst ein Mitglied auswählen, um den Anwesenheitsverlauf zu sehen.
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
@@ -281,9 +348,6 @@ export default function TrainerMitgliederPage() {
                   <div className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(selectedMember)}</div>
                   <div className="mt-2 text-sm text-zinc-600">
                     Geburtsdatum: {formatIsoDateForDisplay(selectedMember.birthdate) || "—"} · Stammgruppe: {selectedMember.base_group || "—"}
-                  </div>
-                  <div className="mt-1 text-sm text-zinc-600">
-                    Kontakt: {selectedMember.phone || "—"} · {selectedMember.email || "—"}
                   </div>
                 </div>
 
@@ -315,7 +379,7 @@ export default function TrainerMitgliederPage() {
                         <TableHead>Datum</TableHead>
                         <TableHead>Uhrzeit</TableHead>
                         <TableHead>Gruppe</TableHead>
-                        <TableHead className="text-right">Aktion</TableHead>
+                        {isAdmin ? <TableHead className="text-right">Aktion</TableHead> : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -324,19 +388,21 @@ export default function TrainerMitgliederPage() {
                           <TableCell>{row.date}</TableCell>
                           <TableCell>{row.time}</TableCell>
                           <TableCell>{row.group_name}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="rounded-2xl"
-                              disabled={deletingAttendanceId === row.id}
-                              onClick={() => {
-                                void handleDeleteAttendance(row)
-                              }}
-                            >
-                              {deletingAttendanceId === row.id ? "Entfernt..." : "Entfernen"}
-                            </Button>
-                          </TableCell>
+                          {isAdmin ? (
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="rounded-2xl"
+                                disabled={deletingAttendanceId === row.id}
+                                onClick={() => {
+                                  void handleDeleteAttendance(row)
+                                }}
+                              >
+                                {deletingAttendanceId === row.id ? "Entfernt..." : "Entfernen"}
+                              </Button>
+                            </TableCell>
+                          ) : null}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -346,6 +412,7 @@ export default function TrainerMitgliederPage() {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   )

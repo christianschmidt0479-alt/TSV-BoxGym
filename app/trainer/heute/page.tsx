@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
 import { sessions } from "@/lib/boxgymSessions"
 import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { getMemberCheckinModeLabel } from "@/lib/memberCheckin"
@@ -69,10 +69,11 @@ function getDayKey(dateString: string) {
 }
 
 export default function TrainerHeutePage() {
-  const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
+  const { resolved: authResolved, role: trainerRole, accountRole } = useTrainerAccess()
   const [loading, setLoading] = useState(true)
   const [todayCheckins, setTodayCheckins] = useState<CheckinRow[]>([])
   const [now, setNow] = useState<Date | null>(null)
+  const [groupFilter, setGroupFilter] = useState("alle")
   const today = useMemo(() => getTodayIsoDateInBerlin(), [])
 
   useEffect(() => {
@@ -150,6 +151,22 @@ export default function TrainerHeutePage() {
       trialCount: rows.filter((row) => getRelatedMember(row.members)?.is_trial).length,
     }
   }, [activeSession, todayCheckins])
+
+  const groupTabs = useMemo(() => {
+    const sessionGroups = todaysSessions.map((s) => s.group)
+    const extraGroups: string[] = []
+    for (const row of todayCheckins) {
+      if (!sessionGroups.includes(row.group_name) && !extraGroups.includes(row.group_name)) {
+        extraGroups.push(row.group_name)
+      }
+    }
+    return ["alle", ...sessionGroups, ...extraGroups]
+  }, [todaysSessions, todayCheckins])
+
+  const filteredCheckins = useMemo(() => {
+    if (groupFilter === "alle") return todayCheckins
+    return todayCheckins.filter((row) => row.group_name === groupFilter)
+  }, [groupFilter, todayCheckins])
 
   if (!authResolved) {
     return <div className="text-sm text-zinc-500">Zugriff wird geprüft...</div>
@@ -260,54 +277,77 @@ export default function TrainerHeutePage() {
               <div className="font-semibold text-zinc-900">Mitglieder suchen</div>
               <div className="mt-1 text-sm text-zinc-600">Anwesenheit einzelner Sportler ansehen.</div>
             </Link>
-            <Link href="/verwaltung/checkins" className="block rounded-3xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-[#154c83] hover:bg-white">
-              <div className="font-semibold text-zinc-900">Check-ins öffnen</div>
-              <div className="mt-1 text-sm text-zinc-600">Tageslisten und Verlauf im Verwaltungsbereich.</div>
+            <Link href="/trainer/mitglieder?filter=inaktiv" className="block rounded-3xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-[#154c83] hover:bg-white">
+              <div className="font-semibold text-zinc-900">Inaktive anzeigen</div>
+              <div className="mt-1 text-sm text-zinc-600">Sportler die 3+ Wochen fehlen, aber vorher aktiv waren.</div>
             </Link>
+            {accountRole === "admin" ? (
+              <Link href="/verwaltung/checkins" className="block rounded-3xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-[#154c83] hover:bg-white">
+                <div className="font-semibold text-zinc-900">Check-ins öffnen</div>
+                <div className="mt-1 text-sm text-zinc-600">Tageslisten und Verlauf im Verwaltungsbereich.</div>
+              </Link>
+            ) : null}
           </CardContent>
         </Card>
       </div>
 
       <Card className="rounded-[24px] border-0 shadow-sm">
-        <CardHeader>
-          <CardTitle>Check-ins heute</CardTitle>
+        <CardHeader className="space-y-3">
+          <div className="flex items-center justify-between">
+            <CardTitle>Check-ins heute</CardTitle>
+            {!loading && todayCheckins.length > 0 ? (
+              <span className="text-sm text-zinc-500">{filteredCheckins.length} von {todayCheckins.length}</span>
+            ) : null}
+          </div>
+          {!loading && groupTabs.length > 1 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {groupTabs.map((tab) => {
+                const count = tab === "alle" ? todayCheckins.length : todayCheckins.filter((r) => r.group_name === tab).length
+                const isActiveGroup = activeSession?.group === tab
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                      groupFilter === tab
+                        ? "bg-[#154c83] text-white"
+                        : "border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-white"
+                    }`}
+                    onClick={() => setGroupFilter(tab)}
+                  >
+                    {tab === "alle" ? "Alle" : tab}
+                    {isActiveGroup ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> : null}
+                    <span className={groupFilter === tab ? "text-white/70" : "text-zinc-400"}>({count})</span>
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Check-ins werden geladen...</div>
+          ) : filteredCheckins.length === 0 ? (
+            <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">
+              {groupFilter === "alle" ? "Heute liegen noch keine Check-ins vor." : `Für \u201e${groupFilter}\u201c sind heute keine Check-ins vorhanden.`}
+            </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Zeitpunkt</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Gruppe</TableHead>
-                  <TableHead>Modus</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {todayCheckins.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-zinc-500">
-                      Heute liegen noch keine Check-ins vor.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  todayCheckins.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell>{row.date} · {row.time ?? "—"}</TableCell>
-                      <TableCell className="font-medium">{getMemberDisplayName(row.members)}</TableCell>
-                      <TableCell>{row.group_name}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={getCheckinModeBadgeClassName(row.checkin_mode)}>
-                          {getMemberCheckinModeLabel(row.checkin_mode)}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+            <div className="space-y-2">
+              {filteredCheckins.map((row) => (
+                <div key={row.id} className="flex items-center gap-3 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3">
+                  <div className="w-12 shrink-0 font-mono text-sm text-zinc-400">{row.time ?? "—"}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-zinc-900">{getMemberDisplayName(row.members)}</div>
+                    {groupFilter === "alle" ? (
+                      <div className="mt-0.5 text-xs text-zinc-500">{row.group_name}</div>
+                    ) : null}
+                  </div>
+                  <Badge variant="outline" className={getCheckinModeBadgeClassName(row.checkin_mode)}>
+                    {getMemberCheckinModeLabel(row.checkin_mode)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

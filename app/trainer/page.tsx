@@ -2,16 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { ArrowRight, ClipboardList, ShieldCheck } from "lucide-react"
+import { ArrowRight, ClipboardList } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InfoHint } from "@/components/ui/info-hint"
 import { sessions } from "@/lib/boxgymSessions"
 import { formatIsoDateForDisplay, getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { compareTrainingGroupOrder, normalizeTrainingGroup } from "@/lib/trainingGroups"
-import { clearTrainerAccessSession } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 
 type CheckinRow = {
@@ -179,30 +176,19 @@ function ActionListCard({
 }
 
 export default function TrainerDashboardPage() {
-  const router = useRouter()
   const {
     resolved: authResolved,
     role: trainerRole,
     accountRole,
-    accountEmail,
-    accountFirstName,
-    accountLastName,
   } = useTrainerAccess()
   const [loading, setLoading] = useState(true)
   const [todayCheckins, setTodayCheckins] = useState<CheckinRow[]>([])
   const [todayBirthdays, setTodayBirthdays] = useState<TodayBirthdayRow[]>([])
   const [birthdayCheckins, setBirthdayCheckins] = useState<BirthdayCheckinRow[]>([])
   const [memberRows, setMemberRows] = useState<MemberRow[]>([])
+  const [inactiveSinceThreeWeeks, setInactiveSinceThreeWeeks] = useState(0)
   const [now, setNow] = useState<Date | null>(null)
   const today = useMemo(() => getTodayIsoDateInBerlin(), [])
-
-  const sessionLabel = useMemo(() => {
-    const fullName = `${accountFirstName} ${accountLastName}`.trim()
-    const roleLabel = accountRole === "admin" ? "Admin" : "Trainer"
-    if (fullName) return `${fullName} · ${roleLabel}`
-    if (accountEmail) return `${accountEmail} · ${roleLabel}`
-    return roleLabel
-  }, [accountEmail, accountFirstName, accountLastName, accountRole])
 
   useEffect(() => {
     if (!authResolved || !trainerRole) {
@@ -225,12 +211,14 @@ export default function TrainerDashboardPage() {
           todayBirthdays: TodayBirthdayRow[]
           birthdayCheckins: BirthdayCheckinRow[]
           memberRows: MemberRow[]
+          inactiveSinceThreeWeeks: number
         }
 
         setTodayCheckins(payload.todayCheckins ?? [])
         setTodayBirthdays(payload.todayBirthdays ?? [])
         setBirthdayCheckins(payload.birthdayCheckins ?? [])
         setMemberRows(payload.memberRows ?? [])
+        setInactiveSinceThreeWeeks(payload.inactiveSinceThreeWeeks ?? 0)
       } finally {
         setLoading(false)
       }
@@ -409,90 +397,53 @@ export default function TrainerDashboardPage() {
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
             Nur mit Trainer- oder Adminzugang.
           </div>
-          <Button asChild className="rounded-2xl">
-            <Link href="/">Zur Startseite</Link>
-          </Button>
+          <Link href="/" className="inline-flex items-center justify-center rounded-2xl bg-[#154c83] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123d69]">Zur Startseite</Link>
         </CardContent>
       </Card>
     )
   }
 
-  async function handleLogout() {
-    await clearTrainerAccessSession()
-    router.replace("/")
-    router.refresh()
-  }
-
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-3">
-          <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-700">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            {trainerRole === "admin" ? "Admin mit Trainerzugriff" : "Trainerzugriff aktiv"}
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Trainerbereich</h1>
-            <p className="mt-1 text-sm leading-6 text-zinc-500">
-              Tagesüberblick, laufender Betrieb und getrennte Aktionen.
-            </p>
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-600 shadow-sm">
-            <span>Angemeldet als</span>
-            <span className="font-semibold text-zinc-900">{sessionLabel}</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Button variant="outline" className="rounded-2xl" onClick={() => void handleLogout()}>
-            Ausloggen
-          </Button>
-          <Button asChild variant="outline" className="rounded-2xl">
-            <Link href="/">Zur Startseite</Link>
-          </Button>
-        </div>
-      </div>
-
-      <section className="space-y-4">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-zinc-900">Tagesübersicht</h2>
-          <p className="text-sm text-zinc-500">Die wichtigsten Werte für heute, kompakt und direkt lesbar.</p>
-        </div>
-
-        {todayBirthdays.length > 0 ? (
-          <Card className="rounded-[24px] border-0 shadow-sm">
-            <CardHeader className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle>Heute Geburtstag</CardTitle>
-                <Badge tone="amber">{todayBirthdays.length}</Badge>
-                {checkedInTodayBirthdays.length > 0 ? <Badge tone="emerald">{`${checkedInTodayBirthdays.length} schon da`}</Badge> : null}
-                {pendingTodayBirthdays.length > 0 ? <Badge>{`${pendingTodayBirthdays.length} noch offen`}</Badge> : null}
-              </div>
-              <div className="text-sm text-zinc-500">
-                Dieser Hinweis erscheint direkt beim Login. Pro Karte ist sichtbar, ob das Geburtstagskind heute schon eingecheckt hat.
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {todayBirthdays.map((entry) => (
-                <div key={entry.id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <div className="font-semibold">{entry.display_name}</div>
-                      <div className="mt-1 text-sm text-amber-900">
-                        {formatIsoDateForDisplay(entry.birthdate) || "Geburtsdatum offen"}
-                        {entry.base_group ? ` · ${entry.base_group}` : ""}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <Badge tone="amber">{`Heute ${entry.turning_age}`}</Badge>
-                      {birthdayCheckinMemberIds.has(entry.id) ? <Badge tone="emerald">Eingecheckt</Badge> : <Badge>Noch nicht da</Badge>}
+      {/* Geburtstage – nur einmal, mit Check-in-Status */}
+      {todayBirthdays.length > 0 ? (
+        <Card className="rounded-[24px] border-0 shadow-sm">
+          <CardHeader className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>Heute Geburtstag</CardTitle>
+              <Badge tone="amber">{todayBirthdays.length}</Badge>
+              {checkedInTodayBirthdays.length > 0 ? <Badge tone="emerald">{`${checkedInTodayBirthdays.length} schon da`}</Badge> : null}
+              {pendingTodayBirthdays.length > 0 ? <Badge>{`${pendingTodayBirthdays.length} noch offen`}</Badge> : null}
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {todayBirthdays.map((entry) => (
+              <div key={entry.id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="font-semibold">{entry.display_name}</div>
+                    <div className="mt-1 text-sm text-amber-900">
+                      {formatIsoDateForDisplay(entry.birthdate) || "Geburtsdatum offen"}
+                      {entry.base_group ? ` · ${entry.base_group}` : ""}
                     </div>
                   </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Badge tone="amber">{`Heute ${entry.turning_age}`}</Badge>
+                    {birthdayCheckinMemberIds.has(entry.id) ? <Badge tone="emerald">Eingecheckt</Badge> : <Badge>Noch nicht da</Badge>}
+                  </div>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
+      {/* 4 KPI-Karten */}
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-zinc-900">Heute</h2>
+          <p className="text-sm text-zinc-500">Kompakte Zahlen für den laufenden Tag.</p>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <TrainerStat
             label="Check-ins heute"
@@ -519,55 +470,37 @@ export default function TrainerDashboardPage() {
             hint="Offene Hinweise"
           />
         </div>
+
+        {!loading && inactiveSinceThreeWeeks > 0 ? (
+          <div className="flex flex-col gap-3 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              <span className="font-semibold">{inactiveSinceThreeWeeks} {inactiveSinceThreeWeeks === 1 ? "Sportler" : "Sportler"}</span>
+              {" "}
+              {inactiveSinceThreeWeeks === 1 ? "war" : "waren"} in den letzten 3 Wochen nicht mehr im Training – {inactiveSinceThreeWeeks === 1 ? "war" : "waren"} davor aber aktiv.
+            </span>
+            <Link
+              href="/trainer/mitglieder?filter=inaktiv"
+              className="shrink-0 rounded-xl bg-amber-100 px-3 py-1.5 font-medium text-amber-900 hover:bg-amber-200 transition"
+            >
+              Liste anzeigen →
+            </Link>
+          </div>
+        ) : null}
       </section>
 
+      {/* Check-in-Gruppenübersicht + Tagesplan neben­einander */}
       <section className="space-y-4">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-zinc-900">Laufender Betrieb</h2>
-          <p className="text-sm text-zinc-500">Heutige Check-ins und offene Punkte als ruhige Kartenansicht.</p>
+          <h2 className="text-lg font-semibold text-zinc-900">Tagesüberblick</h2>
+          <p className="text-sm text-zinc-500">Check-ins nach Gruppe und geplante Einheiten auf einen Blick.</p>
         </div>
-
-        {birthdayCheckins.length > 0 ? (
-          <Card className="rounded-[24px] border-0 shadow-sm">
-            <CardHeader className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle>Heute Geburtstag und eingecheckt</CardTitle>
-                <Badge tone="amber">{birthdayCheckins.length}</Badge>
-              </div>
-              <div className="text-sm text-zinc-500">
-                Diese Liste zeigt nur Geburtstagskinder, die heute bereits erfolgreich eingecheckt wurden.
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {birthdayCheckins.map((entry) => (
-                <div key={entry.member_id} className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <div className="font-semibold">{entry.display_name}</div>
-                      <div className="mt-1 text-sm text-amber-900">
-                        {formatIsoDateForDisplay(entry.birthdate) || "Geburtsdatum offen"} · {entry.group_name}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <Badge tone="amber">{`Heute ${entry.turning_age}`}</Badge>
-                      <Badge tone="emerald">Eingecheckt</Badge>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
 
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <Card className="rounded-[24px] border-0 shadow-sm">
             <CardHeader className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
-                <CardTitle>Heutige Check-ins</CardTitle>
-                {previousSession ? <Badge>{`Vorherige Einheit ${previousSessionCount}`}</Badge> : null}
-              </div>
-              <div className="text-sm text-zinc-500">
-                Gruppenübersicht für heute, kompakt und ohne Tabellenansicht.
+                <CardTitle>Check-ins nach Gruppe</CardTitle>
+                {previousSession ? <Badge>{`Vorherige Einheit: ${previousSessionCount}`}</Badge> : null}
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -584,23 +517,22 @@ export default function TrainerDashboardPage() {
                         <div className="flex flex-wrap gap-2">
                           <Badge>{`${entry.count} gesamt`}</Badge>
                           <Badge tone="emerald">{`${entry.members} Mitglieder`}</Badge>
-                          <Badge tone="amber">{`${entry.trial} Probetraining`}</Badge>
+                          {entry.trial > 0 ? <Badge tone="amber">{`${entry.trial} Probe`}</Badge> : null}
                         </div>
                       </div>
                       {activeSession?.group === entry.group ? (
                         <Badge tone="blue">Läuft gerade</Badge>
                       ) : previousSession?.group === entry.group ? (
-                        <Badge>Vorherige Einheit</Badge>
+                        <Badge>Vorherige</Badge>
                       ) : null}
                     </div>
                   </div>
                 ))
               )}
-
               <div className="rounded-3xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
                 <div className="flex items-center gap-2">
-                  <span>Normale Gruppen laufen ohne eigenen Trainer-Check-in.</span>
-                  <InfoHint text="Für normale Trainingsgruppen gibt es hier keinen regulären Trainer-Check-in. Falls bei einzelnen Sportlern eine Ausnahme nötig ist, wird das in der Mitgliederverwaltung markiert." />
+                  <span>Detaillierte Check-in-Liste auf der Seite &quot;Heute&quot;.</span>
+                  <InfoHint text="Für normale Trainingsgruppen gibt es keinen eigenen Trainer-Check-in. Falls bei einzelnen Sportlern eine Ausnahme nötig ist, wird das in der Mitgliederverwaltung markiert." />
                 </div>
               </div>
             </CardContent>
@@ -610,57 +542,25 @@ export default function TrainerDashboardPage() {
             <Card className="rounded-[24px] border-0 shadow-sm">
               <CardHeader className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle>Mitgliederhinweise</CardTitle>
-                  <Badge tone="blue">{loading ? "…" : `${memberRows.length} sichtbar`}</Badge>
-                </div>
-                <div className="text-sm text-zinc-500">
-                  Hinweise und offene Punkte im aktuellen Mitgliederbestand.
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {assistSummary.length === 0 ? (
-                  <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">
-                    Aktuell keine markierten Mitglieder mit Sonderoption.
-                  </div>
-                ) : (
-                  assistSummary.map((entry) => (
-                    <div key={entry.group} className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white p-4">
-                      <div className="space-y-1">
-                        <div className="font-medium text-zinc-900">{entry.group}</div>
-                        <div className="text-sm text-zinc-500">Mitglieder mit Hinweis</div>
-                      </div>
-                      <Badge tone="amber">{entry.count}</Badge>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-[24px] border-0 shadow-sm">
-              <CardHeader className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
                   <CardTitle>Heute im Plan</CardTitle>
                   <Badge>{loading ? "…" : `${todaysSessions.length} Einheiten`}</Badge>
-                </div>
-                <div className="text-sm text-zinc-500">
-                  Die regulären Einheiten aus dem heutigen Wochenplan.
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {todaysSessions.length === 0 ? (
                   <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">
-                    Heute sind keine regulären Einheiten im Wochenplan.
+                    Heute keine regulären Einheiten im Plan.
                   </div>
                 ) : (
                   todaysSessions.map((session) => (
                     <div key={session.id} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                        <div className="font-semibold text-zinc-900">{session.group}</div>
-                        <div className="text-sm text-zinc-500">
-                          {session.dayKey} · {session.start} - {session.end}
+                          <div className="font-semibold text-zinc-900">{session.group}</div>
+                          <div className="text-sm text-zinc-500">
+                            {session.dayKey} · {session.start} – {session.end}
+                          </div>
                         </div>
-                      </div>
                         {activeSession?.id === session.id ? (
                           <Badge tone="blue">Aktiv</Badge>
                         ) : previousSession?.id === session.id ? (
@@ -672,10 +572,30 @@ export default function TrainerDashboardPage() {
                 )}
               </CardContent>
             </Card>
+
+            {assistSummary.length > 0 ? (
+              <Card className="rounded-[24px] border-0 shadow-sm">
+                <CardHeader className="space-y-2">
+                  <CardTitle>Mitgliederhinweise</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {assistSummary.map((entry) => (
+                    <div key={entry.group} className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white p-4">
+                      <div className="space-y-1">
+                        <div className="font-medium text-zinc-900">{entry.group}</div>
+                        <div className="text-sm text-zinc-500">Mitglieder mit Hinweis</div>
+                      </div>
+                      <Badge tone="amber">{entry.count}</Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ) : null}
           </div>
         </div>
       </section>
 
+      {/* Aktionen */}
       <section className="space-y-4">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold text-zinc-900">Aktionen</h2>
