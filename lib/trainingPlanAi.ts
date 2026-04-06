@@ -1,3 +1,5 @@
+import { reportAppError } from "@/lib/appErrorReporter"
+
 // ─── Typen ────────────────────────────────────────────────────────────────────
 
 export type TrainingPlanDrill = {
@@ -643,7 +645,24 @@ export async function generateTrainingPlan(
   error?: string
 }> {
   const apiKey = getOpenAiApiKey()
+  const model = getOpenAiModel()
+
+  // ─ ENV-Diagnose (───────────────────────────────────────────────────────────
   if (!apiKey) {
+    const missing = [
+      !process.env.OPENAI_API_KEY ? "OPENAI_API_KEY" : null,
+      !process.env.OPENAI_MODEL ? "OPENAI_MODEL (wird auf Default gefallen)" : null,
+    ]
+      .filter(Boolean)
+      .join(", ")
+    console.warn("[trainingPlanAi] OPENAI ENV missing:", missing)
+    void reportAppError(
+      "trainingPlanAi",
+      "openai_env_missing",
+      "medium",
+      new Error(`OPENAI ENV nicht gesetzt: ${missing}`),
+      { details: { missing, model } },
+    )
     return {
       plan: buildFallbackPlan(input),
       usedFallback: true,
@@ -651,8 +670,13 @@ export async function generateTrainingPlan(
     }
   }
 
+  if (!process.env.OPENAI_MODEL) {
+    console.warn("[trainingPlanAi] OPENAI_MODEL nicht gesetzt – nutze Default:", model)
+  }
+
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS)
+  const startTime = Date.now()
 
   let response: Response
   try {
@@ -663,7 +687,7 @@ export async function generateTrainingPlan(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: getOpenAiModel(),
+        model,
         input: [
           {
             role: "system",
@@ -680,18 +704,53 @@ export async function generateTrainingPlan(
     })
   } catch (error) {
     clearTimeout(timeoutId)
-    const msg = isAbortError(error) ? "OpenAI-Anfrage hat das Zeitlimit überschritten." : "OpenAI-Verbindungsfehler."
+    const durationMs = Date.now() - startTime
+    if (isAbortError(error)) {
+      const msg = `OpenAI-Anfrage hat das Zeitlimit überschritten (${durationMs} ms).`
+      console.warn("[trainingPlanAi] timeout:", durationMs, "ms")
+      void reportAppError(
+        "trainingPlanAi",
+        "openai_timeout",
+        "medium",
+        new Error(msg),
+        { details: { durationMs, model, group_key: input.group_key } },
+      )
+      return { plan: buildFallbackPlan(input), usedFallback: true, error: msg }
+    }
+    const msg = "OpenAI-Verbindungsfehler."
+    const errMsg = error instanceof Error ? error.message : String(error)
+    const errName = error instanceof Error ? error.name : "unknown"
+    console.warn("[trainingPlanAi] connection error:", errName, errMsg)
+    void reportAppError(
+      "trainingPlanAi",
+      "openai_connection_error",
+      "medium",
+      error,
+      { details: { durationMs, model, errName, group_key: input.group_key } },
+    )
     return { plan: buildFallbackPlan(input), usedFallback: true, error: msg }
   } finally {
     clearTimeout(timeoutId)
   }
 
+  const durationMs = Date.now() - startTime
+  console.info("[trainingPlanAi] OpenAI response received in", durationMs, "ms, status:", response.status)
+
   if (!response.ok) {
     const errText = await response.text().catch(() => "")
+    const msg = `OpenAI-Fehler ${response.status}: ${errText || "Unbekannter Fehler"}`
+    console.warn("[trainingPlanAi] API error:", response.status, errText)
+    void reportAppError(
+      "trainingPlanAi",
+      "openai_api_error",
+      "medium",
+      new Error(msg),
+      { details: { status: response.status, durationMs, model, group_key: input.group_key } },
+    )
     return {
       plan: buildFallbackPlan(input),
       usedFallback: true,
-      error: `OpenAI-Fehler ${response.status}: ${errText || "Unbekannter Fehler"}`,
+      error: msg,
     }
   }
 
@@ -699,11 +758,28 @@ export async function generateTrainingPlan(
   const raw = extractOpenAiText(payload)
 
   if (!raw) {
+    console.warn("[trainingPlanAi] empty response from OpenAI", { durationMs, model })
+    void reportAppError(
+      "trainingPlanAi",
+      "openai_empty_response",
+      "medium",
+      new Error("KI hat leere Antwort geliefert."),
+      { details: { durationMs, model, group_key: input.group_key } },
+    )
     return { plan: buildFallbackPlan(input), usedFallback: true, error: "KI hat leere Antwort geliefert." }
   }
 
   const parsed = parseGeneratedPlan(raw)
   if (!parsed) {
+    const preview = raw.slice(0, 200)
+    console.warn("[trainingPlanAi] JSON parse failed, preview:", preview)
+    void reportAppError(
+      "trainingPlanAi",
+      "openai_invalid_json",
+      "medium",
+      new Error("KI-Antwort kein valides JSON."),
+      { details: { durationMs, model, preview, group_key: input.group_key } },
+    )
     return {
       plan: buildFallbackPlan(input),
       usedFallback: true,
