@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
+
+// Vercel: Standard-Serverless-Timeout (10–15 s) reicht nicht für OpenAI-Antworten (~16–28 s).
+// 60 s gibt genug Puffer auch für große Prompts mit max_output_tokens=2000.
+export const maxDuration = 60
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { generateTrainingPlan, type TrainingPlanInput, type TrainerProfileForAi } from "@/lib/trainingPlanAi"
 import { updateTrainingPlanGenerated } from "@/lib/trainingPlansDb"
