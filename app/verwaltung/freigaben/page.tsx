@@ -162,6 +162,7 @@ export default function FreigabenPage() {
   const [recentlyTrainerSent, setRecentlyTrainerSent] = useState<Record<string, boolean>>({})
   const [approvingTrainer, setApprovingTrainer] = useState<Record<string, boolean>>({})
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null)
+  const [deletingTrainerId, setDeletingTrainerId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [emailFilter, setEmailFilter] = useState("alle")
   const [toast, setToast] = useState<ToastState | null>(null)
@@ -361,6 +362,32 @@ export default function FreigabenPage() {
       showToast(error instanceof Error ? error.message : "Bestätigungslink konnte nicht gesendet werden.", "error")
     } finally {
       setResendingTrainerVerification((prev) => ({ ...prev, [trainer.id]: false }))
+    }
+  }
+
+  async function deletePendingTrainer(trainer: PendingTrainerRecord) {
+    const name = getTrainerDisplayName(trainer)
+    const confirmed = window.confirm(
+      `Offenen Trainerzugang löschen?\n\nName: ${name}\nE-Mail: ${trainer.email ?? "—"}\n\nEs wird nur dieser noch nicht freigegebene Zugang entfernt.\nFreigegebene Trainer und Admin-Konten sind nicht betroffen.`
+    )
+    if (!confirmed) return
+    setDeletingTrainerId(trainer.id)
+    try {
+      const response = await fetch(`/api/admin/trainer-account/${trainer.id}`, { method: "DELETE" })
+      if (!response.ok) {
+        const text = await response.text()
+        let msg = text
+        try { msg = (JSON.parse(text) as { details?: string; error?: string }).details ?? (JSON.parse(text) as { error?: string }).error ?? text } catch { /* plain text */ }
+        showToast(`Fehler: ${msg}`, "error")
+        return
+      }
+      await loadPending()
+      showToast(`Trainerzugang "${name}" wurde gelöscht.`, "success")
+    } catch (error) {
+      console.error(error)
+      showToast("Fehler beim Löschen des Trainerzugangs.", "error")
+    } finally {
+      setDeletingTrainerId(null)
     }
   }
 
@@ -1202,6 +1229,15 @@ export default function FreigabenPage() {
 
                     <Button asChild variant="outline" className="rounded-2xl">
                       <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="rounded-2xl border-red-200 text-red-700 hover:bg-red-50"
+                      disabled={deletingTrainerId === trainer.id}
+                      onClick={() => void deletePendingTrainer(trainer)}
+                    >
+                      {deletingTrainerId === trainer.id ? "Wird gelöscht…" : "Löschen"}
                     </Button>
                   </div>
                 </div>
