@@ -2313,12 +2313,12 @@ export default function TrainingsplanungPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="tp-age-group">Altersgruppe</Label>
-                <Select value={form.age_group} onValueChange={(v) => setField("age_group", v)}>
+                <Select value={form.age_group || "__none__"} onValueChange={(v) => setField("age_group", v === "__none__" ? "" : v)}>
                   <SelectTrigger id="tp-age-group">
                     <SelectValue placeholder="Altersgruppe wählen…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— keine Angabe —</SelectItem>
+                    <SelectItem value="__none__">— keine Angabe —</SelectItem>
                     {AGE_GROUP_OPTIONS.map((opt) => (
                       <SelectItem key={opt} value={opt}>
                         {opt}
@@ -2329,12 +2329,12 @@ export default function TrainingsplanungPage() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="tp-level">Leistungsniveau</Label>
-                <Select value={form.performance_level} onValueChange={(v) => setField("performance_level", v)}>
+                <Select value={form.performance_level || "__none__"} onValueChange={(v) => setField("performance_level", v === "__none__" ? "" : v)}>
                   <SelectTrigger id="tp-level">
                     <SelectValue placeholder="Niveau wählen…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— keine Angabe —</SelectItem>
+                    <SelectItem value="__none__">— keine Angabe —</SelectItem>
                     {PERFORMANCE_LEVEL_OPTIONS.map((opt) => (
                       <SelectItem key={opt} value={opt}>
                         {opt}
@@ -2401,12 +2401,12 @@ export default function TrainingsplanungPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="tp-focus">Technischer Fokus</Label>
-                <Select value={form.training_focus} onValueChange={(v) => setField("training_focus", v)}>
+                <Select value={form.training_focus || "__none__"} onValueChange={(v) => setField("training_focus", v === "__none__" ? "" : v)}>
                   <SelectTrigger id="tp-focus">
                     <SelectValue placeholder="Schwerpunkt wählen…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— keine Angabe —</SelectItem>
+                    <SelectItem value="__none__">— keine Angabe —</SelectItem>
                     {TRAINING_FOCUS_OPTIONS.map((opt) => (
                       <SelectItem key={opt} value={opt}>
                         {opt}
@@ -2417,12 +2417,12 @@ export default function TrainingsplanungPage() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="tp-mode">Trainingsmodus</Label>
-                <Select value={form.training_mode} onValueChange={(v) => setField("training_mode", v)}>
+                <Select value={form.training_mode || "__none__"} onValueChange={(v) => setField("training_mode", v === "__none__" ? "" : v)}>
                   <SelectTrigger id="tp-mode">
                     <SelectValue placeholder="Modus wählen…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— keine Angabe —</SelectItem>
+                    <SelectItem value="__none__">— keine Angabe —</SelectItem>
                     {TRAINING_MODE_OPTIONS.map((opt) => (
                       <SelectItem key={opt} value={opt}>
                         {opt}
