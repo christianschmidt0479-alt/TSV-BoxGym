@@ -38,6 +38,8 @@ export default function MemberCheckinPage() {
   const [rememberedBaseGroup, setRememberedBaseGroup] = useState("")
   const [rememberedCompetitionMember, setRememberedCompetitionMember] = useState(false)
   const [rememberedWeight, setRememberedWeight] = useState("")
+  const [checkinDone, setCheckinDone] = useState("")
+  const [checkinError, setCheckinError] = useState("")
 
   const liveDate = now ? todayStringFromDate(now) : todayString()
 
@@ -139,6 +141,11 @@ export default function MemberCheckinPage() {
 
   const hasRememberedDevice = Boolean(rememberedMemberId && rememberedFirstName && rememberedLastName)
 
+  function showCheckinSuccess(name?: string) {
+    setCheckinDone(name ? `Geschafft! ${name} ist eingecheckt.` : "Geschafft! Check-in eingetragen.")
+    window.setTimeout(() => setCheckinDone(""), 4000)
+  }
+
   function updateRememberedDevice(payload: {
     member: {
       id: string
@@ -170,9 +177,10 @@ export default function MemberCheckinPage() {
     const pin = memberPin.trim()
 
     if (!email || !pin) {
-      alert("Bitte E-Mail und Passwort eingeben.")
+      setCheckinError("Bitte E-Mail und Passwort eingeben.")
       return
     }
+    setCheckinError("")
 
     try {
       setDbLoading(true)
@@ -216,7 +224,7 @@ export default function MemberCheckinPage() {
         updateRememberedDevice({ member: result.member })
       }
 
-      alert("Check-in erfolgreich gespeichert.")
+      showCheckinSuccess(result.member?.firstName || undefined)
       setMemberEmail("")
       setMemberPin("")
       setMemberWeight("")
@@ -268,7 +276,7 @@ export default function MemberCheckinPage() {
 
       updateRememberedDevice({ member: result.member })
       setRememberedWeight("")
-      alert("Check-in erfolgreich gespeichert.")
+      showCheckinSuccess(result.member.firstName)
     } catch (error) {
       console.error(error)
       alert("Fehler beim Schnell-Check-in.")
@@ -350,6 +358,11 @@ export default function MemberCheckinPage() {
             <CardTitle>Mitglieder-Check-in</CardTitle>
           </CardHeader>
           <CardContent>
+            {checkinDone ? (
+              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                ✓ {checkinDone}
+              </div>
+            ) : null}
             {hasRememberedDevice ? (
               <div className="mb-5 rounded-[24px] border border-[#cfe0ef] bg-[#f4f9ff] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -362,7 +375,7 @@ export default function MemberCheckinPage() {
                       Als {rememberedFirstName} {rememberedLastName} einchecken
                     </div>
                     <p className="mt-1 text-sm text-zinc-600">
-                      Dieses Gerät ist gespeichert. Ein Tap reicht für den nächsten Check-in.
+                      Dieses Gerät ist gespeichert. Ein Tap genügt.
                       {rememberedBaseGroup ? ` Gruppe: ${rememberedAssignment?.groupName || rememberedBaseGroup}.` : ""}
                     </p>
                   </div>
@@ -380,7 +393,7 @@ export default function MemberCheckinPage() {
                       placeholder="z. B. 72,4"
                       className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
                     />
-                    <div className="text-xs text-zinc-500">Für die L-Gruppe und für Sportler aus der Wettkampfliste ist das Gewicht auch im Schnell-Check-in Pflicht.</div>
+                    <div className="text-xs text-zinc-500">Pflichtfeld für L-Gruppe und Wettkampfsportler.</div>
                   </div>
                 ) : null}
 
@@ -426,7 +439,7 @@ export default function MemberCheckinPage() {
               <div className="space-y-2">
                 <Label>Gewicht in kg</Label>
                 <Input value={memberWeight} onChange={(e) => setMemberWeight(e.target.value)} placeholder="z. B. 72,4" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                <div className="text-xs text-zinc-500">Pflichtfeld nur für L-Gruppe und Wettkampfsportler.</div>
+                <div className="text-xs text-zinc-500">Pflichtfeld für L-Gruppe und Wettkampfsportler.</div>
               </div>
 
               <label className="flex items-start gap-3 rounded-2xl border border-[#d8e3ee] bg-zinc-50 p-3 text-sm text-zinc-700">
@@ -443,6 +456,11 @@ export default function MemberCheckinPage() {
               </label>
 
               <div className="sticky bottom-3 -mx-1 rounded-[24px] border border-[#d8e3ee] bg-white/95 p-2 shadow-lg backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+                {checkinError ? (
+                  <p className="mb-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 md:mb-3">
+                    {checkinError}
+                  </p>
+                ) : null}
                 <Button type="submit" className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading}>
                   {dbLoading ? "Speichert..." : "Mitglied einchecken"}
                 </Button>
