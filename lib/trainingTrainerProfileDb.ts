@@ -5,11 +5,43 @@ import { reportAppError } from "@/lib/appErrorReporter"
 
 export type TrainerProfile = {
   trainer_id: string
+  // Basis-Felder (seit v1)
   style: string | null
   strengths: string | null
   focus: string | null
   notes: string | null
+  // Erweiterte KI-Stammdaten (seit v2)
+  internal_label: string | null
+  trainer_license: string | null
+  trainer_experience_level: string | null
+  trainer_limitations: string | null
+  trainer_group_handling: string | null
+  trainer_pedagogy_notes: string | null
+  preferred_structure_level: string | null
+  admin_internal_notes: string | null
   updated_at: string
+}
+
+// Normalisiert einen DB-Rohwert – neue Felder default auf null falls Spalte noch fehlt
+function normalizeProfile(raw: unknown): TrainerProfile | null {
+  if (!raw || typeof raw !== "object") return null
+  const r = raw as Record<string, unknown>
+  return {
+    trainer_id: (r.trainer_id as string) ?? "",
+    style: (r.style as string | null) ?? null,
+    strengths: (r.strengths as string | null) ?? null,
+    focus: (r.focus as string | null) ?? null,
+    notes: (r.notes as string | null) ?? null,
+    internal_label: (r.internal_label as string | null) ?? null,
+    trainer_license: (r.trainer_license as string | null) ?? null,
+    trainer_experience_level: (r.trainer_experience_level as string | null) ?? null,
+    trainer_limitations: (r.trainer_limitations as string | null) ?? null,
+    trainer_group_handling: (r.trainer_group_handling as string | null) ?? null,
+    trainer_pedagogy_notes: (r.trainer_pedagogy_notes as string | null) ?? null,
+    preferred_structure_level: (r.preferred_structure_level as string | null) ?? null,
+    admin_internal_notes: (r.admin_internal_notes as string | null) ?? null,
+    updated_at: (r.updated_at as string) ?? new Date().toISOString(),
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -46,21 +78,31 @@ export async function getTrainerProfile(trainerId: string): Promise<TrainerProfi
       return null
     }
 
-    return data as TrainerProfile | null
+    return normalizeProfile(data)
   } catch (err) {
     void reportAppError("trainingTrainerProfileDb", "getTrainerProfile_exception", "low", err)
     return null
   }
 }
 
+export type UpsertTrainerProfileData = {
+  style?: string | null
+  strengths?: string | null
+  focus?: string | null
+  notes?: string | null
+  internal_label?: string | null
+  trainer_license?: string | null
+  trainer_experience_level?: string | null
+  trainer_limitations?: string | null
+  trainer_group_handling?: string | null
+  trainer_pedagogy_notes?: string | null
+  preferred_structure_level?: string | null
+  admin_internal_notes?: string | null
+}
+
 export async function upsertTrainerProfile(
   trainerId: string,
-  data: {
-    style?: string | null
-    strengths?: string | null
-    focus?: string | null
-    notes?: string | null
-  },
+  data: UpsertTrainerProfileData,
 ): Promise<TrainerProfile | null> {
   try {
     const supabase = getSupabase()
@@ -85,9 +127,35 @@ export async function upsertTrainerProfile(
       return null
     }
 
-    return result as TrainerProfile
+    return normalizeProfile(result)
   } catch (err) {
     void reportAppError("trainingTrainerProfileDb", "upsertTrainerProfile_exception", "medium", err)
     return null
+  }
+}
+
+export async function getAllTrainerProfiles(): Promise<TrainerProfile[]> {
+  try {
+    const supabase = getSupabase()
+    const { data, error } = await supabase
+      .from("training_trainer_profiles")
+      .select("*")
+      .order("updated_at", { ascending: false })
+
+    if (error) {
+      if (isMissingTableError(error)) return []
+      void reportAppError(
+        "trainingTrainerProfileDb",
+        "getAllTrainerProfiles_failed",
+        "low",
+        error,
+      )
+      return []
+    }
+
+    return ((data as unknown[]) ?? []).map(normalizeProfile).filter((p): p is TrainerProfile => p !== null)
+  } catch (err) {
+    void reportAppError("trainingTrainerProfileDb", "getAllTrainerProfiles_exception", "low", err)
+    return []
   }
 }

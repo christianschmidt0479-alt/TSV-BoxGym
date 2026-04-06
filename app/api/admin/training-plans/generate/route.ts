@@ -155,6 +155,13 @@ export async function POST(request: Request) {
                 strengths: rawProfile.strengths,
                 focus: rawProfile.focus,
                 notes: rawProfile.notes,
+                trainer_license: rawProfile.trainer_license,
+                trainer_experience_level: rawProfile.trainer_experience_level,
+                trainer_limitations: rawProfile.trainer_limitations,
+                trainer_group_handling: rawProfile.trainer_group_handling,
+                trainer_pedagogy_notes: rawProfile.trainer_pedagogy_notes,
+                preferred_structure_level: rawProfile.preferred_structure_level,
+                // admin_internal_notes wird bewusst NICHT an die KI übergeben
               }
             }
           }

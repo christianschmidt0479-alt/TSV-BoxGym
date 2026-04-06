@@ -21,6 +21,7 @@ import {
   Sparkles,
   Star,
   UserCheck,
+  Users,
   X,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -1289,11 +1290,13 @@ type TrainerProfileData = {
   strengths: string
   focus: string
   notes: string
+  trainer_license: string
+  trainer_experience_level: string
 }
 
 function TrainerProfileSection({ trainerId }: { trainerId: string }) {
   const [open, setOpen] = useState(false)
-  const [data, setData] = useState<TrainerProfileData>({ style: "", strengths: "", focus: "", notes: "" })
+  const [data, setData] = useState<TrainerProfileData>({ style: "", strengths: "", focus: "", notes: "", trainer_license: "", trainer_experience_level: "" })
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -1310,6 +1313,8 @@ function TrainerProfileSection({ trainerId }: { trainerId: string }) {
             strengths?: string | null
             focus?: string | null
             notes?: string | null
+            trainer_license?: string | null
+            trainer_experience_level?: string | null
           } | null
         } | null) => {
           if (res?.profile) {
@@ -1318,6 +1323,8 @@ function TrainerProfileSection({ trainerId }: { trainerId: string }) {
               strengths: res.profile.strengths ?? "",
               focus: res.profile.focus ?? "",
               notes: res.profile.notes ?? "",
+              trainer_license: res.profile.trainer_license ?? "",
+              trainer_experience_level: res.profile.trainer_experience_level ?? "",
             })
           }
           setLoaded(true)
@@ -1339,6 +1346,8 @@ function TrainerProfileSection({ trainerId }: { trainerId: string }) {
           strengths: data.strengths.trim() || null,
           focus: data.focus.trim() || null,
           notes: data.notes.trim() || null,
+          trainer_license: data.trainer_license.trim() || null,
+          trainer_experience_level: data.trainer_experience_level.trim() || null,
         }),
       })
       if (!res.ok) throw new Error((await res.text()) || "Fehler beim Speichern")
@@ -1374,11 +1383,37 @@ function TrainerProfileSection({ trainerId }: { trainerId: string }) {
       {open && (
         <CardContent className="space-y-3 border-t border-[#eff4fa] pt-4">
           <p className="text-xs text-zinc-500">
-            Diese Angaben werden bei der nächsten KI-Generierung als Feinsteuerung eingebunden – mit niedrigerer Priorität als Trainingsziel und Modus.
+            Diese Angaben werden bei der nächsten KI-Generierung als Feinsteuerung eingebunden.
+            Alle weiteren Felder →{" "}
+            <a href="/verwaltung/trainingsplanung/trainer-ki-profile" className="text-[#154c83] underline-offset-2 hover:underline">
+              Trainer-KI-Stammdaten verwalten
+            </a>
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <Label className="text-xs font-medium text-zinc-600">Stil</Label>
+              <Label className="text-xs font-medium text-zinc-600">Lizenz</Label>
+              <Input
+                value={data.trainer_license}
+                onChange={(e) => {
+                  setData((p) => ({ ...p, trainer_license: e.target.value.slice(0, 500) }))
+                  setSaveSuccess(false)
+                }}
+                placeholder="z. B. Trainer C DOSB, Trainer B Boxen"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-zinc-600">Erfahrungslevel</Label>
+              <Input
+                value={data.trainer_experience_level}
+                onChange={(e) => {
+                  setData((p) => ({ ...p, trainer_experience_level: e.target.value.slice(0, 500) }))
+                  setSaveSuccess(false)
+                }}
+                placeholder="z. B. 5 Jahre, Jugend + Erwachsene"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-zinc-600">Coaching-Stil</Label>
               <Input
                 value={data.style}
                 onChange={(e) => {
@@ -1400,7 +1435,7 @@ function TrainerProfileSection({ trainerId }: { trainerId: string }) {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-medium text-zinc-600">Schwerpunkt</Label>
+              <Label className="text-xs font-medium text-zinc-600">Boxspezifischer Fokus</Label>
               <Input
                 value={data.focus}
                 onChange={(e) => {
@@ -2260,14 +2295,21 @@ export default function TrainingsplanungPage() {
             Basisprofil bearbeiten
           </a>
         </p>
-        {/* Admin-Vorschau: Traineransicht Thomas */}
-        <div className="mt-3">
+        {/* Admin-Aktionen */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <a
             href="/verwaltung/trainingsplanung/trainer-vorschau"
             className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
           >
             <Eye className="h-3.5 w-3.5" />
             Traineransicht Thomas prüfen
+          </a>
+          <a
+            href="/verwaltung/trainingsplanung/trainer-ki-profile"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#d0dff0] bg-[#f0f6ff] px-3 py-1.5 text-xs font-medium text-[#154c83] hover:bg-[#e0edfb]"
+          >
+            <Users className="h-3.5 w-3.5" />
+            Trainer-KI-Stammdaten verwalten
           </a>
         </div>
       </div>

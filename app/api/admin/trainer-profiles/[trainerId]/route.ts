@@ -3,17 +3,26 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { getTrainerProfile, upsertTrainerProfile } from "@/lib/trainingTrainerProfileDb"
 
-const TEXT_MAX = 500
+const TEXT_MAX_SHORT = 500
+const TEXT_MAX_LONG = 1000
 
 type ProfileBody = {
   style?: unknown
   strengths?: unknown
   focus?: unknown
   notes?: unknown
+  internal_label?: unknown
+  trainer_license?: unknown
+  trainer_experience_level?: unknown
+  trainer_limitations?: unknown
+  trainer_group_handling?: unknown
+  trainer_pedagogy_notes?: unknown
+  preferred_structure_level?: unknown
+  admin_internal_notes?: unknown
 }
 
-function safeText(val: unknown): string | null {
-  if (typeof val === "string") return val.trim().slice(0, TEXT_MAX) || null
+function safeText(val: unknown, max = TEXT_MAX_SHORT): string | null {
+  if (typeof val === "string") return val.trim().slice(0, max) || null
   return null
 }
 
@@ -71,7 +80,15 @@ export async function PATCH(
       style: safeText(body.style),
       strengths: safeText(body.strengths),
       focus: safeText(body.focus),
-      notes: safeText(body.notes),
+      notes: safeText(body.notes, TEXT_MAX_LONG),
+      internal_label: safeText(body.internal_label),
+      trainer_license: safeText(body.trainer_license),
+      trainer_experience_level: safeText(body.trainer_experience_level),
+      trainer_limitations: safeText(body.trainer_limitations, TEXT_MAX_LONG),
+      trainer_group_handling: safeText(body.trainer_group_handling, TEXT_MAX_LONG),
+      trainer_pedagogy_notes: safeText(body.trainer_pedagogy_notes, TEXT_MAX_LONG),
+      preferred_structure_level: safeText(body.preferred_structure_level),
+      admin_internal_notes: safeText(body.admin_internal_notes, TEXT_MAX_LONG),
     })
 
     return NextResponse.json({ profile })

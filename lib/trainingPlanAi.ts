@@ -73,12 +73,21 @@ export type GymContext = {
   group_characteristics: string
 }
 
-// Optionales Trainer-KI-Profil (niedrige Priorität – nur Feinsteuerung des Stils)
+// Optionales Trainer-KI-Profil (niedrige Priorität – Feinsteuerung des Coaching-Stils)
+// ACHTUNG: admin_internal_notes wird bewusst NICHT übergeben – bleibt rein admin-intern.
 export type TrainerProfileForAi = {
+  // Basis (v1)
   style: string | null
   strengths: string | null
   focus: string | null
   notes: string | null
+  // Erweiterte KI-Stammdaten (v2)
+  trainer_license: string | null
+  trainer_experience_level: string | null
+  trainer_limitations: string | null
+  trainer_group_handling: string | null
+  trainer_pedagogy_notes: string | null
+  preferred_structure_level: string | null
 }
 
 // ─── OpenAI-Konfiguration ─────────────────────────────────────────────────────
@@ -522,15 +531,28 @@ function buildUserPrompt(input: TrainingPlanInput, trainerProfile?: TrainerProfi
   lines.push(`## Zusatzinfos / Rahmenbedingungen (situative Überlagerung)`)
   lines.push(input.ai_context?.trim() || "Keine weiteren Angaben.")
 
-  // Trainer-KI-Profil am Ende (niedrigste Priorität – nur Stil-Feinsteuerung)
-  if (trainerProfile && (trainerProfile.style || trainerProfile.strengths || trainerProfile.focus || trainerProfile.notes)) {
+  // Internes Trainer-KI-Profil am Ende (niedrigste Priorität – admin-verwaltet, nie für Trainer sichtbar)
+  const hasProfile = trainerProfile && (
+    trainerProfile.style || trainerProfile.strengths || trainerProfile.focus ||
+    trainerProfile.notes || trainerProfile.trainer_experience_level ||
+    trainerProfile.trainer_license || trainerProfile.trainer_limitations ||
+    trainerProfile.trainer_group_handling || trainerProfile.trainer_pedagogy_notes ||
+    trainerProfile.preferred_structure_level
+  )
+  if (hasProfile && trainerProfile) {
     lines.push(``)
-    lines.push(`## Trainerprofil (Feinsteuerung des Coaching-Stils – niedrige Priorität)`)
-    lines.push(`Diese Angaben beschreiben den durchführenden Trainer. Nur einbauen wo sinnvoll und passend.`)
-    if (trainerProfile.style) lines.push(`- Stil: ${trainerProfile.style}`)
+    lines.push(`## Internes Trainer-KI-Profil (Priorität 3 – Feinsteuerung des Coaching-Stils)`)
+    lines.push(`Diese Angaben beschreiben den durchführenden Trainer. Nur einbauen wo methodisch sinnvoll.`)
+    if (trainerProfile.trainer_license) lines.push(`- Lizenz: ${trainerProfile.trainer_license}`)
+    if (trainerProfile.trainer_experience_level) lines.push(`- Erfahrungslevel: ${trainerProfile.trainer_experience_level}`)
+    if (trainerProfile.style) lines.push(`- Coaching-Stil: ${trainerProfile.style}`)
     if (trainerProfile.strengths) lines.push(`- Stärken: ${trainerProfile.strengths}`)
-    if (trainerProfile.focus) lines.push(`- Schwerpunkt: ${trainerProfile.focus}`)
-    if (trainerProfile.notes) lines.push(`- Hinweise: ${trainerProfile.notes}`)
+    if (trainerProfile.focus) lines.push(`- Boxspezifischer Fokus: ${trainerProfile.focus}`)
+    if (trainerProfile.preferred_structure_level) lines.push(`- Bevorzugte Strukturierungstiefe: ${trainerProfile.preferred_structure_level}`)
+    if (trainerProfile.trainer_limitations) lines.push(`- Besonderheiten/Einschränkungen: ${trainerProfile.trainer_limitations}`)
+    if (trainerProfile.trainer_group_handling) lines.push(`- Gruppenführung: ${trainerProfile.trainer_group_handling}`)
+    if (trainerProfile.trainer_pedagogy_notes) lines.push(`- Pädagogische Hinweise: ${trainerProfile.trainer_pedagogy_notes}`)
+    if (trainerProfile.notes) lines.push(`- Weitere Hinweise: ${trainerProfile.notes}`)
   }
 
   return lines.join("\n")
