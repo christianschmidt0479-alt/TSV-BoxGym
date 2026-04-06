@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import {
   AlertTriangle,
   BookMarked,
+  Brain,
   CalendarDays,
   CheckCircle,
   ChevronDown,
@@ -1280,6 +1281,175 @@ function TrainerAssignSection({
   )
 }
 
+// ─── Trainer-KI-Profil-Sektion ──────────────────────────────────────────────
+
+type TrainerProfileData = {
+  style: string
+  strengths: string
+  focus: string
+  notes: string
+}
+
+function TrainerProfileSection({ trainerId }: { trainerId: string }) {
+  const [open, setOpen] = useState(false)
+  const [data, setData] = useState<TrainerProfileData>({ style: "", strengths: "", focus: "", notes: "" })
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [saveError, setSaveError] = useState("")
+
+  useEffect(() => {
+    if (!open || loaded) return
+    fetch(`/api/admin/trainer-profiles/${trainerId}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(
+        (res: {
+          profile?: {
+            style?: string | null
+            strengths?: string | null
+            focus?: string | null
+            notes?: string | null
+          } | null
+        } | null) => {
+          if (res?.profile) {
+            setData({
+              style: res.profile.style ?? "",
+              strengths: res.profile.strengths ?? "",
+              focus: res.profile.focus ?? "",
+              notes: res.profile.notes ?? "",
+            })
+          }
+          setLoaded(true)
+        },
+      )
+      .catch(() => setLoaded(true))
+  }, [open, loaded, trainerId])
+
+  async function handleSave() {
+    setSaving(true)
+    setSaveError("")
+    setSaveSuccess(false)
+    try {
+      const res = await fetch(`/api/admin/trainer-profiles/${trainerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          style: data.style.trim() || null,
+          strengths: data.strengths.trim() || null,
+          focus: data.focus.trim() || null,
+          notes: data.notes.trim() || null,
+        }),
+      })
+      if (!res.ok) throw new Error((await res.text()) || "Fehler beim Speichern")
+      setSaveSuccess(true)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Fehler beim Speichern")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="border-[#d0dff0]">
+      <CardHeader className="pb-2">
+        <button
+          className="flex w-full items-center justify-between gap-2"
+          onClick={() => setOpen((o) => !o)}
+          type="button"
+        >
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold text-[#154c83]">
+            <Brain className="h-4 w-4" />
+            Trainerprofil für KI
+            <span className="text-xs font-normal text-zinc-500">(optionale Feinsteuerung)</span>
+          </CardTitle>
+          {open ? (
+            <ChevronUp className="h-4 w-4 text-zinc-400" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-zinc-400" />
+          )}
+        </button>
+      </CardHeader>
+
+      {open && (
+        <CardContent className="space-y-3 border-t border-[#eff4fa] pt-4">
+          <p className="text-xs text-zinc-500">
+            Diese Angaben werden bei der nächsten KI-Generierung als Feinsteuerung eingebunden – mit niedrigerer Priorität als Trainingsziel und Modus.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-zinc-600">Stil</Label>
+              <Input
+                value={data.style}
+                onChange={(e) => {
+                  setData((p) => ({ ...p, style: e.target.value.slice(0, 500) }))
+                  setSaveSuccess(false)
+                }}
+                placeholder="z. B. strukturiert, variationsreich, techniklastig"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-zinc-600">Stärken</Label>
+              <Input
+                value={data.strengths}
+                onChange={(e) => {
+                  setData((p) => ({ ...p, strengths: e.target.value.slice(0, 500) }))
+                  setSaveSuccess(false)
+                }}
+                placeholder="z. B. Pratzentraining, Gruppenorganisation, Technikfokus"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-zinc-600">Schwerpunkt</Label>
+              <Input
+                value={data.focus}
+                onChange={(e) => {
+                  setData((p) => ({ ...p, focus: e.target.value.slice(0, 500) }))
+                  setSaveSuccess(false)
+                }}
+                placeholder="z. B. Grundschule, Leistung, Jugend"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-zinc-600">Hinweise</Label>
+              <Input
+                value={data.notes}
+                onChange={(e) => {
+                  setData((p) => ({ ...p, notes: e.target.value.slice(0, 500) }))
+                  setSaveSuccess(false)
+                }}
+                placeholder="z. B. bevorzugt kurze Blöcke, nutzt Ring selten"
+              />
+            </div>
+          </div>
+          {saveError && <p className="text-xs text-red-600">{saveError}</p>}
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="bg-[#154c83] text-white hover:bg-[#123d69]"
+            >
+              {saving ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Profil speichern
+            </Button>
+            {saveSuccess && (
+              <span className="flex items-center gap-1 text-xs text-emerald-600">
+                <CheckCircle className="h-3.5 w-3.5" />
+                Gespeichert
+              </span>
+            )}
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  )
+}
+
 // ─── Entwurfsliste ────────────────────────────────────────────────────────────
 
 function statusLabel(status: string, isTemplate: boolean) {
@@ -2127,6 +2297,15 @@ export default function TrainingsplanungPage() {
           }}
         />
       )}
+
+      {/* Trainer-KI-Profil: nur wenn Trainer zugewiesen */}
+      {activePlan &&
+        activePlanId &&
+        (plans.find((p) => p.id === activePlanId)?.assigned_trainer_id ?? null) && (
+          <TrainerProfileSection
+            trainerId={plans.find((p) => p.id === activePlanId)!.assigned_trainer_id!}
+          />
+        )}
 
       {/* Formular */}
       <Card className="border-[#d0dff0]">

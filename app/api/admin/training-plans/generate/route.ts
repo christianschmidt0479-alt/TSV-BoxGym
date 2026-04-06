@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
-import { generateTrainingPlan, type TrainingPlanInput } from "@/lib/trainingPlanAi"
+import { generateTrainingPlan, type TrainingPlanInput, type TrainerProfileForAi } from "@/lib/trainingPlanAi"
 import { updateTrainingPlanGenerated } from "@/lib/trainingPlansDb"
 import { getTrainingAiContext } from "@/lib/trainingAiContextDb"
 import { reportAppError } from "@/lib/appErrorReporter"
+import { getTrainerProfile } from "@/lib/trainingTrainerProfileDb"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 type GenerateBody = {
   plan_id?: unknown
@@ -126,7 +128,39 @@ export async function POST(request: Request) {
           : null,
     }
 
-    const result = await generateTrainingPlan(input, await getTrainingAiContext())
+    // plan_id früh ermitteln – wird für Trainer-Profil-Lookup und DB-Update gebraucht
+    const planId = typeof body.plan_id === "string" && body.plan_id.trim() ? body.plan_id.trim() : null
+
+    // Trainer-Profil für KI laden (graceful – kein Crash bei fehlender Spalte oder Tabelle)
+    let trainerProfileForAi: TrainerProfileForAi | null = null
+    if (planId) {
+      try {
+        const supabase = createServerSupabaseServiceClient()
+        const { data: planRow, error: planErr } = await supabase
+          .from("training_plans")
+          .select("assigned_trainer_id")
+          .eq("id", planId)
+          .maybeSingle()
+        if (!planErr && planRow) {
+          const assignedId = (planRow as { assigned_trainer_id?: string | null }).assigned_trainer_id ?? null
+          if (assignedId) {
+            const rawProfile = await getTrainerProfile(assignedId)
+            if (rawProfile) {
+              trainerProfileForAi = {
+                style: rawProfile.style,
+                strengths: rawProfile.strengths,
+                focus: rawProfile.focus,
+                notes: rawProfile.notes,
+              }
+            }
+          }
+        }
+      } catch {
+        // Graceful fallback – kein Profil ist OK
+      }
+    }
+
+    const result = await generateTrainingPlan(input, await getTrainingAiContext(), trainerProfileForAi)
 
     // Fehlgeschlagene KI-Generierung loggen (Fallback-Plan wurde genutzt)
     if (result.usedFallback && result.error) {
@@ -140,7 +174,6 @@ export async function POST(request: Request) {
     }
 
     // Wenn eine plan_id übergeben wurde, Entwurf in der Datenbank aktualisieren
-    const planId = typeof body.plan_id === "string" && body.plan_id.trim() ? body.plan_id.trim() : null
     let updatedPlan = null
     if (planId) {
       try {

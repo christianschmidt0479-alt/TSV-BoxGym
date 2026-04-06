@@ -71,6 +71,14 @@ export type GymContext = {
   group_characteristics: string
 }
 
+// Optionales Trainer-KI-Profil (niedrige Priorität – nur Feinsteuerung des Stils)
+export type TrainerProfileForAi = {
+  style: string | null
+  strengths: string | null
+  focus: string | null
+  notes: string | null
+}
+
 // ─── OpenAI-Konfiguration ─────────────────────────────────────────────────────
 
 const OPENAI_TIMEOUT_MS = 30_000
@@ -410,7 +418,7 @@ function buildSystemPrompt(gym: GymContext | null): string {
  * Der System-Prompt enthält die Methodik – dieser Prompt liefert die Fakten der Einheit.
  * Strukturiert in drei Blöcke: Rahmendaten → Fachliche Steuerung → Zusatzinfos
  */
-function buildUserPrompt(input: TrainingPlanInput): string {
+function buildUserPrompt(input: TrainingPlanInput, trainerProfile?: TrainerProfileForAi | null): string {
   const timeInfo = input.training_time ? ` um ${input.training_time} Uhr` : ""
   const n = input.participant_count
   const isLargeGroup = n != null && n > 12
@@ -527,6 +535,17 @@ function buildUserPrompt(input: TrainingPlanInput): string {
   lines.push(`## Zusatzinfos / Rahmenbedingungen (situative Überlagerung)`)
   lines.push(input.ai_context?.trim() || "Keine weiteren Angaben.")
 
+  // Trainer-KI-Profil am Ende (niedrigste Priorität – nur Stil-Feinsteuerung)
+  if (trainerProfile && (trainerProfile.style || trainerProfile.strengths || trainerProfile.focus || trainerProfile.notes)) {
+    lines.push(``)
+    lines.push(`## Trainerprofil (Feinsteuerung des Coaching-Stils – niedrige Priorität)`)
+    lines.push(`Diese Angaben beschreiben den durchführenden Trainer. Nur einbauen wo sinnvoll und passend.`)
+    if (trainerProfile.style) lines.push(`- Stil: ${trainerProfile.style}`)
+    if (trainerProfile.strengths) lines.push(`- Stärken: ${trainerProfile.strengths}`)
+    if (trainerProfile.focus) lines.push(`- Schwerpunkt: ${trainerProfile.focus}`)
+    if (trainerProfile.notes) lines.push(`- Hinweise: ${trainerProfile.notes}`)
+  }
+
   return lines.join("\n")
 }
 
@@ -617,6 +636,7 @@ function parseGeneratedPlan(raw: string): GeneratedTrainingPlan | null {
 export async function generateTrainingPlan(
   input: TrainingPlanInput,
   gymContext?: GymContext | null,
+  trainerProfile?: TrainerProfileForAi | null,
 ): Promise<{
   plan: GeneratedTrainingPlan
   usedFallback: boolean
@@ -651,7 +671,7 @@ export async function generateTrainingPlan(
           },
           {
             role: "user",
-            content: [{ type: "input_text", text: buildUserPrompt(input) }],
+              content: [{ type: "input_text", text: buildUserPrompt(input, trainerProfile ?? null) }],
           },
         ],
         max_output_tokens: 2000,
