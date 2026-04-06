@@ -4,6 +4,7 @@ import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { generateTrainingPlan, type TrainingPlanInput } from "@/lib/trainingPlanAi"
 import { updateTrainingPlanGenerated } from "@/lib/trainingPlansDb"
 import { getTrainingAiContext } from "@/lib/trainingAiContextDb"
+import { reportAppError } from "@/lib/appErrorReporter"
 
 type GenerateBody = {
   plan_id?: unknown
@@ -127,6 +128,17 @@ export async function POST(request: Request) {
 
     const result = await generateTrainingPlan(input, await getTrainingAiContext())
 
+    // Fehlgeschlagene KI-Generierung loggen (Fallback-Plan wurde genutzt)
+    if (result.usedFallback && result.error) {
+      void reportAppError(
+        "admin-training-plans-generate",
+        "ki_generation_failed",
+        "medium",
+        result.error,
+        { route: "/api/admin/training-plans/generate", actor: session.accountEmail },
+      )
+    }
+
     // Wenn eine plan_id übergeben wurde, Entwurf in der Datenbank aktualisieren
     const planId = typeof body.plan_id === "string" && body.plan_id.trim() ? body.plan_id.trim() : null
     let updatedPlan = null
@@ -146,6 +158,13 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("admin training-plans generate failed", error)
+    void reportAppError(
+      "admin-training-plans-generate",
+      "generate_route_error",
+      "high",
+      error,
+      { route: "/api/admin/training-plans/generate" },
+    )
     return new NextResponse("Internal server error", { status: 500 })
   }
 }

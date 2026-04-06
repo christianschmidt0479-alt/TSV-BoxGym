@@ -184,11 +184,23 @@ function PlanView({
     )
   }
 
+  const isModified = !!plan.trainer_modified_plan
+
   return (
     <div className="space-y-5">
       {/* Titel & Zusammenfassung */}
       <div className="space-y-1.5">
-        <h3 className="text-base font-bold text-zinc-800">{parsed.title}</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-base font-bold text-zinc-800">{parsed.title}</h3>
+          <span className="rounded-full bg-[#e8f0fb] px-2 py-0.5 text-[10px] font-semibold text-[#154c83]">
+            Vorgeschlagen
+          </span>
+          {isModified && (
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              Vom Trainer angepasst
+            </span>
+          )}
+        </div>
         {parsed.summary && <p className="text-sm text-zinc-600">{parsed.summary}</p>}
       </div>
 
@@ -444,6 +456,11 @@ export default function VorgeschlagenerPlanPage() {
                         {formatGermanDate(plan.date)}
                         {plan.training_goal && ` · ${plan.training_goal}`}
                       </p>
+                      {plan.trainer_modified_plan && (
+                        <span className="mt-0.5 inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                          Vom Trainer angepasst
+                        </span>
+                      )}
                     </div>
                     <button
                       onClick={() => setExpandedPlanId(isExpanded ? null : plan.id)}

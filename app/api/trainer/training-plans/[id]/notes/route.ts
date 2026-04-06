@@ -3,6 +3,7 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { updateTrainerPlanNotes } from "@/lib/trainingPlansDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { reportAppError } from "@/lib/appErrorReporter"
 
 const PILOT_FIRST_NAME = "Thomas"
 const TRAINER_NOTES_MAX_LENGTH = 2000
@@ -101,6 +102,13 @@ export async function PATCH(
     return NextResponse.json({ plan })
   } catch (error) {
     console.error("[trainer training-plans notes PATCH]", error)
+    void reportAppError(
+      "trainer-training-plans-notes",
+      "notes_save_failed",
+      "medium",
+      error,
+      { route: "/api/trainer/training-plans/[id]/notes" },
+    )
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }

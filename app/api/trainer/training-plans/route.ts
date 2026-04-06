@@ -3,6 +3,7 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { getPlansAssignedToTrainer } from "@/lib/trainingPlansDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { reportAppError } from "@/lib/appErrorReporter"
 
 // ─── Pilot-Guard ──────────────────────────────────────────────────────────────
 // Vorgeschlagene Trainingspläne sind ausschließlich für den Thomas-Pilot freigeschaltet.
@@ -62,6 +63,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ plans })
   } catch (error) {
     console.error("[trainer training-plans GET]", error)
+    void reportAppError(
+      "trainer-training-plans",
+      "load_failed",
+      "medium",
+      error,
+      { route: "/api/trainer/training-plans" },
+    )
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }

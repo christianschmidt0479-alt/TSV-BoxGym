@@ -1478,10 +1478,18 @@ function DraftList({ plans, loading, onLoadPlan }: DraftListProps) {
                       {plan.participant_count != null ? plan.participant_count : "—"}
                     </td>
                     <td className="py-2 pr-3">
-                      <Badge className={statusBadgeClass(plan.status, plan.is_template)}>
-                        {plan.is_template && <Star className="mr-1 h-2.5 w-2.5" />}
-                        {statusLabel(plan.status, plan.is_template)}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1">
+                        <Badge className={statusBadgeClass(plan.status, plan.is_template)}>
+                          {plan.is_template && <Star className="mr-1 h-2.5 w-2.5" />}
+                          {statusLabel(plan.status, plan.is_template)}
+                        </Badge>
+                        {plan.assigned_trainer_id && (
+                          <Badge className="border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
+                            <UserCheck className="mr-1 h-2.5 w-2.5" />
+                            Zugewiesen
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2 text-right">
                       {plan.generated_plan && (
