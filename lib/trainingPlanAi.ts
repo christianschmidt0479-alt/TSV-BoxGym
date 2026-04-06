@@ -83,7 +83,8 @@ export type TrainerProfileForAi = {
 
 // ─── OpenAI-Konfiguration ─────────────────────────────────────────────────────
 
-const OPENAI_TIMEOUT_MS = 30_000
+// Timeout auf 45 s erhöht: voller Payload braucht lokal ~28 s; 45 s gibt Vercel-Route (maxDuration=60) genüg Puffer
+const OPENAI_TIMEOUT_MS = 45_000
 
 function getOpenAiApiKey() {
   return process.env.OPENAI_API_KEY?.trim() || ""
@@ -173,36 +174,29 @@ Jede Einheit folgt dieser Phasenstruktur (Standard – situativ anpassbar):
 
 Phase 1 – ERWÄRMUNG (ca. 15–20 % der Gesamtzeit)
   Ziel: Körper und Geist auf Boxtraining vorbereiten
-  Inhalt: Allgemeine Aktivierung (Seil, Laufen, Koordination) +
-          boxspezifische Aufwärmformen (Schattboxen, Footwork, leichte Partnerarbeit)
+  Inhalt: Allgemeine Aktivierung (Seil, Laufen, Koordination) + boxspezifische Aufwärmformen (Schattboxen, Footwork, leichte Partnerarbeit)
   Prinzip: Intensität steigert sich von locker zu boxbereit
-  Anfänger/Kinder: spielerische Formen, kurze Blöcke, wechselnde Aktivitäten
 
 Phase 2 – TECHNIK (ca. 20–25 % der Gesamtzeit)
   Ziel: Einführung oder Vertiefung des technischen Schwerpunkts der Einheit
-  Inhalt: Isoliertes Üben der Kerntechnik, zuerst ohne Partner oder im Spiegel,
-          dann in kontrollierten Partnerformen (z. B. gemeinsames Schattboxen)
+  Inhalt: Isoliertes Üben der Kerntechnik, zuerst ohne Partner oder im Spiegel, dann in kontrollierten Partnerformen
   Prinzip: Technik vor Intensität – korrekte Ausführung hat absoluten Vorrang
-  Anfänger: maximale Vereinfachung, eine Technik konsequent durchziehen
-  Fortgeschrittene: Vertiefung, Feinheiten, Kadenz, Täuschung
 
 Phase 3 – ANWENDUNG (ca. 20–25 % der Gesamtzeit)
   Ziel: Technik in realistischeren Zusammenhängen anwenden
   Inhalt: Pratzentraining, Sackarbeit, Partnerdrills mit konkreten Aufgaben
   Prinzip: Klare Aufgabenstellung für jeden Drill – kein freies Üben ohne Ziel
-  Aufgaben nach dem Muster: „Auf Signal X führe Y aus", „Partner führt A, du reagierst mit B"
+
   Materiale im Wechsel wenn nötig (Rotationsmodell)
 
 Phase 4 – BELASTUNG / KONDITION (ca. 15–20 % der Gesamtzeit, wenn passend)
   Ziel: Konditionelle Kapazität unter boxspezifischen Bedingungen aufbauen
   Inhalt: Intensive Runden an Sack oder Pratzen, Intervalle, Kombinationsserien
-  Prinzip: Nur wenn methodisch sinnvoll – bei Regenerations-Modus geringer oder weglassen
-  Kinder/Jugend: deutlich reduzierte Intensität, keine langen Maximalbelastungen
+  Prinzip: Nur wenn methodisch sinnvoll – bei Regenerations-Modus weglassen
 
 Phase 5 – KAMPFNAHE FORM / SITUATIVES TRAINING (optional, nur wenn Sparring erlaubt)
   Ziel: Erlerntes in kampfnahen Situationen anwenden
   Inhalt: Kontrolliertes Sparring, situative Aufgaben im Ring oder an Pratzen
-  Prinzip: Immer mit klaren Regeln und Trainer-Begleitung
   Nur wenn: Ring verfügbar UND Sparring explizit erlaubt UND Niveau ausreichend
 
 Phase 6 – ABSCHLUSS (ca. 10 % der Gesamtzeit)
@@ -210,17 +204,15 @@ Phase 6 – ABSCHLUSS (ca. 10 % der Gesamtzeit)
   Inhalt: Cool-down, statisches Dehnen, kurze Feedback-Runde
   Prinzip: Ruhige Atmosphäre, Trainer fasst Schwerpunkt in 2–3 Sätzen zusammen
 
-WICHTIG: Die Phasen 4 und 5 können wegfallen oder zusammengelegt werden je nach
-Modus, Zielgruppe und verfügbarer Zeit.
+Phasen 4 und 5 können wegfallen oder zusammengelegt werden (je nach Modus, Zielgruppe, Zeit).
 
 ═══════════════════════════════════════════════════
 METHODISCHE GRUNDPRINZIPIEN (IMMER BEACHTEN)
 ═══════════════════════════════════════════════════
 
 Roter Faden:
-- Der technische Fokus der Einheit muss in Phase 2, 3 und wo sinnvoll in Phase 4 explizit sichtbar sein
+- Der technische Fokus muss in Phase 2, 3 und ggf. Phase 4 explizit sichtbar sein
 - Kein Block darf thematisch beliebig sein
-- Der Trainer soll nach dem Plan sofort erkennen: „Darum geht es heute"
 
 Gruppenspezifik:
 - Große Gruppen (> 12 Personen): Stationsbetrieb oder Rotationsmodell verwenden
@@ -232,13 +224,10 @@ Gruppenspezifik:
 - Fortgeschrittene/Leistung: situative Aufgaben, mehr Druck, realistischere Szenarien
 
 Wiederholung vor Variation:
-- Eine Technik mehrfach in verschiedenen Kontexten zeigen (Schatten → Sack → Pratzen → Partnerform)
-- Keine Übungssammlung ohne erkennbare Steigerungslogik
+- Eine Technik in verschiedenen Kontexten zeigen (Schatten → Sack → Pratzen → Partnerform)
 
 Coaching-Cues pro Block:
-- 2–4 konkrete, sofort umsetzbare Trainerhinweise
-- Keine theoretischen Absätze
-- Praxissprache: „Knie weich!", „Deckung hoch nach dem Jab!", „Schritt VOR den Angriff!"
+- 2–4 konkrete, sofort umsetzbare Trainerhinweise in Praxissprache: „Knie weich!“, „Deckung hoch nach dem Jab!“, „Schritt VOR den Angriff!“
 
 ═══════════════════════════════════════════════════
 TRAININGSMODUS (bestimmt Charakter und Intensität)
@@ -247,10 +236,9 @@ TRAININGSMODUS (bestimmt Charakter und Intensität)
 GRUNDSCHULE:
   - Höchste Priorität: korrekte Technik in einfachsten Formen
   - Sehr einfache Aufgabenstellungen, maximale Wiederholungszahl
-  - Keine Kombinationen über 2 Schläge zu Beginn, nur isolierte Techniken
+  - Keine Kombinationen über 2 Schläge, nur isolierte Techniken
   - Tempovorgabe: langsam und kontrolliert
   - Coaching: häufige Korrekturen, ruhige Sprache, viel Lob
-  - Geeignet für: Ersteinsteiger, nach langer Pause, erste Einheiten einer neuen Gruppe
 
 TECHNIKFOKUS:
   - Technik in mittlerem Tempo, sauber und präzise
@@ -296,13 +284,10 @@ KOMBIPLAN (Ferienbetrieb oder zusammengelegte Gruppen):
   - organization_notes muss die heterogene Gruppe explizit adressieren
 
 FOLGEPLAN (aufbauend auf vorherigem Plan):
-  - Das Hauptthema (technischer Fokus) des ersten Plans wird beibehalten
-  - ABER: Anpassung an die neue Gruppe (anderes Alter, anderes Niveau)
-  - Kein Plan darf eine 1:1-Kopie des Vorgängers sein
+  - Technischer Fokus des ersten Plans wird beibehalten
+  - Anpassung an neue Gruppe (Alter, Niveau)
   - Steigerungslogik: mehr Komplexität, andere Kombinationen, neuer Anwendungskontext
   - Intensität anpassen: stärkere Gruppe → mehr Druck; schwächere Gruppe → vereinfachen
-  - Coaching-Schwerpunkte verschieben: was war beim ersten Plan das Problem?
-    → beim Folgeplan andere Cues und Schwerpunkte wählen
   - summary und title müssen den Aufbaucharakter erkennbar machen
 
 VORLAGE ALS AUSGANGSPUNKT:
@@ -698,7 +683,7 @@ export async function generateTrainingPlan(
               content: [{ type: "input_text", text: buildUserPrompt(input, trainerProfile ?? null) }],
           },
         ],
-        max_output_tokens: 2000,
+        max_output_tokens: 1400,
       }),
       signal: controller.signal,
     })
