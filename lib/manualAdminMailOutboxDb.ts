@@ -156,7 +156,6 @@ export async function getManualAdminMailDrafts(limit = 200) {
   const { data, error } = await supabase
     .from("outgoing_mail_queue")
     .select("*")
-    .eq("purpose", MANUAL_ADMIN_MAIL_PURPOSE)
     .is("sent_at", null)
     .like("name", `${MANUAL_ADMIN_MAIL_PREFIX}%`)
     .order("created_at", { ascending: false })
@@ -168,4 +167,32 @@ export async function getManualAdminMailDrafts(limit = 200) {
   }
 
   return ((data as OutgoingMailQueueRow[] | null) ?? []).map(toDraft).filter((row): row is ManualAdminMailDraft => Boolean(row))
+}
+
+export async function convertQueueItemToAdminDraft(
+  itemId: string,
+  payload: {
+    kind: AdminMailDraftRequest["kind"]
+    to: string
+    name: string | null
+    subject: string
+    body: string
+    request: AdminMailDraftRequest
+  }
+) {
+  const supabase = getServerSupabase()
+  const encoded = encodePayload(payload)
+
+  const { data, error } = await supabase
+    .from("outgoing_mail_queue")
+    .update({ name: encoded })
+    .eq("id", itemId)
+    .select("*")
+    .single()
+
+  if (error) throw error
+
+  const draft = toDraft(data as OutgoingMailQueueRow)
+  if (!draft) throw new Error("Queue-Eintrag konnte nicht in Admin-Entwurf umgewandelt werden.")
+  return draft
 }

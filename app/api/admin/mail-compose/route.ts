@@ -82,6 +82,7 @@ export async function POST(request: Request) {
   try {
     const { error } = await requireAdmin(request)
     if (error) return error
+    const requestBaseUrl = new URL(request.url).origin
 
     const rateLimit = await checkRateLimitAsync(`admin-mail-compose-preview:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
     if (!rateLimit.ok) {
@@ -96,7 +97,9 @@ export async function POST(request: Request) {
     }
 
     const resolvedRequests = await Promise.all(requests.map((entry) => resolveDraftRequest(entry)))
-    const drafts = resolvedRequests.map((entry) => buildAdminMailDraftPreview(entry))
+    const drafts = await Promise.all(
+      resolvedRequests.map((entry) => buildAdminMailDraftPreview(entry, { baseUrl: requestBaseUrl }))
+    )
     return NextResponse.json({ ok: true, drafts })
   } catch (error) {
     console.error("admin mail compose preview failed", error)
@@ -125,7 +128,7 @@ export async function PUT(request: Request) {
 
     for (const draft of drafts) {
       const resolvedRequest = await resolveDraftRequest(draft.request)
-      const preview = buildAdminMailDraftPreview(resolvedRequest)
+      const preview = await buildAdminMailDraftPreview(resolvedRequest, { generateDynamicLinks: false })
       const to = draft.to?.trim().toLowerCase() || preview.to
       const subject = draft.subject?.trim() || preview.subject
       const mailBody = draft.body?.trim() || preview.body

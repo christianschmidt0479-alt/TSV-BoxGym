@@ -23,6 +23,63 @@ function normalizeOrigin(value: string) {
   return value.replace(/\/+$/, "").toLowerCase()
 }
 
+function isLoopbackHost(hostname: string) {
+  const normalized = hostname.trim().toLowerCase()
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "[::1]" || normalized === "::1"
+}
+
+function buildLoopbackAliases(origin: string) {
+  try {
+    const url = new URL(origin)
+    if (!isLoopbackHost(url.hostname)) return []
+
+    const port = url.port ? `:${url.port}` : ""
+    return [
+      `${url.protocol}//localhost${port}`,
+      `${url.protocol}//127.0.0.1${port}`,
+    ].map(normalizeOrigin)
+  } catch {
+    return []
+  }
+}
+
+function getAllowedOrigins(request: Request) {
+  const requestUrl = new URL(request.url)
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL || process.env.APP_BASE_URL || ""
+  const forwardedHost = sanitizeTextInput(request.headers.get("x-forwarded-host"), { maxLength: 255 })
+  const host = sanitizeTextInput(request.headers.get("host"), { maxLength: 255 })
+  const forwardedProto = sanitizeTextInput(request.headers.get("x-forwarded-proto"), { maxLength: 20 }) || requestUrl.protocol.replace(/:$/, "")
+  const directHostOrigin = host ? `${forwardedProto}://${host}` : ""
+  const forwardedHostOrigin = forwardedHost ? `${forwardedProto}://${forwardedHost}` : ""
+
+  const allowedOrigins = new Set<string>()
+  for (const value of [requestUrl.origin, appBaseUrl, directHostOrigin, forwardedHostOrigin]) {
+    if (!value) continue
+    allowedOrigins.add(normalizeOrigin(value))
+    for (const alias of buildLoopbackAliases(value)) {
+      allowedOrigins.add(alias)
+    }
+  }
+
+  return Array.from(allowedOrigins)
+}
+
+function logOriginFailure(request: Request, allowedOrigins: string[]) {
+  if (process.env.NODE_ENV === "production") return
+
+  console.warn("[apiSecurity.isAllowedOrigin] blocked request", {
+    method: request.method,
+    url: request.url,
+    origin: request.headers.get("origin") || "",
+    referer: request.headers.get("referer") || "",
+    host: request.headers.get("host") || "",
+    forwardedHost: request.headers.get("x-forwarded-host") || "",
+    forwardedProto: request.headers.get("x-forwarded-proto") || "",
+    secFetchSite: request.headers.get("sec-fetch-site") || "",
+    allowedOrigins,
+  })
+}
+
 function getDistributedRateLimitConfig() {
   if ((distributedRateLimitUrl && !distributedRateLimitToken) || (!distributedRateLimitUrl && distributedRateLimitToken)) {
     if (!didWarnPartialDistributedConfig) {
@@ -128,19 +185,22 @@ export function getRequestIp(request: Request) {
 
 export function isAllowedOrigin(request: Request) {
   const origin = request.headers.get("origin")
-  const requestUrl = new URL(request.url)
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL || process.env.APP_BASE_URL || ""
-  const allowedOrigins = [requestUrl.origin, appBaseUrl].filter(Boolean).map(normalizeOrigin)
+  const allowedOrigins = getAllowedOrigins(request)
 
   if (origin) {
-    return allowedOrigins.includes(normalizeOrigin(origin))
+    const allowed = allowedOrigins.includes(normalizeOrigin(origin))
+    if (!allowed) logOriginFailure(request, allowedOrigins)
+    return allowed
   }
 
   const referer = request.headers.get("referer")
   if (referer) {
     try {
-      return allowedOrigins.includes(normalizeOrigin(new URL(referer).origin))
+      const allowed = allowedOrigins.includes(normalizeOrigin(new URL(referer).origin))
+      if (!allowed) logOriginFailure(request, allowedOrigins)
+      return allowed
     } catch {
+      logOriginFailure(request, allowedOrigins)
       return false
     }
   }
@@ -151,6 +211,7 @@ export function isAllowedOrigin(request: Request) {
     return true
   }
 
+  logOriginFailure(request, allowedOrigins)
   return false
 }
 

@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       return new NextResponse("Nur Freigabe-Mails koennen im manuellen Postausgang gespeichert werden.", { status: 400 })
     }
 
-    const preview = buildAdminMailDraftPreview(draftRequest)
+    const preview = await buildAdminMailDraftPreview(draftRequest)
     const draft = await upsertManualAdminMailDraft({
       to: preview.to,
       name: draftRequest.name ?? null,

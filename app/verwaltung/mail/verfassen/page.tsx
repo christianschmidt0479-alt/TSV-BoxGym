@@ -178,6 +178,33 @@ export default function MailVerfassenPage() {
                 <CardTitle>{draft.subject}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {draft.topicSuggestions && draft.topicSuggestions.length > 0 ? (
+                  <div className="space-y-2">
+                    <Label>Themenvorschläge</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {draft.topicSuggestions.map((topic) => (
+                        <Button
+                          key={`${topic.id}-${index}`}
+                          type="button"
+                          variant="outline"
+                          className="rounded-2xl"
+                          onClick={() =>
+                            setDrafts((current) =>
+                              current.map((entry, currentIndex) =>
+                                currentIndex === index
+                                  ? { ...entry, subject: topic.subject, body: topic.body }
+                                  : entry
+                              )
+                            )
+                          }
+                        >
+                          {topic.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Empfänger</Label>

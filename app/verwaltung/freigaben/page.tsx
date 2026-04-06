@@ -155,11 +155,7 @@ export default function FreigabenPage() {
   const [usedByMember, setUsedByMember] = useState<Record<string, number>>({})
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({})
   const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({})
-  const [resendingVerification, setResendingVerification] = useState<Record<string, boolean>>({})
-  const [recentlySentByMember, setRecentlySentByMember] = useState<Record<string, boolean>>({})
   const [verificationSentAtByMember, setVerificationSentAtByMember] = useState<Record<string, string | null>>({})
-  const [resendingTrainerVerification, setResendingTrainerVerification] = useState<Record<string, boolean>>({})
-  const [recentlyTrainerSent, setRecentlyTrainerSent] = useState<Record<string, boolean>>({})
   const [approvingTrainer, setApprovingTrainer] = useState<Record<string, boolean>>({})
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null)
   const [deletingTrainerId, setDeletingTrainerId] = useState<string | null>(null)
@@ -271,34 +267,34 @@ export default function FreigabenPage() {
     }
   }, [authResolved, trainerRole])
 
-  async function resendVerification(member: PendingMemberRecord) {
-    if (!member.id || !member.email) {
-      alert("Mitgliedsdaten unvollständig, kann E-Mail nicht vorbereiten.")
+  function openMemberCommunication(member: PendingMemberRecord) {
+    if (!member.email?.trim()) {
+      showToast("Keine Mitglieds-E-Mail vorhanden.", "error")
       return
     }
 
-    setResendingVerification((prev) => ({ ...prev, [member.id]: true }))
-    try {
-      const response = await fetch("/api/admin/member-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "resend_verification", memberId: member.id }),
+    const topicIds: Array<"email_confirmation" | "data_review" | "gs_correction" | "missing_details" | "general_followup"> = []
+    if (!member.email_verified) topicIds.push("email_confirmation")
+    if (officeRunInfoByMember[member.id] && officeRunInfoByMember[member.id]?.status !== "green") topicIds.push("gs_correction")
+    if (!member.first_name || !member.last_name || !member.birthdate || !member.email) topicIds.push("missing_details")
+    topicIds.push("data_review")
+
+    router.push(
+      buildAdminMailComposeHref({
+        title: "Nachricht an Mitglied vorbereiten",
+        returnTo: "/verwaltung/freigaben",
+        requests: [
+          {
+            kind: "approval_followup",
+            memberId: member.id,
+            email: member.email,
+            name: getMemberDisplayName(member),
+            targetKind: member.base_group === "Boxzwerge" ? "boxzwerge" : "member",
+            topicIds,
+          },
+        ],
       })
-      if (!response.ok) {
-        throw new Error(await response.text())
-      }
-      showToast("Bestätigungslink wurde gesendet.", "success")
-      setVerificationSentAtByMember((prev) => ({ ...prev, [member.id]: new Date().toISOString() }))
-      setRecentlySentByMember((prev) => ({ ...prev, [member.id]: true }))
-      window.setTimeout(() => {
-        setRecentlySentByMember((prev) => ({ ...prev, [member.id]: false }))
-      }, 60000)
-    } catch (error) {
-      console.error(error)
-      showToast(error instanceof Error ? error.message : "Bestätigungslink konnte nicht gesendet werden.", "error")
-    } finally {
-      setResendingVerification((prev) => ({ ...prev, [member.id]: false }))
-    }
+    )
   }
 
   async function deletePendingMember(member: PendingMemberRecord) {
@@ -337,32 +333,32 @@ export default function FreigabenPage() {
     return full || trainer.email || "—"
   }
 
-  async function resendTrainerVerification(trainer: PendingTrainerRecord) {
-    if (!trainer.id || !trainer.email) {
-      showToast("Trainerdaten unvollständig, kann E-Mail nicht vorbereiten.", "error")
+  function openTrainerCommunication(trainer: PendingTrainerRecord) {
+    if (!trainer.email?.trim()) {
+      showToast("Keine Trainer-E-Mail vorhanden.", "error")
       return
     }
-    setResendingTrainerVerification((prev) => ({ ...prev, [trainer.id]: true }))
-    try {
-      const response = await fetch("/api/admin/person-roles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "resend_trainer_verification", trainerId: trainer.id }),
+
+    const topicIds: Array<"email_confirmation" | "data_review" | "gs_correction" | "missing_details" | "general_followup"> = []
+    if (!trainer.email_verified) topicIds.push("email_confirmation")
+    if (!trainer.first_name || !trainer.last_name || !trainer.phone) topicIds.push("missing_details")
+    topicIds.push("data_review")
+
+    router.push(
+      buildAdminMailComposeHref({
+        title: "Nachricht an Trainer vorbereiten",
+        returnTo: "/verwaltung/freigaben",
+        requests: [
+          {
+            kind: "approval_followup",
+            email: trainer.email,
+            name: getTrainerDisplayName(trainer),
+            targetKind: "trainer",
+            topicIds,
+          },
+        ],
       })
-      if (!response.ok) {
-        throw new Error(await response.text())
-      }
-      showToast("Bestätigungslink wurde gesendet.", "success")
-      setRecentlyTrainerSent((prev) => ({ ...prev, [trainer.id]: true }))
-      window.setTimeout(() => {
-        setRecentlyTrainerSent((prev) => ({ ...prev, [trainer.id]: false }))
-      }, 60000)
-    } catch (error) {
-      console.error(error)
-      showToast(error instanceof Error ? error.message : "Bestätigungslink konnte nicht gesendet werden.", "error")
-    } finally {
-      setResendingTrainerVerification((prev) => ({ ...prev, [trainer.id]: false }))
-    }
+    )
   }
 
   async function deletePendingTrainer(trainer: PendingTrainerRecord) {
@@ -835,20 +831,20 @@ export default function FreigabenPage() {
                         type="button"
                         variant="outline"
                         className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
-                        onClick={() => void sendGsRequest(member)}
-                        disabled={deletingMemberId === member.id}
+                        onClick={() => (isEditing ? closePendingEditor() : openPendingEditor(member))}
+                        disabled={savingEditMemberId === member.id || deletingMemberId === member.id}
                       >
-                        Anfrage an GS senden
+                        {isEditing ? "Änderung schließen" : "Daten ändern"}
                       </Button>
 
                       <Button
                         type="button"
                         variant="outline"
                         className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
-                        onClick={() => (isEditing ? closePendingEditor() : openPendingEditor(member))}
-                        disabled={savingEditMemberId === member.id || deletingMemberId === member.id}
+                        onClick={() => openMemberCommunication(member)}
+                        disabled={!member.email?.trim() || deletingMemberId === member.id}
                       >
-                        {isEditing ? "Änderung schließen" : "Daten ändern"}
+                        Bestätigungs-Mail / Nachricht
                       </Button>
 
                       {!member.email_verified && (
@@ -974,30 +970,33 @@ export default function FreigabenPage() {
                         {gsConfirmedAt ? "Freigeben (GS bestätigt)" : gsRejectedAt ? "Freigeben (GS verneint)" : "Freigeben"}
                       </Button>
 
-                      {!member.email_verified && member.email?.trim() && (
-                        <>
-                          <Button
-                            variant="outline"
-                            className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
-                            onClick={() => void resendVerification(member)}
-                            disabled={Boolean(resendingVerification[member.id]) || Boolean(recentlySentByMember[member.id]) || deletingMemberId === member.id}
-                          >
-                            {resendingVerification[member.id] ? "Sende..." : recentlySentByMember[member.id] ? "Gerade gesendet" : "Bestätigungs-Mail erneut senden"}
-                          </Button>
-                          <div className="text-xs text-zinc-400">
-                            {formatVerificationSentAt(verificationSentAtByMember[member.id] ?? member.last_verification_sent_at)}
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="rounded-2xl border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-                            onClick={() => void deletePendingMember(member)}
-                            disabled={deletingMemberId === member.id || Boolean(resendingVerification[member.id])}
-                          >
-                            {deletingMemberId === member.id ? "Löscht..." : "Eintrag löschen"}
-                          </Button>
-                        </>
-                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-2xl border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        onClick={() => void deletePendingMember(member)}
+                        disabled={deletingMemberId === member.id}
+                      >
+                        {deletingMemberId === member.id ? "Löscht..." : "Löschen"}
+                      </Button>
+
+                      {member.email?.trim() ? (
+                        <div className="text-xs text-zinc-400">
+                          {formatVerificationSentAt(verificationSentAtByMember[member.id] ?? member.last_verification_sent_at)}
+                        </div>
+                      ) : null}
+
+                      {officeRunInfo && officeRunInfo.status !== "green" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
+                          onClick={() => void sendGsRequest(member)}
+                          disabled={deletingMemberId === member.id}
+                        >
+                          Anfrage an GS senden
+                        </Button>
+                      ) : null}
                     </div>
                     </div>
                   ) : null}
@@ -1204,31 +1203,25 @@ export default function FreigabenPage() {
                       </div>
                     )}
 
+                    <Button asChild variant="outline" className="rounded-2xl border-[#c8d8ea] text-[#154c83]">
+                      <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Daten ändern</Link>
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
+                      onClick={() => openTrainerCommunication(trainer)}
+                      disabled={!trainer.email?.trim()}
+                    >
+                      Bestätigungs-Mail / Nachricht
+                    </Button>
+
                     <Button
                       className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
                       disabled={!trainer.email_verified || Boolean(approvingTrainer[trainer.id])}
                       onClick={() => void approveTrainer(trainer)}
                     >
                       {approvingTrainer[trainer.id] ? "Wird freigegeben…" : "Freigeben"}
-                    </Button>
-
-                    {!trainer.email_verified && trainer.email?.trim() ? (
-                      <Button
-                        variant="outline"
-                        className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
-                        onClick={() => void resendTrainerVerification(trainer)}
-                        disabled={Boolean(resendingTrainerVerification[trainer.id]) || Boolean(recentlyTrainerSent[trainer.id])}
-                      >
-                        {resendingTrainerVerification[trainer.id]
-                          ? "Sende..."
-                          : recentlyTrainerSent[trainer.id]
-                            ? "Gerade gesendet"
-                            : "Bestätigungs-Mail erneut senden"}
-                      </Button>
-                    ) : null}
-
-                    <Button asChild variant="outline" className="rounded-2xl">
-                      <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
                     </Button>
 
                     <Button

@@ -3,16 +3,14 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { getPendingAdminNotifications, markAdminNotificationsSent } from "@/lib/adminDigestDb"
 import { formatDisplayDate } from "@/lib/dateFormat"
-import { isManualAdminMailRecord } from "@/lib/manualAdminMailOutboxDb"
+import { buildAdminMailDraftPreview } from "@/lib/adminMailComposer"
+import { convertQueueItemToAdminDraft, isManualAdminMailRecord } from "@/lib/manualAdminMailOutboxDb"
 import { enqueueMedicalExamReminderMails } from "@/lib/medicalExamReminderDb"
 import { isManualParentMailRecord } from "@/lib/manualParentMailOutboxDb"
 import { getPendingOutgoingMails, markOutgoingMailsSent } from "@/lib/outgoingMailQueueDb"
 import {
   sendAdminDigestEmail,
-  sendCompetitionAssignedEmail,
-  sendCompetitionRemovedEmail,
   sendMedicalExamReminderAdminEmail,
-  sendMedicalExamReminderEmail,
 } from "@/lib/resendClient"
 
 function getBerlinParts(date = new Date()) {
@@ -128,29 +126,63 @@ export async function GET(request: Request) {
     )
   }
 
+  const directSentIds: string[] = []
+  let draftedCount = 0
+
   for (const item of sendableOutgoingMails) {
     if (item.purpose === "competition_assigned") {
-      await sendCompetitionAssignedEmail({
+      const preview = await buildAdminMailDraftPreview({
+        kind: "competition_assigned",
         email: item.email,
         name: item.name ?? undefined,
       })
+      await convertQueueItemToAdminDraft(item.id, {
+        kind: "competition_assigned",
+        to: preview.to,
+        name: item.name ?? null,
+        subject: preview.subject,
+        body: preview.body,
+        request: { kind: "competition_assigned", email: item.email, name: item.name ?? undefined },
+      })
+      draftedCount++
       continue
     }
 
     if (item.purpose === "competition_removed") {
-      await sendCompetitionRemovedEmail({
+      const preview = await buildAdminMailDraftPreview({
+        kind: "competition_removed",
         email: item.email,
         name: item.name ?? undefined,
       })
+      await convertQueueItemToAdminDraft(item.id, {
+        kind: "competition_removed",
+        to: preview.to,
+        name: item.name ?? null,
+        subject: preview.subject,
+        body: preview.body,
+        request: { kind: "competition_removed", email: item.email, name: item.name ?? undefined },
+      })
+      draftedCount++
       continue
     }
 
     if (item.purpose === "medical_exam_reminder_member") {
-      await sendMedicalExamReminderEmail({
+      const dueDate = getDueDateFromContextKey(item.context_key)
+      const preview = await buildAdminMailDraftPreview({
+        kind: "medical_exam_reminder",
         email: item.email,
         name: item.name ?? undefined,
-        dueDate: getDueDateFromContextKey(item.context_key),
+        dueDate,
       })
+      await convertQueueItemToAdminDraft(item.id, {
+        kind: "medical_exam_reminder",
+        to: preview.to,
+        name: item.name ?? null,
+        subject: preview.subject,
+        body: preview.body,
+        request: { kind: "medical_exam_reminder", email: item.email, name: item.name ?? undefined, dueDate },
+      })
+      draftedCount++
       continue
     }
 
@@ -160,14 +192,12 @@ export async function GET(request: Request) {
         athleteName: item.name ?? undefined,
         dueDate: getDueDateFromContextKey(item.context_key),
       })
+      directSentIds.push(item.id)
     }
   }
 
-  if (sendableOutgoingMails.length > 0) {
-    await markOutgoingMailsSent(
-      sendableOutgoingMails.map((item) => item.id),
-      batchKey
-    )
+  if (directSentIds.length > 0) {
+    await markOutgoingMailsSent(directSentIds, batchKey)
   }
 
   return NextResponse.json({
@@ -176,6 +206,7 @@ export async function GET(request: Request) {
     count: items.length + sendableOutgoingMails.length,
     admin_count: items.length,
     outgoing_count: sendableOutgoingMails.length,
+    outgoing_drafted_count: draftedCount,
     batch_key: batchKey,
   })
 }
@@ -233,29 +264,63 @@ export async function POST(request: Request) {
     )
   }
 
+  const directSentIds: string[] = []
+  let draftedCount = 0
+
   for (const item of sendableOutgoingMails) {
     if (item.purpose === "competition_assigned") {
-      await sendCompetitionAssignedEmail({
+      const preview = await buildAdminMailDraftPreview({
+        kind: "competition_assigned",
         email: item.email,
         name: item.name ?? undefined,
       })
+      await convertQueueItemToAdminDraft(item.id, {
+        kind: "competition_assigned",
+        to: preview.to,
+        name: item.name ?? null,
+        subject: preview.subject,
+        body: preview.body,
+        request: { kind: "competition_assigned", email: item.email, name: item.name ?? undefined },
+      })
+      draftedCount++
       continue
     }
 
     if (item.purpose === "competition_removed") {
-      await sendCompetitionRemovedEmail({
+      const preview = await buildAdminMailDraftPreview({
+        kind: "competition_removed",
         email: item.email,
         name: item.name ?? undefined,
       })
+      await convertQueueItemToAdminDraft(item.id, {
+        kind: "competition_removed",
+        to: preview.to,
+        name: item.name ?? null,
+        subject: preview.subject,
+        body: preview.body,
+        request: { kind: "competition_removed", email: item.email, name: item.name ?? undefined },
+      })
+      draftedCount++
       continue
     }
 
     if (item.purpose === "medical_exam_reminder_member") {
-      await sendMedicalExamReminderEmail({
+      const dueDate = getDueDateFromContextKey(item.context_key)
+      const preview = await buildAdminMailDraftPreview({
+        kind: "medical_exam_reminder",
         email: item.email,
         name: item.name ?? undefined,
-        dueDate: getDueDateFromContextKey(item.context_key),
+        dueDate,
       })
+      await convertQueueItemToAdminDraft(item.id, {
+        kind: "medical_exam_reminder",
+        to: preview.to,
+        name: item.name ?? null,
+        subject: preview.subject,
+        body: preview.body,
+        request: { kind: "medical_exam_reminder", email: item.email, name: item.name ?? undefined, dueDate },
+      })
+      draftedCount++
       continue
     }
 
@@ -265,14 +330,12 @@ export async function POST(request: Request) {
         athleteName: item.name ?? undefined,
         dueDate: getDueDateFromContextKey(item.context_key),
       })
+      directSentIds.push(item.id)
     }
   }
 
-  if (sendableOutgoingMails.length > 0) {
-    await markOutgoingMailsSent(
-      sendableOutgoingMails.map((item) => item.id),
-      batchKey
-    )
+  if (directSentIds.length > 0) {
+    await markOutgoingMailsSent(directSentIds, batchKey)
   }
 
   return NextResponse.json({
@@ -281,6 +344,7 @@ export async function POST(request: Request) {
     count: items.length + sendableOutgoingMails.length,
     admin_count: items.length,
     outgoing_count: sendableOutgoingMails.length,
+    outgoing_drafted_count: draftedCount,
     batch_key: batchKey,
   })
 }

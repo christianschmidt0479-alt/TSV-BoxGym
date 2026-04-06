@@ -1,8 +1,10 @@
 import { createGsMembershipConfirmationLinks } from "@/lib/gsMembershipConfirmation"
-import { formatDateInputForDisplay } from "@/lib/dateFormat"
+import { formatDateInputForDisplay, formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { createMemberUpdateLink } from "@/lib/memberUpdateTokens"
 import { getAppBaseUrl, getReplyToAddress } from "@/lib/mailConfig"
 
 type MailKind = "member" | "trainer" | "boxzwerge"
+type ApprovalFollowupTopicId = "email_confirmation" | "data_review" | "gs_correction" | "missing_details" | "general_followup"
 
 export type AdminMailDraftRequest =
   | {
@@ -17,6 +19,15 @@ export type AdminMailDraftRequest =
       confirmationYesLink?: string
       confirmationNoLink?: string
       confirmationLink?: string
+    }
+  | {
+      kind: "approval_followup"
+      memberId?: string
+      email: string
+      name?: string
+      targetKind: MailKind
+      topicIds?: ApprovalFollowupTopicId[]
+      correctionLink?: string
     }
   | {
       kind: "verification_member"
@@ -55,6 +66,12 @@ export type AdminMailDraftRequest =
       email: string
       name?: string
     }
+  | {
+      kind: "medical_exam_reminder"
+      email: string
+      name?: string
+      dueDate?: string
+    }
 
 export type AdminMailDraftPreview = {
   kind: AdminMailDraftRequest["kind"]
@@ -67,6 +84,12 @@ export type AdminMailDraftPreview = {
   auditTargetType: string
   auditTargetName: string
   auditDetailsPrefix: string
+  topicSuggestions?: Array<{
+    id: string
+    label: string
+    subject: string
+    body: string
+  }>
 }
 
 function escapeName(value?: string) {
@@ -202,6 +225,113 @@ TSV BoxGym`,
   }
 }
 
+async function getApprovalFollowupTopics(
+  request: Extract<AdminMailDraftRequest, { kind: "approval_followup" }>,
+  options?: { generateDynamicLinks?: boolean; baseUrl?: string }
+) {
+  const name = escapeName(request.name)
+  const salutation = `Hallo${name ? ` ${name}` : ""},`
+  const correctionHint = request.correctionLink?.trim()
+    ? `
+
+Falls du deine Angaben direkt selbst anpassen möchtest, nutze bitte diesen Link:
+${request.correctionLink.trim()}`
+    : ""
+  const shouldGenerateDynamicLinks = options?.generateDynamicLinks !== false
+  const updateLink =
+    shouldGenerateDynamicLinks && request.memberId && request.targetKind !== "trainer"
+      ? (await createMemberUpdateLink(request.memberId, { baseUrl: options?.baseUrl })).url
+      : request.correctionLink?.trim() || ""
+  const updateLinkBlock = updateLink
+    ? `
+
+Du kannst deine Daten hier sicher überprüfen und ggf. korrigieren:
+${updateLink}
+
+Aus Sicherheitsgründen ist eine Passwortbestätigung erforderlich.`
+    : ""
+
+  const allTopics = {
+    email_confirmation: {
+      id: "email_confirmation",
+      label: "Bitte E-Mail bestätigen",
+      subject: request.targetKind === "trainer"
+        ? "TSV BoxGym: Bitte E-Mail für den Trainerzugang bestätigen"
+        : "TSV BoxGym: Bitte E-Mail für deinen Zugang bestätigen",
+      body: `Bitte E-Mail bestätigen
+
+${salutation}
+
+für die weitere Freigabe fehlt aktuell noch die bestätigte E-Mail-Adresse. Bitte öffne den Bestätigungslink aus der bisherigen Mail und bestätige die Adresse.${correctionHint}
+
+Wenn du die Mail nicht mehr findest, antworte kurz auf diese Nachricht.
+
+TSV BoxGym`,
+    },
+    data_review: {
+      id: "data_review",
+      label: "Bitte Daten prüfen",
+      subject: "TSV BoxGym: Bitte deine Daten kurz prüfen",
+      body: `Daten bitte prüfen
+
+${salutation}
+
+bitte prüfe die hinterlegten Daten kurz auf Vollständigkeit und Richtigkeit, damit die Freigabe ohne Rückfragen abgeschlossen werden kann.${updateLinkBlock}${correctionHint}
+
+Wenn etwas nicht stimmt, antworte bitte kurz auf diese Mail.
+
+TSV BoxGym`,
+    },
+    gs_correction: {
+      id: "gs_correction",
+      label: "Bitte Daten korrigieren wegen GS-Abgleich",
+      subject: "TSV BoxGym: Bitte Daten wegen GS-Abgleich prüfen",
+      body: `Datenabgleich mit der GS
+
+${salutation}
+
+beim Abgleich mit der aktuellen TSV-Liste gibt es noch eine Abweichung. Bitte prüfe besonders Name, Geburtsdatum und hinterlegte Stammdaten.${correctionHint}
+
+Wenn du Rückfragen hast, antworte einfach auf diese Mail.
+
+TSV BoxGym`,
+    },
+    missing_details: {
+      id: "missing_details",
+      label: "Bitte fehlende Angaben ergänzen",
+      subject: "TSV BoxGym: Bitte fehlende Angaben ergänzen",
+      body: `Fehlende Angaben ergänzen
+
+${salutation}
+
+für die Freigabe fehlen aktuell noch einzelne Angaben. Bitte ergänze die fehlenden Daten, damit der Vorgang abgeschlossen werden kann.${correctionHint}
+
+Wenn unklar ist, was genau fehlt, antworte bitte kurz auf diese Mail.
+
+TSV BoxGym`,
+    },
+    general_followup: {
+      id: "general_followup",
+      label: "Allgemeine Freigabe-Rückfrage",
+      subject: "TSV BoxGym: Rückfrage zur Freigabe",
+      body: `Rückfrage zur Freigabe
+
+${salutation}
+
+wir prüfen aktuell die Freigabe und haben noch eine kurze Rückfrage. Bitte antworte kurz auf diese Nachricht, damit wir den Vorgang abschließen können.${correctionHint}
+
+TSV BoxGym`,
+    },
+  } as const
+
+  const requestedIds: ApprovalFollowupTopicId[] = Array.isArray(request.topicIds) && request.topicIds.length > 0
+    ? request.topicIds
+    : ["general_followup"]
+
+  const uniqueIds: ApprovalFollowupTopicId[] = Array.from(new Set<ApprovalFollowupTopicId>([...requestedIds, "general_followup"]))
+  return uniqueIds.map((id) => allTopics[id])
+}
+
 function getCompetitionAssignedCopy(request: Extract<AdminMailDraftRequest, { kind: "competition_assigned" }>) {
   return {
     subject: "TSV BoxGym: Du wurdest als Wettkämpfer markiert",
@@ -232,6 +362,24 @@ Hallo${request.name ? ` ${request.name}` : ""},
 dein Eintrag in der Wettkampfverwaltung wurde vom Admin angepasst. Du stehst aktuell nicht mehr auf der aktiven Wettkampfliste.
 
 Wenn du Rückfragen dazu hast, antworte bitte direkt auf diese E-Mail.
+
+TSV BoxGym`,
+  }
+}
+
+function getMedicalExamReminderCopy(request: Extract<AdminMailDraftRequest, { kind: "medical_exam_reminder" }>) {
+  const dueLabel = formatIsoDateForDisplay(request.dueDate) || "in etwa 4 Wochen"
+  return {
+    subject: "TSV BoxGym: Jährliche Untersuchung bitte rechtzeitig erneuern",
+    body: `Untersuchung läuft bald ab
+
+Hallo${request.name ? ` ${request.name}` : ""},
+
+deine jährliche ärztliche Untersuchung für den Wettkampfbereich läuft bald ab. Bitte kümmere dich rechtzeitig um eine neue Untersuchung.
+
+Voraussichtliches Ablaufdatum: ${dueLabel}
+
+Wenn der neue Termin erfolgt ist, gib die Information bitte an TSV BoxGym weiter.
 
 TSV BoxGym`,
   }
@@ -274,7 +422,10 @@ Christian`,
   }
 }
 
-export function buildAdminMailDraftPreview(request: AdminMailDraftRequest): AdminMailDraftPreview {
+export async function buildAdminMailDraftPreview(
+  request: AdminMailDraftRequest,
+  options?: { generateDynamicLinks?: boolean; baseUrl?: string }
+): Promise<AdminMailDraftPreview> {
   if (request.kind === "verification_member") {
     throw new Error("verification_member muss vor dem Preview in verification aufgelöst werden.")
   }
@@ -327,6 +478,24 @@ export function buildAdminMailDraftPreview(request: AdminMailDraftRequest): Admi
     }
   }
 
+  if (request.kind === "approval_followup") {
+    const topics = await getApprovalFollowupTopics(request, options)
+    const first = topics[0]
+    return {
+      kind: request.kind,
+      to: request.email.trim().toLowerCase(),
+      subject: first.subject,
+      body: first.body,
+      replyTo: getReplyToAddress(),
+      successMessage: "Nachricht versendet",
+      auditAction: "approval_followup_sent",
+      auditTargetType: request.targetKind,
+      auditTargetName: escapeName(request.name) || request.email.trim().toLowerCase(),
+      auditDetailsPrefix: `Mail an ${request.email.trim().toLowerCase()}`,
+      topicSuggestions: topics,
+    }
+  }
+
   if (request.kind === "competition_assigned") {
     const copy = getCompetitionAssignedCopy(request)
     return {
@@ -353,6 +522,22 @@ export function buildAdminMailDraftPreview(request: AdminMailDraftRequest): Admi
       replyTo: getReplyToAddress(),
       successMessage: "Wettkampf-Mail versendet",
       auditAction: "competition_removed_notice_sent",
+      auditTargetType: "member",
+      auditTargetName: escapeName(request.name) || request.email.trim().toLowerCase(),
+      auditDetailsPrefix: `Mail an ${request.email.trim().toLowerCase()}`,
+    }
+  }
+
+  if (request.kind === "medical_exam_reminder") {
+    const copy = getMedicalExamReminderCopy(request)
+    return {
+      kind: request.kind,
+      to: request.email.trim().toLowerCase(),
+      subject: copy.subject,
+      body: copy.body,
+      replyTo: getReplyToAddress(),
+      successMessage: "Erinnerungs-Mail versendet",
+      auditAction: "medical_exam_reminder_sent",
       auditTargetType: "member",
       auditTargetName: escapeName(request.name) || request.email.trim().toLowerCase(),
       auditDetailsPrefix: `Mail an ${request.email.trim().toLowerCase()}`,
