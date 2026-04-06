@@ -15,7 +15,6 @@ import {
   Star,
   X,
 } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
@@ -78,25 +77,16 @@ function parsePlan(raw: string | null): ParsedPlan | null {
 
 // ─── Badges ────────────────────────────────────────────────────────────────────
 
-const QUALITY_CONFIG: Record<
-  TemplateQuality,
-  { label: string; className: string; icon: React.ReactNode }
-> = {
-  standard: {
-    label: "Standard",
-    className: "border border-blue-200 bg-blue-50 text-blue-700",
-    icon: <ShieldCheck className="h-3 w-3" />,
-  },
-  recommended: {
-    label: "Empfohlen",
-    className: "border border-amber-200 bg-amber-50 text-amber-700",
-    icon: <Star className="h-3 w-3" />,
-  },
-  tested: {
-    label: "Getestet",
-    className: "border border-emerald-200 bg-emerald-50 text-emerald-700",
-    icon: <CheckCircle className="h-3 w-3" />,
-  },
+const QUALITY_CONFIG: Record<TemplateQuality, { label: string; className: string }> = {
+  standard: { label: "Standard", className: "border border-blue-200 bg-blue-50 text-blue-700" },
+  recommended: { label: "Empfohlen", className: "border border-amber-200 bg-amber-50 text-amber-700" },
+  tested: { label: "Getestet", className: "border border-emerald-200 bg-emerald-50 text-emerald-700" },
+}
+
+function getQualityIcon(quality: TemplateQuality) {
+  if (quality === "standard") return <ShieldCheck className="h-3 w-3" />
+  if (quality === "recommended") return <Star className="h-3 w-3" />
+  return <CheckCircle className="h-3 w-3" />
 }
 
 function QualityBadge({ quality }: { quality: TemplateQuality | null }) {
@@ -104,7 +94,7 @@ function QualityBadge({ quality }: { quality: TemplateQuality | null }) {
   const cfg = QUALITY_CONFIG[quality]
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${cfg.className}`}>
-      {cfg.icon}
+      {getQualityIcon(quality)}
       {cfg.label}
     </span>
   )
@@ -185,7 +175,7 @@ function QualityStepper({
             }`}
             title={isActive ? "Bewertung entfernen" : `Als „${cfg.label}" markieren`}
           >
-            {cfg.icon}
+            {getQualityIcon(q)}
             {cfg.label}
           </button>
         )

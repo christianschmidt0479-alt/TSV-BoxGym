@@ -204,7 +204,6 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("member admin notification failed", error)
     }
-
     // Automatic Office/GS list match — non-blocking, does not affect registration flow
     try {
       const supabase = createServerSupabaseServiceClient()
