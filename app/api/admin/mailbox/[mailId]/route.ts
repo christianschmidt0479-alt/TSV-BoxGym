@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
-import { getAdminMailboxRecord, updateAdminMailboxRecord } from "@/lib/adminMailboxDb"
+import { getAdminMailboxRecord, updateAdminMailboxRecord, deleteAdminMailboxRecord } from "@/lib/adminMailboxDb"
 import type { AdminMailboxStatus, AdminMailboxType } from "@/lib/adminMailbox"
 
 type UpdateMailboxBody = {
@@ -13,7 +13,7 @@ type UpdateMailboxBody = {
   type?: AdminMailboxType
 }
 
-const ALLOWED_STATUS = new Set<AdminMailboxStatus>(["open", "draft", "done", "sent"])
+const ALLOWED_STATUS = new Set<AdminMailboxStatus>(["open", "draft", "done", "sent", "deleted"])
 const ALLOWED_TYPE = new Set<AdminMailboxType>(["inbox", "draft"])
 
 function jsonError(message: string, status: number) {
@@ -90,5 +90,24 @@ export async function PATCH(request: Request, context: { params: Promise<{ mailI
   } catch (error) {
     console.error("admin mailbox update failed", error)
     return jsonError(error instanceof Error ? error.message : "Mailbox-Eintrag konnte nicht gespeichert werden.", 500)
+  }
+}
+
+export async function DELETE(request: Request, context: { params: Promise<{ mailId: string }> }) {
+  try {
+    const authError = await requireAdmin(request)
+    if (authError) return authError
+
+    const rateLimit = await checkRateLimitAsync(`admin-mailbox-delete:${getRequestIp(request)}`, 60, 10 * 60 * 1000)
+    if (!rateLimit.ok) {
+      return jsonError("Too many requests", 429)
+    }
+
+    const { mailId } = await context.params
+    await deleteAdminMailboxRecord(mailId)
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error("admin mailbox delete failed", error)
+    return jsonError(error instanceof Error ? error.message : "Mailbox-Eintrag konnte nicht gelöscht werden.", 500)
   }
 }

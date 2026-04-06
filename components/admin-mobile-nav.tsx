@@ -75,23 +75,29 @@ export function AdminMobileNav({ sections }: AdminMobileNavProps) {
                         </button>
                         {expanded ? (
                           <div className="grid gap-2 border-t border-[#d8e3ee] px-3 py-3">
-                            {section.items.map((item) => {
-                              const active = pathname === item.href
-                              return (
-                                <Link
-                                  key={item.href}
-                                  href={item.href}
-                                  onClick={() => setOpen(false)}
-                                  className={`rounded-2xl px-3.5 py-2 text-sm font-semibold transition ${
-                                    active
-                                      ? "border border-[#154c83] bg-[#154c83] text-white"
-                                      : "border border-[#b9cde2] bg-white text-[#154c83] hover:border-[#154c83] hover:bg-[#eef4fb]"
-                                  }`}
-                                >
-                                  {item.label}
-                                </Link>
+                            {section.items
+                              .filter((item) =>
+                                item.href !== "/verwaltung/mail" &&
+                                item.href !== "/verwaltung/mail/verfassen" &&
+                                item.href !== "/verwaltung/inbox"
                               )
-                            })}
+                              .map((item) => {
+                                const active = pathname === item.href
+                                return (
+                                  <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    onClick={() => setOpen(false)}
+                                    className={`rounded-2xl px-3.5 py-2 text-sm font-semibold transition ${
+                                      active
+                                        ? "border border-[#154c83] bg-[#154c83] text-white"
+                                        : "border border-[#b9cde2] bg-white text-[#154c83] hover:border-[#154c83] hover:bg-[#eef4fb]"
+                                    }`}
+                                  >
+                                    {item.label}
+                                  </Link>
+                                )
+                              })}
                           </div>
                         ) : null}
                       </div>

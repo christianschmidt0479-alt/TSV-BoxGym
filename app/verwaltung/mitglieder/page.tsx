@@ -12,12 +12,12 @@ import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ChevronDown, ChevronUp } from "lucide-react"
+
 import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { getNextBirthdayEntry } from "@/lib/birthdays"
 import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, isValidMemberPassword } from "@/lib/memberPassword"
-import { getOfficeListStatusBadgeClass, getOfficeListStatusLabel } from "@/lib/officeListStatus"
+import { getOfficeListStatusLabel } from "@/lib/officeListStatus"
 import { buildTrainingGroupOptions, compareTrainingGroupOrder, isCompatibleOfficeListGroup, normalizeTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -828,39 +828,29 @@ export default function MitgliederverwaltungPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>GS-Abgleich</TableHead>
                   <TableHead>Gruppe</TableHead>
-                  <TableHead>Rollen</TableHead>
-                  <TableHead>Telefon</TableHead>
-                  <TableHead>E-Mail</TableHead>
-                  <TableHead>Check-ins</TableHead>
-                  <TableHead>Letzte Aktivität</TableHead>
-                  <TableHead>Details</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredMembers.map((member) => {
                   const status = getMemberStatus(member)
-                  const lastActivity = lastActivityByMember[member.id]
                   const age = getAgeInYears(member.birthdate)
                   const nextBirthday = getNextBirthdayEntry(member, today)
                   const showBirthdayMarker = nextBirthday && nextBirthday.days_from_today >= 0 && nextBirthday.days_from_today <= 14
                   const isBoxzwergeWarning = member.base_group === "Boxzwerge" && (age ?? -1) >= 10
                   const isBoxzwerge = isBoxzwergeMember(member)
                   const parentLink = parentLinksByMember[member.id] ?? null
-                  const trainerLink = trainerLinksByMember[member.id] ?? null
-                  const hasOfficeMismatch = hasOfficeListGroupMismatch(member, Boolean(trainerLink))
                   const isExpanded = editingMemberId === member.id
                   const usesParentLogin = hasParentManagedMemberLogin(member, parentLink)
 
                   return (
                     <Fragment key={member.id}>
                       <TableRow
-                        className={`cursor-pointer ${isBoxzwergeWarning ? "bg-red-50/80" : ""}`}
+                        className={`cursor-pointer transition-colors ${isBoxzwergeWarning ? "bg-red-50/80" : isExpanded ? "bg-zinc-100/60" : ""}`}
                         onClick={() => toggleMemberEditor(member)}
                       >
-                        <TableCell>
+                        <TableCell className="align-top min-w-[140px]">
                           <div className="font-medium text-zinc-900">{getMemberDisplayName(member)}</div>
                           {showBirthdayMarker ? (
                             <div className="mt-1 flex flex-wrap gap-1">
@@ -884,116 +874,89 @@ export default function MitgliederverwaltungPage() {
                             <div className="mt-1 text-xs font-semibold text-red-700">Boxzwerge-Warnung ab 10 Jahren</div>
                           ) : null}
                           {isBoxzwerge ? (
-                            <div className="mt-2 space-y-1 text-xs text-zinc-600">
-                              <div>Kind / Boxzwerg: {getMemberDisplayName(member)}</div>
-                              <div>Eltern / Notfallkontakt: {member.guardian_name || "—"}</div>
-                              <div>Elternkonto: {parentLink ? `${parentLink.parent_name} · ${parentLink.email}` : "—"}</div>
-                              {usesParentLogin ? (
-                                <div className="font-medium text-[#154c83]">Kein eigener Mitglieder-Login, Zugang läuft über das Elternkonto.</div>
-                              ) : null}
+                            <div className="mt-1 text-xs text-zinc-500">
+                              {member.guardian_name ? `Notfallkontakt: ${member.guardian_name}` : "Kein Notfallkontakt"}
+                              {usesParentLogin ? " · Zugang über Elternkonto" : ""}
                             </div>
                           ) : null}
                         </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {status === "freigegeben" ? "—" : (
-                              <Badge variant="outline" className={getStatusBadgeClass(status)}>
-                                {getStatusLabel(status)}
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {member.office_list_status ? (
-                            <div className="space-y-1">
-                              <Badge variant="outline" className={getOfficeListStatusBadgeClass(member.office_list_status)}>
-                                {getOfficeListStatusLabel(member.office_list_status)}
-                              </Badge>
-                              <div className="text-xs text-zinc-500">
-                                {member.office_list_group ? `${member.office_list_group} · ` : ""}
-                                {member.office_list_checked_at ? formatDisplayDateTime(new Date(member.office_list_checked_at)) : "ohne Zeitstempel"}
-                              </div>
-                              {hasOfficeMismatch ? (
-                                <div className="text-xs font-medium text-amber-700">
-                                  Laut GS in {member.office_list_group}, Stammgruppe ist {member.base_group || "—"}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-zinc-400">Kein GS-Abgleich</span>
-                          )}
-                        </TableCell>
-                        <TableCell>{member.base_group || "—"}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {trainerLink ? (
-                              <Badge variant="outline">
-                                {trainerLink.role === "admin" ? "Admin + Trainer" : "Trainer"}
-                              </Badge>
-                            ) : null}
-                            {member.is_competition_member ? <Badge variant="outline">Wettkämpfer</Badge> : null}
-                            {!trainerLink && !member.is_competition_member ? "—" : null}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {isBoxzwerge ? (
-                            <div className="space-y-1">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">Eltern</div>
-                              <div>{member.phone || "—"}</div>
-                            </div>
-                          ) : (
-                            member.phone || "—"
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {isBoxzwerge ? (
-                            <div className="space-y-1">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">Eltern</div>
-                              <div>{member.email || "—"}</div>
-                              {usesParentLogin ? (
-                                <div className="text-xs font-medium text-[#154c83]">Login über Elternkonto</div>
-                              ) : null}
-                            </div>
-                          ) : (
-                            member.email || "—"
-                          )}
-                        </TableCell>
-                        <TableCell>{visitsByMember[member.id] ?? 0}</TableCell>
-                        <TableCell>{lastActivity ? formatDisplayDateTime(new Date(lastActivity)) : "Noch kein Check-in"}</TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="rounded-xl"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              toggleMemberEditor(member)
-                            }}
-                          >
-                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                          </Button>
+                        <TableCell className="align-top text-sm">{member.base_group || "—"}</TableCell>
+                        <TableCell className="align-top">
+                          {status !== "freigegeben" ? (
+                            <Badge variant="outline" className={getStatusBadgeClass(status)}>
+                              {getStatusLabel(status)}
+                            </Badge>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                       {isExpanded && editingMember ? (
                         <TableRow className="bg-zinc-50/80 hover:bg-zinc-50/80">
-                          <TableCell colSpan={10} className="p-4">
+                          <TableCell colSpan={3} className="p-4">
                             <div className="space-y-4 rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
-                              <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-700">
+                              <div className="rounded-2xl bg-zinc-100 p-4 text-sm">
                                 <div className="font-semibold text-zinc-900">{getMemberDisplayName(editingMember)}</div>
-                                <div className="mt-1">
-                                  {editingMemberIsBoxzwerge ? "Kind" : "Geburtsdatum"}: {formatIsoDateForDisplay(editingMember.birthdate) || "—"} · Stammgruppe: {editingMember.base_group || "—"}
-                                </div>
-                                <div className="mt-1">Geschlecht: {editingMember.gender || "—"}</div>
-                                {trainerLinksByMember[editingMember.id] ? (
-                                  <div className="mt-1 text-xs text-zinc-500">
-                                    Rolle: {trainerLinksByMember[editingMember.id].role === "admin" ? "Admin + Trainer" : "Trainer"} · Trainingsgruppe bleibt parallel aktiv
+                                <div className="mt-2 space-y-1 text-zinc-700">
+                                  <div>
+                                    <span className="text-zinc-500">{editingMemberIsBoxzwerge ? "Geburtstag (Kind)" : "Geburtstag"}: </span>
+                                    {formatIsoDateForDisplay(editingMember.birthdate) || "—"}
+                                    {" · "}
+                                    <span className="text-zinc-500">Gruppe: </span>
+                                    {editingMember.base_group || "—"}
                                   </div>
-                                ) : null}
-                                {editingMemberIsBoxzwerge ? <div className="mt-1 text-xs text-zinc-500">Name und Geburtsdatum gehören zum Kind. E-Mail und Telefon unten gehören zu den Eltern.</div> : null}
+                                  <div>
+                                    <span className="text-zinc-500">Geschlecht: </span>
+                                    {editingMember.gender || "—"}
+                                  </div>
+                                  <div className="break-all">
+                                    <span className="text-zinc-500">{editingMemberIsBoxzwerge ? "Eltern-E-Mail" : "E-Mail"}: </span>
+                                    {editingMember.email || "—"}
+                                  </div>
+                                  <div>
+                                    <span className="text-zinc-500">{editingMemberIsBoxzwerge ? "Eltern-Telefon" : "Telefon"}: </span>
+                                    {editingMember.phone || "—"}
+                                  </div>
+                                </div>
+                                <div className="mt-2 space-y-1 text-xs text-zinc-500">
+                                  <div>
+                                    {"Check-ins: "}
+                                    <span className="text-zinc-700">{visitsByMember[editingMember.id] ?? 0}</span>
+                                  </div>
+                                  <div>
+                                    {"Aktivität: "}
+                                    <span className="text-zinc-700">
+                                      {lastActivityByMember[editingMember.id]
+                                        ? formatDisplayDateTime(new Date(lastActivityByMember[editingMember.id]))
+                                        : "—"}
+                                    </span>
+                                  </div>
+                                  {editingMember.office_list_status ? (
+                                    <div>
+                                      {"GS-Abgleich: "}
+                                      <span className={
+                                        editingMember.office_list_status === "green" ? "font-medium text-green-700" :
+                                        editingMember.office_list_status === "yellow" ? "font-medium text-amber-700" :
+                                        editingMember.office_list_status === "red" ? "font-medium text-red-700" : "text-zinc-700"
+                                      }>
+                                        {getOfficeListStatusLabel(editingMember.office_list_status)}
+                                      </span>
+                                      {editingMember.office_list_group ? <>{" · "}{editingMember.office_list_group}</> : null}
+                                    </div>
+                                  ) : null}
+                                  {trainerLinksByMember[editingMember.id] ? (
+                                    <div>
+                                      {"Rolle: "}
+                                      <span className="text-zinc-700">
+                                        {trainerLinksByMember[editingMember.id].role === "admin" ? "Admin + Trainer" : "Trainer"}
+                                      </span>
+                                    </div>
+                                  ) : null}
+                                  {editingMemberIsBoxzwerge ? (
+                                    <div>E-Mail und Telefon gehören zu den Eltern des Kindes.</div>
+                                  ) : null}
+                                </div>
                                 {hasParentManagedMemberLogin(editingMember, editingParentLink) ? (
-                                  <div className="mt-2 rounded-2xl border border-[#c8d8ea] bg-white px-3 py-2 text-xs font-medium text-[#154c83]">
-                                    Dieses Kind hat bewusst keinen eigenen Mitglieder-Login. Zugang und Kommunikation laufen über das verknüpfte Elternkonto.
+                                  <div className="mt-3 rounded-2xl border border-[#c8d8ea] bg-white px-3 py-2 text-xs font-medium text-[#154c83]">
+                                    Zugang läuft über das Elternkonto – kein eigener Mitglieder-Login.
                                   </div>
                                 ) : null}
                               </div>
@@ -1342,7 +1305,7 @@ export default function MitgliederverwaltungPage() {
                                   </>
                                 ) : null}
 
-                                <div className="flex flex-wrap gap-3 md:col-span-2">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3 md:col-span-2">
                                   <Button
                                     type="submit"
                                     className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
@@ -1353,6 +1316,31 @@ export default function MitgliederverwaltungPage() {
                                   <Button type="button" variant="outline" className="rounded-2xl" onClick={clearEditingState}>
                                     Schließen
                                   </Button>
+                                  {editingMember.email ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      className="rounded-2xl"
+                                      onClick={() => {
+                                        router.push(`/verwaltung/postfach?tab=compose&to=${encodeURIComponent(editingMember.email ?? "")}`)
+                                      }}
+                                    >
+                                      Mail senden
+                                    </Button>
+                                  ) : null}
+                                  {!editingMember.email_verified && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
+                                      disabled={resendingVerificationMemberId === editingMember.id}
+                                      onClick={async () => {
+                                        await resendVerificationEmail(editingMember)
+                                      }}
+                                    >
+                                      {resendingVerificationMemberId === editingMember.id ? "Sendet..." : "Bestätigungs-Mail erneut senden"}
+                                    </Button>
+                                  )}
                                   {editingMemberIsBoxzwerge && editingParentLink ? (
                                     <Button
                                       type="button"
@@ -1391,23 +1379,10 @@ export default function MitgliederverwaltungPage() {
                                       Vom Elternkonto trennen
                                     </Button>
                                   ) : null}
-                                  {!editingMember.email_verified && (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
-                                      disabled={resendingVerificationMemberId === editingMember.id}
-                                      onClick={async () => {
-                                        await resendVerificationEmail(editingMember)
-                                      }}
-                                    >
-                                      {resendingVerificationMemberId === editingMember.id ? "Sendet..." : "Bestätigungs-Mail erneut senden"}
-                                    </Button>
-                                  )}
                                   <Button
                                     type="button"
                                     variant="outline"
-                                    className="rounded-2xl border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                                    className="rounded-2xl border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 sm:ml-auto"
                                     disabled={savingMemberId === editingMember.id}
                                     onClick={async () => {
                                       const confirmed = window.confirm(

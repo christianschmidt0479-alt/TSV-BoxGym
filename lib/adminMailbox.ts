@@ -1,4 +1,4 @@
-export type AdminMailboxStatus = "open" | "draft" | "done" | "sent"
+export type AdminMailboxStatus = "open" | "draft" | "done" | "sent" | "deleted"
 
 export type AdminMailboxType = "inbox" | "draft"
 
@@ -36,6 +36,8 @@ export function getMailboxStatusLabel(status: AdminMailboxStatus) {
       return "Erledigt"
     case "sent":
       return "Gesendet"
+    case "deleted":
+      return "Gelöscht"
   }
 }
 

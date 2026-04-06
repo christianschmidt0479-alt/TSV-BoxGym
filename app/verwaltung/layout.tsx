@@ -20,7 +20,6 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
       items: [
         { href: "/verwaltung", label: "Start" },
         { href: "/verwaltung/heute", label: "Heute" },
-        { href: "/verwaltung/inbox", label: "Inbox" },
       ],
     },
     {
@@ -46,7 +45,6 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
       title: "System",
       items: [
         { href: "/verwaltung/postfach", label: "Postfach" },
-        { href: "/verwaltung/mail", label: "Mail" },
         ...(isAdmin ? [{ href: "/verwaltung/sicherheit", label: "Sicherheit" }] : []),
         ...(isAdmin ? [{ href: "/verwaltung/einstellungen", label: "Einstellungen" }] : []),
         ...(isAdmin ? [{ href: "/verwaltung/ki", label: "KI" }] : []),

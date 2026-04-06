@@ -5,7 +5,7 @@ create table if not exists public.admin_mailbox (
   subject text,
   snippet text,
   content text not null default '',
-  status text not null check (status in ('open', 'draft', 'done', 'sent')),
+  status text not null check (status in ('open', 'draft', 'done', 'sent', 'deleted')),
   type text not null check (type in ('inbox', 'draft')),
   created_at timestamptz not null default timezone('utc', now())
 );

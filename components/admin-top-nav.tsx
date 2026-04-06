@@ -14,7 +14,6 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
       id: "uebersicht",
       label: "Übersicht",
       items: [
-        { label: "Inbox", href: "/verwaltung/inbox" },
         { label: "Heute", href: "/verwaltung/heute" },
         { label: "Start", href: "/verwaltung" },
       ],
@@ -45,7 +44,6 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
       label: "Verwaltung",
       items: [
         { label: "Postfach", href: "/verwaltung/postfach" },
-        { label: "Mail", href: "/verwaltung/mail" },
         ...(isAdmin ? [{ label: "Trainer", href: "/verwaltung/trainer" }] : []),
         ...(isAdmin ? [{ label: "Einstellungen", href: "/verwaltung/einstellungen" }] : []),
       ],

@@ -22,6 +22,7 @@ export function WorkspaceSwitcher() {
   const [logoutPending, setLogoutPending] = useState(false)
   const [hasMemberSession, setHasMemberSession] = useState(false)
   const [hasParentSession, setHasParentSession] = useState(false)
+  const [unreadEmailCount, setUnreadEmailCount] = useState(0)
 
   const currentWorkspace = getWorkspace(pathname)
   const hasTrainerAccess = Boolean(role)
@@ -64,6 +65,33 @@ export function WorkspaceSwitcher() {
       cancelled = true
     }
   }, [pathname])
+
+  // Ungelesene E-Mails zählen (nur für Admins, jede Minute)
+  useEffect(() => {
+    if (!resolved || !hasAdminAccess) return
+
+    async function fetchUnreadCount() {
+      try {
+        const since = localStorage.getItem("tsv_admin_emails_viewed_at") ?? new Date().toISOString()
+        const response = await fetch(
+          `/api/admin/inbound-emails/unread-count?since=${encodeURIComponent(since)}`,
+          { cache: "no-store" },
+        )
+        if (response.ok) {
+          const payload = (await response.json()) as { ok?: boolean; count?: number }
+          if (payload.ok) {
+            setUnreadEmailCount(payload.count ?? 0)
+          }
+        }
+      } catch {
+        // Stille Fehler – Badge bleibt unverändert
+      }
+    }
+
+    void fetchUnreadCount()
+    const interval = setInterval(() => void fetchUnreadCount(), 60 * 1000)
+    return () => clearInterval(interval)
+  }, [resolved, hasAdminAccess])
 
   function persistWorkspace(nextWorkspace: "trainer" | "admin") {
     if (typeof window === "undefined") return
@@ -152,12 +180,17 @@ export function WorkspaceSwitcher() {
             asChild
             size="sm"
             variant={currentWorkspace === "admin" ? "default" : "outline"}
-            className={`rounded-xl ${currentWorkspace === "admin" ? "bg-[#0f4f8c] text-white hover:bg-[#0c406f]" : ""}`}
+            className={`relative rounded-xl ${currentWorkspace === "admin" ? "bg-[#0f4f8c] text-white hover:bg-[#0c406f]" : ""}`}
             disabled={!resolved || !hasAdminAccess}
           >
             <Link href="/verwaltung" onClick={() => persistWorkspace("admin")}>
               <ShieldCheck className="mr-2 h-4 w-4" />
               Admin
+              {unreadEmailCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                  {unreadEmailCount > 99 ? "99+" : unreadEmailCount}
+                </span>
+              )}
             </Link>
           </Button>
 
