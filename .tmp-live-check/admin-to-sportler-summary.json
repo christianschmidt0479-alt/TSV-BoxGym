@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "finalUrl": "https://www.tsvboxgym.de/mein-bereich/profil",
+  "profileVisible": true,
+  "profileLoads": 1,
+  "fallbackLoads": 1,
+  "navigations": [
+    "https://www.tsvboxgym.de/trainer-zugang",
+    "https://www.tsvboxgym.de/trainer-zugang",
+    "https://www.tsvboxgym.de/trainer-zugang",
+    "https://www.tsvboxgym.de/verwaltung",
+    "https://www.tsvboxgym.de/verwaltung",
+    "https://www.tsvboxgym.de/mein-bereich?trainer_access=1",
+    "https://www.tsvboxgym.de/mein-bereich/profil"
+  ]
+}

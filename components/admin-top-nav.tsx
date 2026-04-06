@@ -4,9 +4,23 @@ import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { ChevronDown } from "lucide-react"
+import type { NavBadgesResponse } from "@/app/api/admin/nav-badges/route"
 
-type MenuItem = { label: string; href: string }
-type MenuSection = { id: string; label: string; items: MenuItem[] }
+// ─── Badge-Komponente ─────────────────────────────────────────────────────────
+
+function NavBadge({ count }: { count: number }) {
+  if (count <= 0) return null
+  return (
+    <span className="ml-1 inline-flex h-4.5 min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+      {count > 99 ? "99+" : count}
+    </span>
+  )
+}
+
+// ─── Menüstruktur ─────────────────────────────────────────────────────────────
+
+type MenuItem = { label: string; href: string; badgeKey?: string }
+type MenuSection = { id: string; label: string; badgeSectionKey?: string; items: MenuItem[] }
 
 function buildMenu(isAdmin: boolean): MenuSection[] {
   return [
@@ -21,8 +35,9 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
     {
       id: "mitglieder",
       label: "Mitglieder",
+      badgeSectionKey: "mitglieder",
       items: [
-        { label: "Freigaben", href: "/verwaltung/freigaben" },
+        { label: "Freigaben", href: "/verwaltung/freigaben", badgeKey: "freigaben" },
         { label: "Mitglieder", href: "/verwaltung/mitglieder" },
         { label: "QR-Codes", href: "/verwaltung/qr-codes" },
         ...(isAdmin ? [{ label: "Geburtstage", href: "/verwaltung/geburtstage" }] : []),
@@ -42,8 +57,9 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
     {
       id: "verwaltung",
       label: "Verwaltung",
+      badgeSectionKey: "verwaltung",
       items: [
-        { label: "Postfach", href: "/verwaltung/postfach" },
+        { label: "Postfach", href: "/verwaltung/postfach", badgeKey: "postfach" },
         ...(isAdmin ? [{ label: "Trainer", href: "/verwaltung/trainer" }] : []),
         ...(isAdmin ? [{ label: "Einstellungen", href: "/verwaltung/einstellungen" }] : []),
       ],
@@ -53,10 +69,11 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
           {
             id: "system",
             label: "System",
+            badgeSectionKey: "system",
             items: [
+              { label: "Sicherheit", href: "/verwaltung/sicherheit", badgeKey: "sicherheit" },
               { label: "KI", href: "/verwaltung/ki" },
-              { label: "Sicherheit", href: "/verwaltung/sicherheit" },
-              { label: "Fehler", href: "/verwaltung/fehler" },
+              { label: "Fehler", href: "/verwaltung/fehler", badgeKey: "fehler" },
             ],
           },
         ]
@@ -64,11 +81,54 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
   ]
 }
 
+// ─── Badge-Helper ─────────────────────────────────────────────────────────────
+
+function getSectionTotal(badges: NavBadgesResponse | null, sectionKey: string | undefined): number {
+  if (!badges || !sectionKey) return 0
+  const section = badges[sectionKey as keyof NavBadgesResponse]
+  return section?.total ?? 0
+}
+
+function getItemBadge(badges: NavBadgesResponse | null, sectionKey: string | undefined, itemKey: string | undefined): number {
+  if (!badges || !sectionKey || !itemKey) return 0
+  const section = badges[sectionKey as keyof NavBadgesResponse]
+  if (!section) return 0
+  return (section.items as Record<string, number>)[itemKey] ?? 0
+}
+
+// ─── Hauptkomponente ──────────────────────────────────────────────────────────
+
 export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
+  const [badges, setBadges] = useState<NavBadgesResponse | null>(null)
+  const [badgesTick, setBadgesTick] = useState(0)
   const pathname = usePathname()
   const navRef = useRef<HTMLDivElement>(null)
   const menu = buildMenu(isAdmin)
+
+  // Manueller Badge-Refresh nach Seen-Call (Event kommt von useMarkSectionSeen)
+  useEffect(() => {
+    function onRefresh() { setBadgesTick((t) => t + 1) }
+    window.addEventListener("admin-nav-badges-refresh", onRefresh)
+    return () => window.removeEventListener("admin-nav-badges-refresh", onRefresh)
+  }, [])
+
+  // Badges laden — initial + bei Routenwechsel + nach manuellem Refresh
+  useEffect(() => {
+    let cancelled = false
+    async function loadBadges() {
+      try {
+        const response = await fetch("/api/admin/nav-badges", { cache: "no-store" })
+        if (!response.ok || cancelled) return
+        const data = (await response.json()) as NavBadgesResponse
+        if (!cancelled) setBadges(data)
+      } catch {
+        // still fail: badges bleiben null → keine Anzeige
+      }
+    }
+    void loadBadges()
+    return () => { cancelled = true }
+  }, [pathname, badgesTick])
 
   // ESC schließt Menü
   useEffect(() => {
@@ -106,6 +166,7 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
         const active = isSectionActive(section)
         const isOpen = openMenu === section.id
         const alignRight = index >= menu.length - 2
+        const sectionBadge = getSectionTotal(badges, section.badgeSectionKey)
         return (
           <div key={section.id} className="relative">
             <button
@@ -118,6 +179,11 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
               }`}
             >
               {section.label}
+              {sectionBadge > 0 && (
+                <span className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none ${active || isOpen ? "bg-white text-red-600" : "bg-red-600 text-white"}`}>
+                  {sectionBadge > 99 ? "99+" : sectionBadge}
+                </span>
+              )}
               <ChevronDown
                 className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`}
               />
@@ -136,18 +202,24 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
                         pathname === item.href ||
                         (item.href !== "/verwaltung" &&
                           pathname.startsWith(item.href + "/"))
+                      const itemBadge = getItemBadge(badges, section.badgeSectionKey, item.badgeKey)
                       return (
                         <Link
                           key={item.href}
                           href={item.href}
                           onClick={() => setOpenMenu(null)}
-                          className={`rounded-lg px-3 py-2.5 text-sm transition hover:bg-[#eef4fb] ${
+                          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm transition hover:bg-[#eef4fb] ${
                             itemActive
                               ? "bg-[#eef4fb] font-semibold text-[#154c83]"
                               : "text-zinc-700"
                           }`}
                         >
-                          {item.label}
+                          <span>{item.label}</span>
+                          {itemBadge > 0 && (
+                            <span className="ml-2 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+                              {itemBadge > 99 ? "99+" : itemBadge}
+                            </span>
+                          )}
                         </Link>
                       )
                     })}
@@ -161,3 +233,4 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
     </div>
   )
 }
+

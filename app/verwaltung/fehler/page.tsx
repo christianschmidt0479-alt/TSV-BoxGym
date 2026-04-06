@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { formatDisplayDateTime } from "@/lib/dateFormat"
 import type { AppErrorRecord, AppErrorSummary, AppErrorSeverity, AppErrorStatus } from "@/lib/appErrorsDb"
 import { getSeverityLabel, getStatusLabel } from "@/lib/appErrorAnalysis"
+import { useMarkSectionSeen } from "@/lib/useMarkSectionSeen"
 
 // ─── Typen ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ function statusColor(status: AppErrorStatus) {
 // ─── Hauptkomponente ──────────────────────────────────────────────────────────
 
 export default function FehlerPage() {
+  useMarkSectionSeen("errors")
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
 
   const [loading, setLoading] = useState(true)

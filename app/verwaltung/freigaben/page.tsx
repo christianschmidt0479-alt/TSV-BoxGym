@@ -17,6 +17,7 @@ import { MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, isValidMemb
 import { getOfficeListStatusBadgeClass, getOfficeListStatusLabel } from "@/lib/officeListStatus"
 import { getRecommendedTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
+import { useMarkSectionSeen } from "@/lib/useMarkSectionSeen"
 
 type PendingMemberRecord = {
   id: string
@@ -116,6 +117,7 @@ function getOfficeDifferenceParts(note?: string | null) {
 }
 
 export default function FreigabenPage() {
+  useMarkSectionSeen("approvals")
   const router = useRouter()
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [pendingMembers, setPendingMembers] = useState<PendingMemberRecord[]>([])

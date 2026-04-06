@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDisplayDateTime } from "@/lib/dateFormat"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
+import { useMarkSectionSeen } from "@/lib/useMarkSectionSeen"
+import type { SecurityAlert } from "@/lib/aiSecurity"
 
 type AuditLogRow = {
   id: string
@@ -42,9 +44,46 @@ function getActionLabel(action: string) {
 }
 
 export default function SicherheitPage() {
+  useMarkSectionSeen("security")
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<AuditLogRow[]>([])
+  const [alerts, setAlerts] = useState<SecurityAlert[]>([])
+  const [loadingAlerts, setLoadingAlerts] = useState(true)
+  const [dismissingId, setDismissingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!authResolved || trainerRole !== "admin") {
+      setLoadingAlerts(false)
+      return
+    }
+    void fetch("/api/admin/ai-security-overview?range=24h", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.alerts) {
+          setAlerts((data.alerts as SecurityAlert[]).filter((a) => a.isActive))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingAlerts(false))
+  }, [authResolved, trainerRole])
+
+  async function dismissAlert(id: string) {
+    if (dismissingId) return
+    setDismissingId(id)
+    try {
+      const res = await fetch("/api/admin/ai-security-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_type: "alert", target_key: id, action_type: "acknowledged" }),
+      })
+      if (res.ok) {
+        setAlerts((prev) => prev.filter((a) => a.id !== id))
+      }
+    } finally {
+      setDismissingId(null)
+    }
+  }
 
   useEffect(() => {
     if (!authResolved || trainerRole !== "admin") {
@@ -99,11 +138,19 @@ export default function SicherheitPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card className="rounded-[24px] border-0 shadow-sm">
           <CardContent className="p-5">
             <div className="text-sm text-zinc-500">Audit-Einträge</div>
             <div className="mt-1 text-3xl font-bold text-[#154c83]">{loading ? "…" : rows.length}</div>
+          </CardContent>
+        </Card>
+        <Card className="rounded-[24px] border-0 shadow-sm">
+          <CardContent className="p-5">
+            <div className="text-sm text-zinc-500">Aktive Warnungen</div>
+            <div className={`mt-1 text-3xl font-bold ${alerts.length > 0 ? "text-red-600" : "text-emerald-700"}`}>
+              {loadingAlerts ? "…" : alerts.length}
+            </div>
           </CardContent>
         </Card>
         <Card className="rounded-[24px] border-0 shadow-sm">
@@ -119,6 +166,67 @@ export default function SicherheitPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>Aktive Warnungen</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {loadingAlerts ? (
+            <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Warnungen werden geladen…</div>
+          ) : alerts.length === 0 ? (
+            <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-700">Keine aktiven Warnungen.</div>
+          ) : (
+            alerts.map((alert) => {
+              const levelStyles = {
+                critical: { border: "border-red-200", bg: "bg-red-50", badge: "bg-red-100 text-red-700", label: "Kritisch" },
+                warning: { border: "border-amber-200", bg: "bg-amber-50", badge: "bg-amber-100 text-amber-700", label: "Warnung" },
+                info: { border: "border-blue-200", bg: "bg-blue-50", badge: "bg-blue-100 text-blue-700", label: "Hinweis" },
+              }[alert.level]
+              return (
+                <div key={alert.id} className={`rounded-xl border ${levelStyles.border} ${levelStyles.bg} px-4 py-3`}>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${levelStyles.badge}`}>
+                        {levelStyles.label}
+                      </span>
+                      <span className="text-sm font-semibold text-zinc-800">{alert.title}</span>
+                    </div>
+                    <span className="text-xs text-zinc-400 whitespace-nowrap">
+                      {formatDisplayDateTime(new Date(alert.created_at))}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-sm text-zinc-600">{alert.message}</p>
+                  {(alert.relatedRoute ?? alert.relatedIp) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {alert.relatedRoute && (
+                        <span className="rounded-lg border border-zinc-200 bg-white px-2 py-0.5 text-xs text-zinc-500">
+                          Route: {alert.relatedRoute}
+                        </span>
+                      )}
+                      {alert.relatedIp && (
+                        <span className="rounded-lg border border-zinc-200 bg-white px-2 py-0.5 text-xs font-mono text-zinc-500">
+                          IP: {alert.relatedIp}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => dismissAlert(alert.id)}
+                      disabled={dismissingId === alert.id}
+                      className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                    >
+                      {dismissingId === alert.id ? "…" : "✓ Geprüft & schließen"}
+                    </button>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="rounded-[24px] border-0 shadow-sm">
         <CardHeader>

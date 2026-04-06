@@ -1,6 +1,11 @@
 import { AdminMailboxClient } from "@/components/admin-mailbox-client"
+import { MarkSectionSeen } from "@/components/mark-section-seen"
 
 export default function VerwaltungPostfachPage() {
-  // Default-Tab: Eingang
-  return <AdminMailboxClient basePath="/verwaltung/postfach" backHref="/verwaltung" />
+  return (
+    <>
+      <MarkSectionSeen section="mailbox" />
+      <AdminMailboxClient basePath="/verwaltung/postfach" backHref="/verwaltung" />
+    </>
+  )
 }

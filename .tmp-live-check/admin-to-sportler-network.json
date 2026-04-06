@@ -1,0 +1,1002 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang",
+      "resourceType": "document"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/image?url=%2Fboxgym-headline-old.png&w=256&q=75",
+      "resourceType": "image"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/73738db630b830e3.css",
+      "resourceType": "stylesheet"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/74f2567fe670fe18.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/82abf2d65f5428ae.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/38eb66a58ed5ffd7.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/aee6c7720838f8a2.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/turbopack-4ce5a955bb18ca94.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/7482a22dc2c2dba5.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/253168ed6da38a67.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/ff1a16fafef87110.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/d2be314c3ece3fbe.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/c1df82d33797202a.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/trainer-session",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/trainer-session",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/verwaltung?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=1h6za",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=16nsu",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=12d7e",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=3cqx6",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/?_rsc=1h6za",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/?_rsc=1m8dv",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=lkam1",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=1h6za",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=7sfdl",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/7ff37723afff0411.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=9ufyd",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=1h6za",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=1wkcx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=9dtao",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/d744ff82089bd763.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/c7ebeb2df870c4ae.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/trainer-auth",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=1gpzs",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/verwaltung?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=1h6za",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=16nsu",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=12d7e",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=3cqx6",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/?_rsc=1h6za",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/?_rsc=1m8dv",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=1h6za",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=7sfdl",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=9ufyd",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=1h6za",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=1wkcx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=9dtao",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/verwaltung",
+      "resourceType": "document"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=8ksrx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/trainer-session",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/73738db630b830e3.css",
+      "resourceType": "stylesheet"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/image?url=%2Fboxgym-headline-old.png&w=48&q=75",
+      "resourceType": "image"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/74f2567fe670fe18.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/82abf2d65f5428ae.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/38eb66a58ed5ffd7.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/aee6c7720838f8a2.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/turbopack-4ce5a955bb18ca94.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/7482a22dc2c2dba5.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/253168ed6da38a67.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/ff1a16fafef87110.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/d2be314c3ece3fbe.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/210f66bd4c51c0c4.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/f0342da324387eb4.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/api/admin/overview?today=2026-04-05",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=zkgsr",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/?_rsc=zkgsr",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/verwaltung?_rsc=zkgsr",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer?_rsc=zkgsr",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=zkgsr",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/trainer-session",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=1olq1",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=3vn3k",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=7tyl7",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=3vn3k",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=1nfbe",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=1e8f2",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=1p0wm",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/datenschutz?_rsc=9e3vl",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/d744ff82089bd763.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/c7ebeb2df870c4ae.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/?_rsc=3vn3k",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/?_rsc=1jruc",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer?_rsc=3vn3k",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer?_rsc=30bka",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/7ff37723afff0411.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/trainer?_rsc=16ctu",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/verwaltung?_rsc=1lxel",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/2be8a5dea23f93dc.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=zkgsr",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/3005f7159ec4796b.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/image?url=%2Fboxgym-headline-old.png&w=256&q=75",
+      "resourceType": "image"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/image?url=%2Fboxgym-headline-old.png&w=128&q=75",
+      "resourceType": "image"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/passwort-zuruecksetzen?_rsc=fpcuc",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/passwort-zuruecksetzen?_rsc=qrnyg",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/passwort-zuruecksetzen?_rsc=1l2e3",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/passwort-zuruecksetzen?_rsc=zdmq6",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/bac5143007055c6c.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil?_rsc=129z0",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/_next/static/chunks/0c4286a03071f83a.js",
+      "resourceType": "script"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.tsvboxgym.de/api/public/member-area",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=yjegh",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/gewicht?_rsc=yjegh",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/wettkampf?_rsc=yjegh",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/einstellungen?_rsc=yjegh",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/aktivitaet?_rsc=yjegh",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/wettkampf?_rsc=1chj5",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/gewicht?_rsc=1chj5",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=1chj5",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=1m0y4",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=6zzbe",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=1knhm",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/gewicht?_rsc=dxi2e",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/gewicht?_rsc=mlmvo",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/wettkampf?_rsc=181z0",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/wettkampf?_rsc=13hdg",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/einstellungen?_rsc=1chj5",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/einstellungen?_rsc=16ipx",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/einstellungen?_rsc=1kd65",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/aktivitaet?_rsc=1chj5",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/aktivitaet?_rsc=r0gxi",
+      "resourceType": "fetch"
+    },
+    {
+      "method": "GET",
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/aktivitaet?_rsc=rejui",
+      "resourceType": "fetch"
+    }
+  ],
+  "responses": [
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=8ksrx"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/trainer-session"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=1h6za"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/trainer-session"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=7sfdl"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=9ufyd"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=1h6za"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=1wkcx"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=9dtao"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=lkam1"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=1gpzs"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=8ksrx"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=7sfdl"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=9ufyd"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/trainer-zugang?_rsc=1h6za"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=1wkcx"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=1h6za"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=9dtao"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=8ksrx"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=zkgsr"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=3vn3k"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=1nfbe"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=1e8f2"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?_rsc=zkgsr"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich?trainer_access=1&_rsc=1olq1"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/api/trainer-session"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/passwort-zuruecksetzen?_rsc=fpcuc"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/passwort-zuruecksetzen?_rsc=1l2e3"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/passwort-zuruecksetzen?_rsc=qrnyg"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/passwort-zuruecksetzen?_rsc=zdmq6"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil?_rsc=129z0"
+    },
+    {
+      "status": 401,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/api/public/member-area"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/wettkampf?_rsc=yjegh"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/einstellungen?_rsc=yjegh"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/gewicht?_rsc=yjegh"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=yjegh"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/wettkampf?_rsc=1chj5"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/aktivitaet?_rsc=yjegh"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=1chj5"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/gewicht?_rsc=1chj5"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=1m0y4"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=6zzbe"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/qrcode?_rsc=1knhm"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/gewicht?_rsc=dxi2e"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/gewicht?_rsc=mlmvo"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/wettkampf?_rsc=181z0"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/wettkampf?_rsc=13hdg"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/einstellungen?_rsc=1chj5"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/einstellungen?_rsc=16ipx"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/einstellungen?_rsc=1kd65"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/aktivitaet?_rsc=1chj5"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/aktivitaet?_rsc=r0gxi"
+    },
+    {
+      "status": 200,
+      "url": "https://www.tsvboxgym.de/mein-bereich/profil/aktivitaet?_rsc=rejui"
+    }
+  ]
+}
