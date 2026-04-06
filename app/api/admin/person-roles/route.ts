@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
@@ -6,6 +7,8 @@ import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
 import { isInternalTrainerTestEmail } from "@/lib/trainerAdmin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
+import { sendVerificationEmail } from "@/lib/resendClient"
 
 type PersonRolesActionBody =
   | {
@@ -14,6 +17,10 @@ type PersonRolesActionBody =
     }
   | {
       action: "approve_trainer"
+      trainerId: string
+    }
+  | {
+      action: "resend_trainer_verification"
       trainerId: string
     }
   | {
@@ -284,6 +291,18 @@ export async function POST(request: Request) {
         return jsonError("Missing trainer id", 400)
       }
 
+      const { data: preCheck, error: preCheckError } = await supabase
+        .from("trainer_accounts")
+        .select("id, email_verified")
+        .eq("id", trainerId)
+        .maybeSingle()
+
+      if (preCheckError) throw preCheckError
+      if (!preCheck) return jsonError("Trainer nicht gefunden", 404)
+      if (!preCheck.email_verified) {
+        return jsonError("Die E-Mail-Adresse wurde noch nicht bestätigt. Freigabe erst nach E-Mail-Bestätigung möglich.", 400)
+      }
+
       const { data, error } = await supabase
         .from("trainer_accounts")
         .update({
@@ -309,6 +328,60 @@ export async function POST(request: Request) {
       })
 
       return NextResponse.json({ ok: true })
+    }
+
+    if (body.action === "resend_trainer_verification") {
+      const trainerId = parseRecordId(body.trainerId)
+      if (!trainerId) {
+        return jsonError("Missing trainer id", 400)
+      }
+
+      const { data: trainer, error: trainerError } = await supabase
+        .from("trainer_accounts")
+        .select("id, first_name, last_name, email, email_verified, email_verification_token, password_hash")
+        .eq("id", trainerId)
+        .maybeSingle()
+
+      if (trainerError) throw trainerError
+      if (!trainer) return jsonError("Trainer nicht gefunden", 404)
+      if (!trainer.email) return jsonError("Trainer hat keine E-Mail-Adresse", 400)
+      if (trainer.email_verified) return jsonError("E-Mail wurde bereits bestätigt", 400)
+
+      const hasPassword = Boolean(trainer.password_hash)
+      const verificationToken = (trainer.email_verification_token as string | null)?.trim() || randomUUID()
+
+      if (!trainer.email_verification_token) {
+        const { error: tokenError } = await supabase
+          .from("trainer_accounts")
+          .update({ email_verification_token: verificationToken })
+          .eq("id", trainerId)
+
+        if (tokenError) throw tokenError
+      }
+
+      const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
+      const verificationLink = hasPassword
+        ? `${verificationBaseUrl}/trainer-zugang?trainer_verify=${verificationToken}`
+        : `${verificationBaseUrl}/trainer-zugang/zugang-einrichten?token=${verificationToken}`
+
+      const trainerName = getDisplayName(trainer as { first_name?: string | null; last_name?: string | null })
+      const delivery = await sendVerificationEmail({
+        email: trainer.email as string,
+        name: trainerName,
+        link: verificationLink,
+        kind: "trainer",
+      })
+
+      await writeAdminAuditLog({
+        session,
+        action: "trainer_verification_resent",
+        targetType: "trainer",
+        targetId: trainerId,
+        targetName: trainerName,
+        details: `Verification email resent to ${trainer.email}${delivery.messageId ? ` · Resend ${delivery.messageId}` : ""}`,
+      })
+
+      return NextResponse.json({ ok: true, verificationLink, delivery })
     }
 
     if (body.action === "set_trainer_role") {

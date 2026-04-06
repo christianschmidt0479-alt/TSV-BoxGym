@@ -28,6 +28,10 @@ export type TrainingPlan = {
   is_template: boolean
   template_name: string | null
   template_quality: TemplateQuality | null
+  // Trainer-Zuweisung (v7)
+  assigned_trainer_id: string | null
+  trainer_notes: string | null
+  trainer_modified_plan: string | null
   created_at: string
   updated_at: string
 }
@@ -171,5 +175,67 @@ export async function updateTemplateQuality(
 
   if (error) throw error
 
+  return data as TrainingPlan
+}
+
+// ─── Trainer-Zuweisung (v7) ───────────────────────────────────────────────────
+
+export async function assignTrainerToPlan(
+  planId: string,
+  trainerId: string | null,
+): Promise<TrainingPlan> {
+  const supabase = getServerSupabase()
+  const { data, error } = await supabase
+    .from("training_plans")
+    .update({
+      assigned_trainer_id: trainerId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", planId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as TrainingPlan
+}
+
+export async function getPlansAssignedToTrainer(trainerId: string): Promise<TrainingPlan[]> {
+  const supabase = getServerSupabase()
+  const { data, error } = await supabase
+    .from("training_plans")
+    .select("*")
+    .eq("assigned_trainer_id", trainerId)
+    .order("date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(20)
+
+  if (error) {
+    if (isMissingTableError(error)) return []
+    throw error
+  }
+  return (data ?? []) as TrainingPlan[]
+}
+
+export async function updateTrainerPlanNotes(input: {
+  planId: string
+  trainerId: string
+  trainerNotes: string | null
+  trainerModifiedPlan: string | null
+}): Promise<TrainingPlan> {
+  const supabase = getServerSupabase()
+  // Sicherheit: nur updaten, wenn der Plan tatsächlich diesem Trainer zugewiesen ist
+  const { data, error } = await supabase
+    .from("training_plans")
+    .update({
+      trainer_notes: input.trainerNotes,
+      trainer_modified_plan: input.trainerModifiedPlan,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.planId)
+    .eq("assigned_trainer_id", input.trainerId)
+    .select()
+    .single()
+
+  if (error) throw error
   return data as TrainingPlan
 }

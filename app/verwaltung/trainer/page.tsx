@@ -314,16 +314,15 @@ export default function TrainerverwaltungPage() {
                   </div>
 
                   <div className="flex flex-col gap-2">
+                    {!trainer.email_verified && (
+                      <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        Freigabe erst nach E-Mail-Bestätigung möglich
+                      </div>
+                    )}
                     <Button
                       className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                      disabled={!trainer.email_verified}
                       onClick={async () => {
-                        if (!trainer.email_verified) {
-                          const confirmed = window.confirm(
-                            "E-Mail ist noch nicht bestätigt. Trotzdem freigeben und Benachrichtigung senden?"
-                          )
-                          if (!confirmed) return
-                        }
-
                         try {
                           await runTrainerAction({
                             action: "approve_trainer",

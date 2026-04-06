@@ -3,6 +3,7 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+import { isInternalTrainerTestEmail } from "@/lib/trainerAdmin"
 
 const GS_CONFIRMATION_YES_PREFIX = "gs_confirmed:"
 const GS_CONFIRMATION_NO_PREFIX = "gs_rejected:"
@@ -42,6 +43,68 @@ type PendingMemberRow = {
   office_list_checked_at?: string | null
   last_verification_sent_at?: string | null
   created_from_excel?: boolean | null
+}
+
+type PendingTrainerRow = {
+  id: string
+  first_name?: string | null
+  last_name?: string | null
+  email?: string | null
+  email_verified?: boolean | null
+  email_verified_at?: string | null
+  is_approved?: boolean | null
+  approved_at?: string | null
+  role?: string | null
+  phone?: string | null
+  trainer_license?: string | null
+  linked_member_id?: string | null
+  created_at?: string | null
+  password_hash?: string | null
+}
+
+async function loadPendingTrainers(supabase: ReturnType<typeof getServerSupabase>) {
+  const baseSelect = "id, first_name, last_name, email, email_verified, email_verified_at, is_approved, approved_at, created_at"
+  const optionalColumns = ["phone", "trainer_license", "role", "linked_member_id", "password_hash"] as const
+  const selectedOptionalColumns = [...optionalColumns] as string[]
+
+  while (true) {
+    const response = await supabase
+      .from("trainer_accounts")
+      .select([baseSelect, ...selectedOptionalColumns].join(", "))
+      .eq("is_approved", false)
+      .order("created_at", { ascending: false })
+
+    if (!response.error) {
+      const rows = ((response.data ?? []) as unknown) as PendingTrainerRow[]
+      return {
+        data: rows
+          .filter((row) => !isInternalTrainerTestEmail(typeof row.email === "string" ? row.email : null))
+          .filter((row) => (typeof row.role === "string" ? row.role !== "admin" : true))
+          .map((row) => ({
+            ...row,
+            phone: row.phone ?? null,
+            trainer_license: row.trainer_license ?? null,
+            role: row.role ?? null,
+            linked_member_id: row.linked_member_id ?? null,
+            has_password: Boolean(row.password_hash),
+          }))
+          .map((row) => { const { password_hash: _pw, ...safe } = row as typeof row & { password_hash?: unknown }; void _pw; return safe }),
+        error: null,
+      }
+    }
+
+    const missingColumn = optionalColumns.find((column) => isMissingColumnError(response.error, column)) ?? null
+    if (!missingColumn) {
+      return response
+    }
+
+    const nextIndex = selectedOptionalColumns.indexOf(missingColumn)
+    if (nextIndex === -1) {
+      return response
+    }
+
+    selectedOptionalColumns.splice(nextIndex, 1)
+  }
 }
 
 async function loadPendingMembers(supabase: ReturnType<typeof getServerSupabase>) {
@@ -104,13 +167,15 @@ export async function GET(request: Request) {
     }
 
     const supabase = getServerSupabase()
-    const [pendingMembersResponse, checkinsResponse] = await Promise.all([
+    const [pendingMembersResponse, checkinsResponse, pendingTrainersResponse] = await Promise.all([
       loadPendingMembers(supabase),
       supabase.from("checkins").select("member_id"),
+      loadPendingTrainers(supabase),
     ])
 
     if (pendingMembersResponse.error) throw pendingMembersResponse.error
     if (checkinsResponse.error) throw checkinsResponse.error
+    // pendingTrainersResponse errors are non-fatal — trainers section is additive
 
     const pendingMemberIds = (pendingMembersResponse.data ?? []).map((row) => row.id).filter(Boolean)
     const gsConfirmedAtByMemberId: Record<string, string> = {}
@@ -168,6 +233,7 @@ export async function GET(request: Request) {
         delete normalizedRow.email_verification_token
         return normalizedRow
       }),
+      pendingTrainers: pendingTrainersResponse.error ? [] : (pendingTrainersResponse.data ?? []),
       checkinRows: checkinsResponse.data ?? [],
       gsConfirmedAtByMemberId,
       gsRejectedAtByMemberId,

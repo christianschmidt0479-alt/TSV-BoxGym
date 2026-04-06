@@ -41,6 +41,21 @@ type PendingMemberRecord = {
   created_from_excel?: boolean | null
 }
 
+type PendingTrainerRecord = {
+  id: string
+  first_name?: string | null
+  last_name?: string | null
+  email?: string | null
+  email_verified?: boolean | null
+  email_verified_at?: string | null
+  is_approved?: boolean | null
+  role?: string | null
+  phone?: string | null
+  trainer_license?: string | null
+  has_password?: boolean
+  created_at?: string | null
+}
+
 type CheckinCountRow = {
   member_id: string
 }
@@ -135,6 +150,7 @@ export default function FreigabenPage() {
   const router = useRouter()
   const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [pendingMembers, setPendingMembers] = useState<PendingMemberRecord[]>([])
+  const [pendingTrainers, setPendingTrainers] = useState<PendingTrainerRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [usedByMember, setUsedByMember] = useState<Record<string, number>>({})
   const [groupDrafts, setGroupDrafts] = useState<Record<string, string>>({})
@@ -142,6 +158,9 @@ export default function FreigabenPage() {
   const [resendingVerification, setResendingVerification] = useState<Record<string, boolean>>({})
   const [recentlySentByMember, setRecentlySentByMember] = useState<Record<string, boolean>>({})
   const [verificationSentAtByMember, setVerificationSentAtByMember] = useState<Record<string, string | null>>({})
+  const [resendingTrainerVerification, setResendingTrainerVerification] = useState<Record<string, boolean>>({})
+  const [recentlyTrainerSent, setRecentlyTrainerSent] = useState<Record<string, boolean>>({})
+  const [approvingTrainer, setApprovingTrainer] = useState<Record<string, boolean>>({})
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [emailFilter, setEmailFilter] = useState("alle")
@@ -170,6 +189,7 @@ export default function FreigabenPage() {
 
       const payload = (await response.json()) as {
         pendingMembers: PendingMemberRecord[]
+        pendingTrainers?: PendingTrainerRecord[]
         checkinRows: CheckinCountRow[]
         gsConfirmedAtByMemberId?: Record<string, string>
         gsRejectedAtByMemberId?: Record<string, string>
@@ -177,6 +197,7 @@ export default function FreigabenPage() {
 
       const nextPending = payload.pendingMembers ?? []
       setPendingMembers(nextPending)
+      setPendingTrainers(payload.pendingTrainers ?? [])
       setGsConfirmedAtByMemberId(payload.gsConfirmedAtByMemberId ?? {})
       setGsRejectedAtByMemberId(payload.gsRejectedAtByMemberId ?? {})
 
@@ -307,6 +328,77 @@ export default function FreigabenPage() {
       alert("Das Mitglied konnte nicht gelöscht werden.")
     } finally {
       setDeletingMemberId(null)
+    }
+  }
+
+  function getTrainerDisplayName(trainer: PendingTrainerRecord) {
+    const full = `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim()
+    return full || trainer.email || "—"
+  }
+
+  async function resendTrainerVerification(trainer: PendingTrainerRecord) {
+    if (!trainer.id || !trainer.email) {
+      showToast("Trainerdaten unvollständig, kann E-Mail nicht vorbereiten.", "error")
+      return
+    }
+    setResendingTrainerVerification((prev) => ({ ...prev, [trainer.id]: true }))
+    try {
+      const response = await fetch("/api/admin/person-roles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resend_trainer_verification", trainerId: trainer.id }),
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      showToast("Bestätigungslink wurde gesendet.", "success")
+      setRecentlyTrainerSent((prev) => ({ ...prev, [trainer.id]: true }))
+      window.setTimeout(() => {
+        setRecentlyTrainerSent((prev) => ({ ...prev, [trainer.id]: false }))
+      }, 60000)
+    } catch (error) {
+      console.error(error)
+      showToast(error instanceof Error ? error.message : "Bestätigungslink konnte nicht gesendet werden.", "error")
+    } finally {
+      setResendingTrainerVerification((prev) => ({ ...prev, [trainer.id]: false }))
+    }
+  }
+
+  async function approveTrainer(trainer: PendingTrainerRecord) {
+    if (!trainer.email_verified) {
+      showToast("E-Mail noch nicht bestätigt. Freigabe erst nach E-Mail-Bestätigung möglich.", "error")
+      return
+    }
+    setApprovingTrainer((prev) => ({ ...prev, [trainer.id]: true }))
+    try {
+      const response = await fetch("/api/admin/person-roles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve_trainer", trainerId: trainer.id }),
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      await loadPending()
+      router.push(
+        buildAdminMailComposeHref({
+          title: "Trainer-Freigabemail bearbeiten",
+          returnTo: "/verwaltung/freigaben",
+          requests: [
+            {
+              kind: "approval_notice",
+              email: trainer.email ?? "",
+              name: getTrainerDisplayName(trainer),
+              targetKind: "trainer",
+            },
+          ],
+        })
+      )
+    } catch (error) {
+      console.error(error)
+      showToast(error instanceof Error ? error.message : "Fehler bei der Trainerfreigabe.", "error")
+    } finally {
+      setApprovingTrainer((prev) => ({ ...prev, [trainer.id]: false }))
     }
   }
 
@@ -1027,6 +1119,94 @@ export default function FreigabenPage() {
                 </div>
               )
             })
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>Offene Trainer-Freigaben</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {loading ? (
+            <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Trainer werden geladen...</div>
+          ) : pendingTrainers.length === 0 ? (
+            <div className="rounded-2xl bg-zinc-100 p-4 text-sm text-zinc-500">Keine offenen Trainer-Freigaben.</div>
+          ) : (
+            pendingTrainers.map((trainer) => (
+              <div key={trainer.id} className="rounded-3xl border border-zinc-200 bg-white p-5">
+                <div className="grid gap-4 xl:grid-cols-[1.4fr_auto] xl:items-start">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-lg font-semibold text-zinc-900">{getTrainerDisplayName(trainer)}</div>
+                      <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">
+                        Trainer
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={
+                          trainer.email_verified
+                            ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                            : "border-red-200 bg-red-100 text-red-700"
+                        }
+                      >
+                        {trainer.email_verified ? "E-Mail bestätigt" : "E-Mail nicht bestätigt"}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-zinc-600">
+                      <span>E-Mail: {trainer.email || "—"}</span>
+                      {trainer.phone ? <span>Telefon: {trainer.phone}</span> : null}
+                      {trainer.trainer_license ? <span>Lizenz: {trainer.trainer_license}</span> : null}
+                    </div>
+                    {trainer.email_verified_at ? (
+                      <div className="text-xs text-zinc-500">
+                        Bestätigt am: {formatDisplayDateTime(new Date(trainer.email_verified_at))}
+                      </div>
+                    ) : null}
+                    {trainer.created_at ? (
+                      <div className="text-xs text-zinc-500">
+                        Registriert am: {formatDisplayDateTime(new Date(trainer.created_at))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    {!trainer.email_verified && (
+                      <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        Freigabe erst nach E-Mail-Bestätigung möglich
+                      </div>
+                    )}
+
+                    <Button
+                      className="rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                      disabled={!trainer.email_verified || Boolean(approvingTrainer[trainer.id])}
+                      onClick={() => void approveTrainer(trainer)}
+                    >
+                      {approvingTrainer[trainer.id] ? "Wird freigegeben…" : "Freigeben"}
+                    </Button>
+
+                    {!trainer.email_verified && trainer.email?.trim() ? (
+                      <Button
+                        variant="outline"
+                        className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
+                        onClick={() => void resendTrainerVerification(trainer)}
+                        disabled={Boolean(resendingTrainerVerification[trainer.id]) || Boolean(recentlyTrainerSent[trainer.id])}
+                      >
+                        {resendingTrainerVerification[trainer.id]
+                          ? "Sende..."
+                          : recentlyTrainerSent[trainer.id]
+                            ? "Gerade gesendet"
+                            : "Bestätigungs-Mail erneut senden"}
+                      </Button>
+                    ) : null}
+
+                    <Button asChild variant="outline" className="rounded-2xl">
+                      <Link href={`/verwaltung/trainer/${trainer.id}/bearbeiten`}>Trainerdaten bearbeiten</Link>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))
           )}
         </CardContent>
       </Card>

@@ -18,6 +18,7 @@ import {
   Save,
   Sparkles,
   Star,
+  UserCheck,
   X,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +61,7 @@ type TrainingPlan = {
   is_template: boolean
   template_name: string | null
   template_quality: string | null
+  assigned_trainer_id: string | null
   created_at: string
 }
 
@@ -1139,6 +1141,145 @@ function EditablePlanView({
   )
 }
 
+// ─── Trainer-Zuweisung (Admin-Panel) ─────────────────────────────────────────
+
+type TrainerOption = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+}
+
+function TrainerAssignSection({
+  planId,
+  currentAssignedTrainerId,
+  onAssigned,
+}: {
+  planId: string
+  currentAssignedTrainerId: string | null
+  onAssigned: (trainerId: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [trainers, setTrainers] = useState<TrainerOption[]>([])
+  const [loadingTrainers, setLoadingTrainers] = useState(false)
+  const [selected, setSelected] = useState<string>(currentAssignedTrainerId ?? "__none__")
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState("")
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  // Trainer laden wenn Panel geöffnet wird
+  useEffect(() => {
+    if (!open || trainers.length > 0) return
+    setLoadingTrainers(true)
+    fetch("/api/admin/person-roles", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { trainers?: TrainerOption[] } | null) => {
+        setTrainers(data?.trainers ?? [])
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTrainers(false))
+  }, [open, trainers.length])
+
+  async function handleSave() {
+    setSaving(true)
+    setSaveError("")
+    setSaveSuccess(false)
+    const trainerId = selected === "__none__" ? null : selected
+    try {
+      const res = await fetch(`/api/admin/training-plans/${planId}/assign`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trainer_id: trainerId }),
+      })
+      if (!res.ok) throw new Error((await res.text()) || "Speichern fehlgeschlagen")
+      onAssigned(trainerId)
+      setSaveSuccess(true)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Fehler beim Speichern")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const assignedTrainer = trainers.find((t) => t.id === currentAssignedTrainerId)
+  const assignedLabel = assignedTrainer
+    ? `${assignedTrainer.first_name ?? ""} ${assignedTrainer.last_name ?? ""}`.trim() || assignedTrainer.email || "—"
+    : null
+
+  return (
+    <Card className="border-[#d0dff0]">
+      <CardHeader className="pb-2">
+        <button
+          className="flex w-full items-center justify-between gap-2"
+          onClick={() => setOpen((o) => !o)}
+          type="button"
+        >
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold text-[#154c83]">
+            <UserCheck className="h-4 w-4" />
+            Trainer-Zuweisung
+            {assignedLabel && (
+              <span className="ml-1 rounded-full bg-[#e8f0fb] px-2 py-0.5 text-xs font-normal text-[#154c83]">
+                {assignedLabel}
+              </span>
+            )}
+          </CardTitle>
+          {open ? (
+            <ChevronUp className="h-4 w-4 text-zinc-400" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-zinc-400" />
+          )}
+        </button>
+      </CardHeader>
+
+      {open && (
+        <CardContent className="space-y-3 border-t border-[#eff4fa] pt-4">
+          <p className="text-xs text-zinc-500">
+            Weise diesen Plan einem Trainer zu, damit er ihn in seinem Bereich als Vorschlag sieht (Pilot: Thomas).
+          </p>
+          {loadingTrainers ? (
+            <div className="flex items-center gap-2 text-sm text-zinc-500">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Trainer werden geladen…
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <Select value={selected} onValueChange={setSelected}>
+                <SelectTrigger className="w-[240px]">
+                  <SelectValue placeholder="Trainer wählen…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Kein Trainer —</SelectItem>
+                  {trainers.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {`${t.first_name ?? ""} ${t.last_name ?? ""}`.trim() || t.email || t.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                onClick={() => void handleSave()}
+                disabled={saving || selected === (currentAssignedTrainerId ?? "__none__")}
+                className="bg-[#154c83] text-white hover:bg-[#123d69]"
+              >
+                {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                Zuweisen
+              </Button>
+              {saveSuccess && (
+                <span className="flex items-center gap-1 text-xs text-emerald-600">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  Gespeichert
+                </span>
+              )}
+              {saveError && <span className="text-xs text-red-600">{saveError}</span>}
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  )
+}
+
 // ─── Entwurfsliste ────────────────────────────────────────────────────────────
 
 function statusLabel(status: string, isTemplate: boolean) {
@@ -1959,6 +2100,23 @@ export default function TrainingsplanungPage() {
           planContext={activePlanContext}
           onDismiss={() => setActivePlan(null)}
           onPlanSaved={handlePlanSaved}
+        />
+      )}
+
+      {/* Trainer-Zuweisung: nur wenn Plan gespeichert (planId bekannt) */}
+      {activePlan && activePlanId && (
+        <TrainerAssignSection
+          planId={activePlanId}
+          currentAssignedTrainerId={
+            plans.find((p) => p.id === activePlanId)?.assigned_trainer_id ?? null
+          }
+          onAssigned={(trainerId) => {
+            setPlans((prev) =>
+              prev.map((p) =>
+                p.id === activePlanId ? { ...p, assigned_trainer_id: trainerId } : p,
+              ),
+            )
+          }}
         />
       )}
 

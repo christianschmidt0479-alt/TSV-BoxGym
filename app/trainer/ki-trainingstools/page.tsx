@@ -1,9 +1,16 @@
 "use client"
 
-import { ClipboardList, FlaskConical } from "lucide-react"
+import Link from "next/link"
+import { ArrowRight, ClipboardList, FlaskConical, Sparkles } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useTrainerAccess } from "@/lib/useTrainerAccess"
+
+const PILOT_FIRST_NAME = "Thomas"
 
 export default function KiTrainingstoolsPage() {
+  const { accountFirstName } = useTrainerAccess()
+  const isPilot = accountFirstName.trim() === PILOT_FIRST_NAME
+
   return (
     <div className="space-y-6">
       <div>
@@ -11,6 +18,32 @@ export default function KiTrainingstoolsPage() {
         <p className="mt-1 text-sm text-zinc-500">Intelligente Unterstützung für die Trainingsplanung.</p>
       </div>
 
+      {/* Pilot-Karte: nur für Thomas sichtbar */}
+      {isPilot && (
+        <Card className="border-[#154c83]/20 bg-[#f0f6ff]">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold text-[#154c83]">
+              <Sparkles className="h-4 w-4" />
+              Vorgeschlagener Trainingsplan
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-zinc-700">
+              Ein vom Admin vorbereiteter Trainingsplan steht für dich bereit. Du kannst ihn einsehen
+              und mit eigenen Hinweisen ergänzen.
+            </p>
+            <Link
+              href="/trainer/ki-trainingstools/vorgeschlagener-plan"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#154c83] px-4 py-1.5 text-sm font-semibold text-white hover:bg-[#123d69]"
+            >
+              Zum Plan
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Allgemeine Info-Karte: für alle Trainer inkl. Thomas */}
       <Card className="border-[#d0dff0]">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm font-semibold text-[#154c83]">
