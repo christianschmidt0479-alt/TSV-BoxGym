@@ -266,25 +266,24 @@ export default function TrialCheckinPage() {
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] sm:mb-3 sm:px-3 sm:text-sm">
                   <UserPlus className="h-4 w-4" />
+                  Probetraining
+                </div>
                 {qrAccessError ? (
-                  <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="mb-3 rounded-2xl border border-amber-300/60 bg-amber-100/20 px-4 py-3 text-sm text-amber-200">
                     {qrAccessError}
                   </div>
                 ) : null}
-
-                  Probetraining
-                </div>
                 <div className="flex items-center gap-3">
                   <Image
                     src="/boxgym-headline-old.png"
                     alt="TSV Falkensee BoxGym"
                     width={192}
                     height={128}
-                    className="h-6 w-auto rounded-md bg-white/90 p-1 sm:h-32"
+                    className="h-10 w-auto rounded-md bg-white/90 p-1 sm:h-32"
                   />
                   <div className="min-w-0">
                     <h1 className="text-base font-bold tracking-tight sm:text-3xl">Probetraining anmelden</h1>
-                    <p className="mt-1 text-[11px] leading-4 text-blue-50/85 sm:mt-2 sm:text-base sm:leading-6">
+                    <p className="mt-1 hidden text-[11px] leading-4 text-blue-50/85 sm:block sm:mt-2 sm:text-base sm:leading-6">
                       Neue Gäste direkt für die aktuelle Einheit anmelden.
                     </p>
                     {disableCheckinTimeWindow ? (
@@ -293,7 +292,7 @@ export default function TrialCheckinPage() {
                   </div>
                 </div>
               </div>
-              <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
+              <Card className="hidden rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur md:block">
                 <CardContent className="p-3.5 sm:p-5">
                   <div className="rounded-2xl bg-white/10 p-2.5 text-xs sm:p-3 sm:text-sm">
                     <div className="text-zinc-300">{activeSession ? "Aktive Einheit" : nextSession ? "Nächste Einheit" : "Aktuelle Einheit"}</div>

@@ -214,7 +214,7 @@ export default function MitgliedRegistrierenPage() {
       <div className="mx-auto max-w-5xl space-y-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[24px] bg-white p-3 shadow-sm">
           <div className="flex items-center gap-2">
-            <div className="rounded-2xl bg-[#154c83] px-4 py-2 text-sm font-semibold text-white">TSV-Mitglied registrieren</div>
+            <div className="rounded-2xl bg-[#154c83] px-4 py-2 text-sm font-semibold text-white">Boxbereich beitreten</div>
           </div>
           <Button asChild variant="outline" className="rounded-2xl">
             <Link href="/">
@@ -239,10 +239,13 @@ export default function MitgliedRegistrierenPage() {
                     alt="TSV Falkensee BoxGym"
                     width={192}
                     height={128}
-                    className="h-6 w-auto rounded-md bg-white/90 p-1 sm:h-14"
+                    className="h-10 w-auto rounded-md bg-white/90 p-1 sm:h-14"
                   />
                   <div className="min-w-0">
-                    <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">TSV-Mitglied registrieren</h1>
+                    <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Boxbereich beitreten</h1>
+                    <p className="mt-1.5 hidden text-sm leading-5 text-blue-50/85 sm:block sm:text-base sm:leading-6">
+                      Für bestehende TSV-Falkensee-Mitglieder – Registrierung für den Boxbereich.
+                    </p>
                   </div>
                 </div>
               </div>
