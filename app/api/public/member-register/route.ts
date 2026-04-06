@@ -9,6 +9,8 @@ import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { validateEmail } from "@/lib/formValidation"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { parseTrainingGroup } from "@/lib/trainingGroups"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { matchMemberAgainstExcelRows } from "@/lib/officeMatch"
 
 type MemberRegisterBody = {
   firstName?: string
@@ -201,6 +203,48 @@ export async function POST(request: Request) {
       })
     } catch (error) {
       console.error("member admin notification failed", error)
+    }
+
+    // Automatic Office/GS list match — non-blocking, does not affect registration flow
+    try {
+      const supabase = createServerSupabaseServiceClient()
+      const runResponse = await supabase
+        .from("office_reconciliation_runs")
+        .select("rows")
+        .eq("is_active", true)
+        .order("checked_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!runResponse.error && runResponse.data) {
+        const storedRows = Array.isArray(runResponse.data.rows) ? (runResponse.data.rows as Array<Record<string, unknown>>) : []
+        const excelRows = storedRows
+          .filter((r) => r.excel === "Ja")
+          .map((r) => ({
+            firstName: String(r.firstName ?? ""),
+            lastName: String(r.lastName ?? ""),
+            birthdate: String(r.birthdate ?? ""),
+            email: typeof r.email === "string" ? r.email : "",
+            phone: typeof r.phone === "string" ? r.phone : "",
+            groupExcel: String(r.groupExcel ?? ""),
+          }))
+
+        const matchResult = matchMemberAgainstExcelRows(
+          { firstName, lastName, birthdate: birthDate, email, phone },
+          excelRows,
+        )
+
+        await supabase
+          .from("members")
+          .update({
+            office_list_status: matchResult ? matchResult.status : "red",
+            office_list_group: matchResult?.group || null,
+            office_list_checked_at: new Date().toISOString(),
+          })
+          .eq("id", member.id)
+      }
+    } catch (officeError) {
+      console.warn("[member-register] office match failed (non-blocking)", officeError)
     }
 
     console.info("[member-register] success", { memberId: member.id, email, verificationSent })

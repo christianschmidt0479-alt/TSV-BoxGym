@@ -20,6 +20,7 @@ type AdminTrainerAccountBody = {
   pin?: string
   linkedMemberId?: string
   skipMemberLink?: boolean
+  useSetPasswordLink?: boolean
 }
 
 function getServerSupabase() {
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
     const pin = body.pin?.trim() ?? ""
     const linkedMemberId = body.linkedMemberId?.trim() || null
     const skipMemberLink = Boolean(body.skipMemberLink)
+    const useSetPasswordLink = Boolean(body.useSetPasswordLink)
 
     if (!firstName || !lastName || !email || !pin) {
       return new NextResponse("Bitte alle Felder für das Trainerkonto ausfüllen.", { status: 400 })
@@ -126,7 +128,9 @@ export async function POST(request: Request) {
     })
 
     const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-    const verificationLink = `${verificationBaseUrl}/trainer-zugang?trainer_verify=${verificationToken}`
+    const verificationLink = useSetPasswordLink
+      ? `${verificationBaseUrl}/trainer-zugang/zugang-einrichten?token=${verificationToken}`
+      : `${verificationBaseUrl}/trainer-zugang?trainer_verify=${verificationToken}`
 
     await sendVerificationEmail({
       email,

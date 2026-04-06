@@ -24,6 +24,12 @@ const NAV_SECTIONS = [
       { href: "/trainer/wettkampf", label: "Wettkampf" },
     ],
   },
+  {
+    title: "Tools",
+    items: [
+      { href: "/trainer/ki-trainingstools", label: "KI Trainingstools" },
+    ],
+  },
 ]
 
 const NAV_LINKS = NAV_SECTIONS.flatMap((s) => s.items)

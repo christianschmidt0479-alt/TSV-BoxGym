@@ -318,7 +318,7 @@ export default function MemberCheckinPage() {
                     Mitglieder-Check-in
                   </div>
                   <h1 className="text-xl font-bold tracking-tight sm:text-3xl">Mitglied einchecken</h1>
-                  <p className="mt-2 text-sm leading-6 text-blue-50/90 sm:text-base">
+                  <p className="mt-2 hidden text-sm leading-6 text-blue-50/90 sm:block sm:text-base">
                     {checkinMode === "ferien"
                       ? "Ferienbetrieb - freie Zeiten. Der Check-in läuft über die Stammgruppe."
                       : "Check-in nur während Trainingszeit. Die laufende Gruppe wird automatisch gesetzt."}
@@ -330,7 +330,7 @@ export default function MemberCheckinPage() {
                   ) : null}
                 </div>
               </div>
-              <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
+              <Card className="hidden rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur md:block">
                 <CardContent className="p-5">
                   <div className="rounded-2xl bg-white/10 p-3 text-sm">
                     <div className="text-zinc-300">Check-in-Gruppe</div>
@@ -360,16 +360,6 @@ export default function MemberCheckinPage() {
             <CardTitle>Mitglieder-Check-in</CardTitle>
           </CardHeader>
           <CardContent>
-            {checkinMode === "normal" ? (
-              <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                Check-in nur während Trainingszeit. Außerhalb des Zeitfensters ist nur Ü18 zulässig.
-              </div>
-            ) : (
-              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                Ferienbetrieb - freie Zeiten. Es wird immer die Stammgruppe verwendet.
-              </div>
-            )}
-
             {hasRememberedDevice ? (
               <div className="mb-5 rounded-[24px] border border-[#cfe0ef] bg-[#f4f9ff] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -415,6 +405,13 @@ export default function MemberCheckinPage() {
                   >
                     {fastCheckinLoading ? "Speichert..." : `Schnell einchecken als ${rememberedFirstName}`}
                   </Button>
+                  {!rememberedAssignment?.allowed ? (
+                    <p className="mt-2 text-center text-xs text-zinc-400">
+                      {checkinMode === "ferien"
+                        ? "Keine Stammgruppe hinterlegt – bitte normal einchecken."
+                        : "Aktuell außerhalb des Check-in-Zeitfensters."}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -439,7 +436,7 @@ export default function MemberCheckinPage() {
               <div className="space-y-2">
                 <Label>Gewicht in kg</Label>
                 <Input value={memberWeight} onChange={(e) => setMemberWeight(e.target.value)} placeholder="z. B. 72,4" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                <div className="text-xs text-zinc-500">Für Check-ins in der L-Gruppe ist ein aktuelles Gewicht Pflicht.</div>
+                <div className="text-xs text-zinc-500">Pflichtfeld nur für L-Gruppe und Wettkampfsportler.</div>
               </div>
 
               <label className="flex items-start gap-3 rounded-2xl border border-[#d8e3ee] bg-zinc-50 p-3 text-sm text-zinc-700">

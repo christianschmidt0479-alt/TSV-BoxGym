@@ -13,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { getOfficeListStatusBadgeClass, getOfficeListStatusLabel, type OfficeListResultStatus } from "@/lib/officeListStatus"
-import { isTrainerPinCompliant, TRAINER_PIN_REQUIREMENTS_MESSAGE } from "@/lib/trainerPin"
 import { isCompatibleOfficeListGroup, normalizeTrainingGroup, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -536,21 +535,11 @@ export default function ExcelAbgleichPage() {
     const email = row.email?.trim().toLowerCase() ?? ""
     if (!email) return
 
-    const pinInput = window.prompt(
-      `Start-Passwort für Trainerkonto von ${row.firstName} ${row.lastName}`.trim()
-    )
-
-    if (pinInput === null) return
-
-    const pin = pinInput.trim()
-    if (!isTrainerPinCompliant(pin)) {
-      alert(TRAINER_PIN_REQUIREMENTS_MESSAGE)
-      return
-    }
-
     try {
       setUpdatingActionKey(`trainer:${row.id}`)
       setError("")
+
+      const placeholderPin = crypto.randomUUID()
 
       const response = await fetch("/api/admin/trainer-account", {
         method: "POST",
@@ -559,8 +548,9 @@ export default function ExcelAbgleichPage() {
           firstName: row.firstName,
           lastName: row.lastName,
           email,
-          pin,
+          pin: placeholderPin,
           skipMemberLink: true,
+          useSetPasswordLink: true,
         }),
       })
 

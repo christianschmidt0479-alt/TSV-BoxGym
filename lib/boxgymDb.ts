@@ -448,6 +448,14 @@ async function setStoredMemberPin(memberId: string, pin: string) {
   return data
 }
 
+export async function setMemberPinOnly(memberId: string, pin: string) {
+  const { error } = await supabase
+    .from("members")
+    .update({ member_pin: await hashMemberPinValue(pin) })
+    .eq("id", memberId)
+  if (error) throw error
+}
+
 export async function updateMemberCompetitionData(
   memberId: string,
   input: {

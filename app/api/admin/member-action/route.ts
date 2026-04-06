@@ -237,7 +237,7 @@ export async function POST(request: Request) {
       }
       const { data: member, error: memberError } = await supabase
         .from("members")
-        .select("id, name, first_name, last_name, email, email_verified, email_verification_token")
+        .select("id, name, first_name, last_name, email, email_verified, email_verification_token, member_pin")
         .eq("id", body.memberId)
         .single()
 
@@ -266,7 +266,10 @@ export async function POST(request: Request) {
       }
 
       const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-      const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`
+      const hasPassword = Boolean(member.member_pin)
+      const verificationLink = hasPassword
+        ? `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`
+        : `${verificationBaseUrl}/mein-bereich/zugang-einrichten?token=${verificationToken}`
 
       const delivery = await sendVerificationEmail({
         email: member.email,

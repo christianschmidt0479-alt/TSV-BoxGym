@@ -18,6 +18,7 @@ import {
   findMemberByFirstLastName,
   findMemberById,
   updateMemberProfile,
+  setMemberPinOnly,
 } from "@/lib/boxgymDb"
 import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
 import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
@@ -153,6 +154,11 @@ type MemberAreaBody =
       loginEmail?: string
       password?: string
       pin?: string
+    }
+  | {
+      action: "verify_and_set_password"
+      token?: string
+      password?: string
     }
   | {
       action: "accept_privacy_consent"
@@ -800,6 +806,48 @@ export async function POST(request: Request) {
       if (!data) {
         return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
       }
+
+      return NextResponse.json({ ok: true })
+    }
+
+    if (body.action === "verify_and_set_password") {
+      const token = sanitizeToken(body.token)
+      if (!token) {
+        return new NextResponse("Bestätigungslink ungültig.", { status: 400 })
+      }
+
+      const password = sanitizeMemberAreaPassword(body.password)
+      if (!password) {
+        return new NextResponse("Bitte ein Passwort eingeben.", { status: 400 })
+      }
+      if (!isValidMemberPassword(password)) {
+        return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
+      }
+
+      const { data, error } = await supabase
+        .from("members")
+        .update({
+          email_verified: true,
+          email_verified_at: new Date().toISOString(),
+          email_verification_token: null,
+        })
+        .eq("email_verification_token", token)
+        .select("id, email")
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) {
+        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
+      }
+
+      await setMemberPinOnly(data.id, password)
+
+      await ensureMemberAuthUserLink({
+        memberId: data.id,
+        email: typeof data.email === "string" ? data.email : null,
+        password,
+        emailVerified: true,
+      })
 
       return NextResponse.json({ ok: true })
     }

@@ -41,6 +41,18 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
         { href: "/verwaltung/qr-codes", label: "QR-Codes" },
       ],
     },
+    ...(isAdmin
+      ? [
+          {
+            title: "KI Trainingstool",
+            items: [
+              { href: "/verwaltung/trainingsplanung", label: "Trainingsplanung" },
+              { href: "/verwaltung/trainingsplanung/vorlagen", label: "Vorlagenbibliothek" },
+              { href: "/verwaltung/trainingsplanung/ki-basisprofil", label: "KI-Basisprofil" },
+            ],
+          },
+        ]
+      : []),
     {
       title: "System",
       items: [

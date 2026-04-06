@@ -7,6 +7,7 @@ import {
   isTrainerAccountEmailConflict,
   updateTrainerAccountPin,
   verifyTrainerEmail,
+  verifyTrainerEmailAndSetPassword,
 } from "@/lib/trainerDb"
 import { findMemberByEmail } from "@/lib/boxgymDb"
 import { validateEmail } from "@/lib/formValidation"
@@ -32,6 +33,11 @@ type TrainerAccessBody =
       email?: string
       currentPin?: string
       newPin?: string
+    }
+  | {
+      action: "verify_and_set_password"
+      token?: string
+      pin?: string
     }
 
 const TRAINER_VERIFY_PARAM = "trainer_verify"
@@ -78,6 +84,28 @@ export async function POST(request: Request) {
       }
 
       const data = await verifyTrainerEmail(token)
+      if (!data) {
+        return new NextResponse("Trainer-Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
+      }
+
+      return NextResponse.json({ ok: true, email: data.email })
+    }
+
+    if (body.action === "verify_and_set_password") {
+      const token = body.token?.trim() ?? ""
+      if (!token) {
+        return new NextResponse("Trainer-Bestätigungslink ungültig.", { status: 400 })
+      }
+
+      const pin = body.pin?.trim() ?? ""
+      if (!pin) {
+        return new NextResponse("Bitte ein Passwort eingeben.", { status: 400 })
+      }
+      if (!isTrainerPinCompliant(pin)) {
+        return new NextResponse(TRAINER_PIN_REQUIREMENTS_MESSAGE, { status: 400 })
+      }
+
+      const data = await verifyTrainerEmailAndSetPassword(token, pin)
       if (!data) {
         return new NextResponse("Trainer-Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
       }

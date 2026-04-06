@@ -76,6 +76,15 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
               { label: "Fehler", href: "/verwaltung/fehler", badgeKey: "fehler" },
             ],
           },
+          {
+            id: "ki-trainingstool",
+            label: "KI Trainingstool",
+            items: [
+              { label: "Trainingsplanung", href: "/verwaltung/trainingsplanung" },
+              { label: "Vorlagenbibliothek", href: "/verwaltung/trainingsplanung/vorlagen" },
+              { label: "KI-Basisprofil", href: "/verwaltung/trainingsplanung/ki-basisprofil" },
+            ],
+          },
         ]
       : []),
   ]

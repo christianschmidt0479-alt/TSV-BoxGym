@@ -263,3 +263,21 @@ export async function updateTrainerAccountPin(id: string, pin: string) {
 
   if (error) throw error
 }
+
+export async function verifyTrainerEmailAndSetPassword(token: string, pin: string) {
+  const nextPasswordHash = await hashTrainerPin(pin)
+  const { data, error } = await supabase
+    .from("trainer_accounts")
+    .update({
+      email_verified: true,
+      email_verified_at: new Date().toISOString(),
+      email_verification_token: null,
+      password_hash: nextPasswordHash,
+    })
+    .eq("email_verification_token", token)
+    .select("id, email")
+    .maybeSingle()
+
+  if (error) throw error
+  return (data as { id: string; email: string } | null) ?? null
+}
