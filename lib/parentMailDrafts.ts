@@ -1,5 +1,6 @@
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { DEFAULT_APP_BASE_URL } from "@/lib/mailConfig"
 
 export type ParentFamilyMailRow = {
   parent_account_id: string
@@ -101,7 +102,7 @@ export async function getParentFamilyMailRows() {
 }
 
 export function getParentFamilyLink(row: ParentFamilyMailRow, baseUrl: string) {
-  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "") || "http://localhost:3000"
+  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "") || DEFAULT_APP_BASE_URL
   const firstChildId = row.children[0]?.member_id || ""
   const params = new URLSearchParams({
     view: "parent",

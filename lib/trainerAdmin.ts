@@ -1,6 +1,4 @@
-const INTERNAL_TRAINER_TEST_EMAILS = [
-  "internal.trainer.test+20260326-1@tsvboxgym.de",
-] as const
+const INTERNAL_TRAINER_TEST_EMAILS = [] as const
 
 export function normalizeTrainerEmail(email?: string | null) {
   return email?.trim().toLowerCase() ?? ""

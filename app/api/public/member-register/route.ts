@@ -246,7 +246,9 @@ export async function POST(request: Request) {
       console.warn("[member-register] office match failed (non-blocking)", officeError)
     }
 
-    console.info("[member-register] success", { memberId: member.id, email, verificationSent })
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[member-register] success", { memberId: member.id, email, verificationSent })
+    }
     return NextResponse.json({ ok: true, verificationSent })
   } catch (error) {
     console.error("[member-register] failed", error)

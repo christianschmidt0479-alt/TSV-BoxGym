@@ -24,10 +24,8 @@ export async function POST(request: Request) {
   }
 
   // --- Import ---
-  console.log("IMAP START")
   try {
     const result = await fetchAndStoreNewMails()
-    console.log("IMPORTED:", result.imported)
     if (result.imported === 0 && result.skipped === 0) {
       return NextResponse.json({ ok: true, processed: 0 })
     }
