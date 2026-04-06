@@ -48,11 +48,17 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ trainers })
   } catch (error) {
+    // Supabase-Fehler sind plain objects (kein Error-Instance) – Message extrahieren damit
+    // der Log nicht als "[object Object]" erscheint.
+    const logError =
+      error != null && typeof error === "object" && "message" in error
+        ? new Error(String((error as Record<string, unknown>).message ?? "unknown"))
+        : error
     void reportAppError(
       "admin-trainer-ki-profiles",
       "load_failed",
       "medium",
-      error,
+      logError,
       { route: "/api/admin/trainer-ki-profiles" },
     )
     return new NextResponse("Interner Fehler", { status: 500 })

@@ -208,14 +208,34 @@ export async function verifyTrainerEmail(token: string) {
 }
 
 export async function getAllTrainerAccounts() {
-  const { data, error } = await supabase
-    .from("trainer_accounts")
-    .select(TRAINER_ACCOUNT_SAFE_SELECT)
-    .order("created_at", { ascending: false })
+  // Progressiver Fallback: fehlt eine optionale Spalte in der DB, wird sie entfernt und der
+  // Select wiederholt. So schlägt die Funktion nicht mit 500 fehl wenn optionale Migrations
+  // noch nicht ausgeführt wurden.
+  const baseSelect =
+    "id, first_name, last_name, email, email_verified, email_verified_at, is_approved, approved_at, created_at"
+  const optionalColumns = [...OPTIONAL_TRAINER_ACCOUNT_COLUMNS] as string[]
 
-  if (error) throw error
-  const rows = (data as TrainerAccountRecord[] | null) ?? []
-  return rows.filter((r) => !isInternalTrainerTestEmail(r.email))
+  while (true) {
+    const select = [baseSelect, ...optionalColumns].join(", ")
+    const { data, error } = await supabase
+      .from("trainer_accounts")
+      .select(select)
+      .order("created_at", { ascending: false })
+
+    if (!error) {
+      const rows = (data as unknown as TrainerAccountRecord[] | null) ?? []
+      return rows.filter((r) => !isInternalTrainerTestEmail(r.email))
+    }
+
+    if (!isMissingColumnError(error)) throw error
+
+    const missingColumn = findMissingOptionalColumn(error)
+    if (!missingColumn) throw error
+
+    const idx = optionalColumns.indexOf(missingColumn)
+    if (idx === -1) throw error
+    optionalColumns.splice(idx, 1)
+  }
 }
 
 export async function approveTrainerAccount(id: string) {
