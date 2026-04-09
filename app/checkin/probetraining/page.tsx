@@ -52,6 +52,7 @@ export default function TrialCheckinPage() {
   const [trialFirstName, setTrialFirstName] = useState("")
   const [trialLastName, setTrialLastName] = useState("")
   const [trialBirthDate, setTrialBirthDate] = useState("")
+  const [trialGender, setTrialGender] = useState("")
   const [trialEmail, setTrialEmail] = useState("")
   const [trialPhone, setTrialPhone] = useState("")
   const [selectedSessionId, setSelectedSessionId] = useState<string>("")
@@ -190,11 +191,15 @@ export default function TrialCheckinPage() {
       return
     }
 
+
+    if (!trialGender) {
+      alert("Bitte Geschlecht auswählen.")
+      return
+    }
     if (!trialEmail.trim()) {
       alert("Bitte E-Mail angeben.")
       return
     }
-
     if (!trialPhone.trim()) {
       alert("Bitte Telefonnummer angeben.")
       return
@@ -222,6 +227,7 @@ export default function TrialCheckinPage() {
           firstName,
           lastName,
           birthDate: trialBirthDate,
+          gender: trialGender,
           email: trialEmail.trim(),
           phone: trialPhone.trim(),
           qrAccessToken,
@@ -346,9 +352,23 @@ export default function TrialCheckinPage() {
                 </div>
               </div>
 
+
               <div className="space-y-2">
                 <Label>Geburtsdatum</Label>
                 <Input type="date" value={trialBirthDate} onChange={(e) => setTrialBirthDate(e.target.value)} className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Geschlecht</Label>
+                <Select value={trialGender} onValueChange={setTrialGender} required>
+                  <SelectTrigger className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900">
+                    <SelectValue placeholder="Geschlecht wählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="männlich">Männlich</SelectItem>
+                    <SelectItem value="weiblich">Weiblich</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
