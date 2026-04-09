@@ -58,6 +58,7 @@ export default function TrialCheckinPage() {
   const [showSessionSelect, setShowSessionSelect] = useState(false)
   const [requestedGroup, setRequestedGroup] = useState("")
   const [qrAccessError, setQrAccessError] = useState("")
+  const [hadQrParam, setHadQrParam] = useState(false)
 
   const liveDate = now ? todayStringFromDate(now) : todayString()
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function TrialCheckinPage() {
     const storedQrAccess = readStoredQrAccess("trial")
 
     const qrToken = params.get(QR_ACCESS_PARAM)?.trim() ?? ""
+    if (qrToken) setHadQrParam(true)
     const initialQrAccessToken = qrToken || storedQrAccess?.token || ""
     setQrAccessToken(initialQrAccessToken)
 
@@ -77,6 +79,7 @@ export default function TrialCheckinPage() {
           if (!response.ok) {
             clearStoredQrAccess("trial")
             setQrAccessToken("")
+            // Fehler NUR setzen, wenn QR-Token explizit per URL-Parameter kam
             setQrAccessError("Dieser QR-Code ist ungültig oder abgelaufen.")
             console.error("trial qr access validation failed", response.status)
             return
@@ -96,10 +99,14 @@ export default function TrialCheckinPage() {
         } catch (error) {
           clearStoredQrAccess("trial")
           setQrAccessToken("")
+          // Fehler NUR setzen, wenn QR-Token explizit per URL-Parameter kam
           setQrAccessError("Dieser QR-Code konnte nicht geprüft werden.")
           console.error("trial qr access validation failed", error)
         }
       })()
+    } else {
+      // Kein QR-Token per URL: Fehler immer zurücksetzen
+      setQrAccessError("")
     }
 
     void (async () => {
@@ -268,11 +275,7 @@ export default function TrialCheckinPage() {
                   <UserPlus className="h-4 w-4" />
                   Probetraining
                 </div>
-                {qrAccessError ? (
-                  <div className="mb-3 rounded-2xl border border-amber-300/60 bg-amber-100/20 px-4 py-3 text-sm text-amber-200">
-                    {qrAccessError}
-                  </div>
-                ) : null}
+                {/* QR-Fehlerbanner im Probetraining-Header vollständig entfernt */}
                 <div className="flex items-center gap-3">
                   <Image
                     src="/boxgym-headline-old.png"
