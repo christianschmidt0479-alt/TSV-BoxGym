@@ -11,24 +11,24 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#154c83",
     icons: [
       {
-        src: "/tsv-boxgym-stack-icon-192.png",
+        src: "/boxgym-icon.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "maskable",
       },
       {
-        src: "/tsv-boxgym-stack-icon.png",
+        src: "/boxgym-icon.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
       },
       {
-        src: "/tsv-boxgym-stack-apple.png",
+        src: "/boxgym-apple-icon.png",
         sizes: "180x180",
         type: "image/png",
       },
       {
-        src: "/favicon-tsv-boxgym-stack.ico",
+        src: "/boxgym-favicon.ico",
         sizes: "256x256",
         type: "image/x-icon",
       },

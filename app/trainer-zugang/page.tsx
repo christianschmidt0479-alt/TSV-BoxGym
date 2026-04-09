@@ -29,6 +29,7 @@ type TrainerAuthSuccessPayload = {
   accountFirstName: string
   accountLastName: string
   sessionUntil: number
+  mustChangePassword?: boolean
 }
 
 function mapTrainerAuthErrorMessage(message: string) {
@@ -173,7 +174,11 @@ export default function TrainerZugangPage() {
       }
     )
     setActiveRole(payload.role)
-    window.location.assign(payload.role === "admin" ? "/verwaltung" : "/trainer")
+    if (payload.mustChangePassword) {
+      window.location.assign("/trainer/passwort-aendern")
+    } else {
+      window.location.assign(payload.role === "admin" ? "/verwaltung" : "/trainer")
+    }
   }
 
   async function loginTrainerWithCredentials(email: string, pin: string) {

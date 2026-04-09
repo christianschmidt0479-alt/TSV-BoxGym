@@ -86,10 +86,12 @@ type TrainerRecord = {
   is_approved: boolean
   role?: "trainer" | "admin"
   linked_member_id?: string | null
+  email_verification_token?: string | null
 }
 
 export type TrainerCredentialsMatch = TrainerRecord & {
   role: "trainer" | "admin"
+  mustChangePassword: boolean
 }
 
 export async function findTrainerByEmailAndPin(email: string, pin: string): Promise<TrainerCredentialsMatch | null> {
@@ -117,6 +119,7 @@ export async function findTrainerByEmailAndPin(email: string, pin: string): Prom
   const resolvedTrainer = {
     ...trainer,
     role: trainer.role === "admin" ? "admin" : "trainer",
+    mustChangePassword: trainer.email_verification_token === "__pw_change_required__",
   } as TrainerCredentialsMatch
 
   return resolvedTrainer

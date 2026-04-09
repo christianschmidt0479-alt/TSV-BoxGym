@@ -7,11 +7,11 @@ import { WorkspaceSwitcher } from "@/components/workspace-switcher"
 import "./globals.css"
 
 const brandName = "TSV BoxGym"
-const iconVersion = `v=${APP_VERSION}-tsv-boxgym-logo-v6`
-const svgIcon = `/tsv-boxgym-brand-mark.svg?${iconVersion}`
-const tabIcon = `/tsv-boxgym-stack-icon.png?${iconVersion}`
-const faviconIcon = `/favicon-tsv-boxgym-stack.ico?${iconVersion}`
-const socialImage = "/tsv-boxgym-share-v3.png"
+const iconVersion = `v=${APP_VERSION}-tsv-boxgym-logo-v7`
+const tabIcon = `/boxgym-icon.png?${iconVersion}`
+const faviconIcon = `/boxgym-favicon.ico?${iconVersion}`
+const appleIcon = `/boxgym-apple-icon.png?${iconVersion}`
+const socialImage = "/opengraph-image"
 const appBaseUrl = getAppBaseUrl()
 
 export const metadata: Metadata = {
@@ -41,19 +41,18 @@ export const metadata: Metadata = {
     ],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: brandName,
     description: brandName,
     images: [socialImage],
   },
   icons: {
     icon: [
-      { url: svgIcon, type: "image/svg+xml" },
       { url: faviconIcon },
       { url: tabIcon, type: "image/png", sizes: "512x512" },
     ],
     shortcut: faviconIcon,
-    apple: [{ url: `/tsv-boxgym-stack-apple.png?${iconVersion}`, sizes: "180x180", type: "image/png" }],
+    apple: [{ url: appleIcon, sizes: "180x180", type: "image/png" }],
   },
 }
 

@@ -125,6 +125,7 @@ export async function POST(request: Request) {
       accountFirstName: trainer.first_name,
       accountLastName: trainer.last_name,
       sessionUntil: Date.now() + getTrainerSessionMaxAgeMs(),
+      mustChangePassword: trainer.mustChangePassword ?? false,
     })
 
     return await applyTrainerSessionCookie(response, {

@@ -77,11 +77,9 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as TrialCheckinBody
-    const qrAccess = (await readQrAccessFromHeaders(request)) ?? (await verifyQrAccessToken(body.qrAccessToken?.trim()))
-    const hasLegacyAccess = hasLegacyQrAccessToken(body.qrAccessToken)
-    if ((!qrAccess || qrAccess.panel !== "trial") && !hasLegacyAccess) {
-      return new NextResponse("QR-Zugang erforderlich.", { status: 403 })
-    }
+    // QR-Token ist für Probetraining nicht mehr erforderlich
+    // Die Prüfung wird entfernt, damit Probetraining-Checkins immer möglich sind
+    // (Mitglied-Checkin bleibt weiterhin QR-geschützt)
 
     const firstName = body.firstName?.trim() ?? ""
     const lastName = body.lastName?.trim() ?? ""

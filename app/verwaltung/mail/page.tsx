@@ -646,7 +646,6 @@ TSV BoxGym`
                       title: `${getAdminDraftKindLabel(row.kind)}: Prüfen & Senden`,
                       returnTo: "/verwaltung/mail",
                       requests: [row.request as Parameters<typeof buildAdminMailComposeHref>[0]["requests"][number]],
-                      sourceQueueIds: [row.id],
                     })
                   : null
 
