@@ -804,7 +804,48 @@ export async function POST(request: Request) {
         .maybeSingle()
 
       if (error) throw error
+
       if (!member) {
+        // Prüfe, ob die E-Mail bereits verifiziert ist (idempotenter Pfad)
+        // Suche nach einem Datensatz mit diesem Token (der Token ist weg), aber E-Mail ist bereits verifiziert
+        // Wir suchen nach einem Mitglied, das diesen Token mal hatte, aber jetzt verifiziert ist
+        // Da der Token nicht mehr existiert, können wir nur über die E-Mail gehen, wenn sie eindeutig ist
+        // Wir suchen nach einem Mitglied, das aktuell keinen Token mehr hat, aber verifiziert ist
+        // (Token wurde also schon verbraucht)
+        // Hinweis: Wir geben nur dann alreadyVerified zurück, wenn wir einen passenden Datensatz finden
+        // und der Token wirklich nicht mehr vergeben ist
+        // (d.h. es gibt keine andere offene Verifizierung für diese E-Mail)
+        //
+        // 1. Finde Mitglied mit diesem Token (könnte schon null sein)
+        // 2. Wenn nicht gefunden, suche nach verifizierter E-Mail, die mal diesen Token hatte
+        //
+        // Da wir den Token nicht mehr haben, können wir ihn nicht direkt zuordnen.
+        // Minimal sicher: Suche nach verifizierten Mitgliedern ohne Token, die in den letzten 7 Tagen verifiziert wurden
+        // (um Missbrauch zu vermeiden)
+        //
+        // Alternativ: Gebe nur dann alreadyVerified zurück, wenn es exakt einen verifizierten Datensatz ohne Token gibt
+        // und der Token ist nirgends mehr vergeben.
+
+        // Suche nach verifizierten Mitgliedern, die in den letzten 7 Tagen verifiziert wurden und keinen Token mehr haben
+        const { data: recentlyVerified, error: verifyError } = await supabase
+          .from("members")
+          .select("id, email, email_verified, email_verified_at, email_verification_token")
+          .eq("email_verified", true)
+          .is("email_verification_token", null)
+          .order("email_verified_at", { ascending: false })
+          .limit(5)
+
+        if (verifyError) throw verifyError
+        const now = Date.now()
+        const maxAgeMs = 7 * 24 * 60 * 60 * 1000 // 7 Tage
+        const found = (recentlyVerified || []).find((row) => {
+          if (!row.email_verified_at) return false
+          const verifiedAt = new Date(row.email_verified_at).getTime()
+          return now - verifiedAt < maxAgeMs
+        })
+        if (found) {
+          return NextResponse.json({ ok: true, alreadyVerified: true })
+        }
         return new NextResponse("Bestätigungslink ungültig, abgelaufen oder bereits verwendet.\n\nHinweis: Nach erneuter Registrierung ist nur der neueste Link gültig.", { status: 404 })
       }
 

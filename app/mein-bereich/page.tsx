@@ -336,17 +336,37 @@ export default function MemberAreaPage() {
               }),
             })
 
+            let alreadyVerified = false
+            let success = false
             if (!response.ok) {
-              const message = await response.text()
-              alert(message || "Bestätigungslink ungültig oder bereits verwendet.")
-              return
+              // Versuche, JSON zu lesen (idempotenter Pfad)
+              try {
+                const result = await response.json()
+                if (result && result.alreadyVerified) {
+                  alreadyVerified = true
+                  success = true
+                }
+              } catch {
+                // Fallback auf Text
+                const message = await response.text()
+                alert(message || "Bestätigungslink ungültig oder bereits verwendet.")
+                return
+              }
+            } else {
+              success = true
             }
 
-            alert("E-Mail erfolgreich bestätigt. Das Mitglied kann jetzt vom Admin freigegeben werden.")
-            params.delete("verify")
-            const nextQuery = params.toString()
-            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
-            window.history.replaceState({}, "", nextUrl)
+            if (success) {
+              alert(
+                alreadyVerified
+                  ? "E-Mail war bereits bestätigt. Du kannst dich jetzt anmelden."
+                  : "E-Mail erfolgreich bestätigt. Du kannst dich jetzt anmelden."
+              )
+              params.delete("verify")
+              const nextQuery = params.toString()
+              const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
+              window.history.replaceState({}, "", nextUrl)
+            }
           } catch (error) {
             console.error(error)
             alert("Fehler bei der E-Mail-Bestätigung.")
