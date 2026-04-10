@@ -48,36 +48,36 @@ async function resolveDraftRequest(request: AdminMailDraftRequest) {
   }
 
   const supabase = createServerSupabaseServiceClient()
-  const { data: member, error } = await supabase
-    .from("members")
-    .select("id, email_verification_token")
-    .eq("id", request.memberId)
-    .single()
+    const { data: member, error } = await supabase
+      .from("members")
+      .select("id, email_verification_token, email_verification_expires_at")
+      .eq("id", request.memberId)
+      .single()
 
   if (error) throw error
   if (!member) {
     throw new Error("Mitglied für Bestätigungs-Mail nicht gefunden.")
   }
 
-  const verificationToken = member.email_verification_token || randomUUID()
+    // Kein neuer Token, nur verwenden wenn vorhanden
+    if (!member.email_verification_token) {
+      throw new Error("Kein Verifizierungs-Token für dieses Mitglied vorhanden. Erinnerungsmail nicht möglich.")
+    }
 
-  if (!member.email_verification_token) {
-    const { error: tokenError } = await supabase
-      .from("members")
-      .update({ email_verification_token: verificationToken })
-      .eq("id", request.memberId)
-
-    if (tokenError) throw tokenError
-  }
+    // Optional: Ablauf prüfen
+    if (member.email_verification_expires_at && new Date(member.email_verification_expires_at) < new Date()) {
+      // Token abgelaufen, aktuell keine automatische Neuerstellung
+      throw new Error("Verifizierungs-Token abgelaufen. Erinnerungsmail nicht möglich.")
+    }
 
   const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-  return {
-    kind: "verification",
-    email: request.email,
-    name: request.name,
-    targetKind: request.targetKind,
-    link: `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`,
-  } satisfies AdminMailDraftRequest
+    return {
+      kind: "verification",
+      email: request.email,
+      name: request.name,
+      targetKind: request.targetKind,
+      link: `${verificationBaseUrl}/mein-bereich?verify=${member.email_verification_token}`,
+    } satisfies AdminMailDraftRequest
 }
 
 export async function POST(request: Request) {

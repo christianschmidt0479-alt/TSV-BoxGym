@@ -122,7 +122,6 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte Datenschutz akzeptieren", { status: 400 })
     }
 
-    const emailToken = generateEmailVerificationToken()
     const existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
 
     if (existing && hasExistingMemberAccess(existing as Record<string, unknown>)) {
@@ -131,6 +130,14 @@ export async function POST(request: Request) {
         { status: 409 }
       )
     }
+
+    // Token nur setzen, wenn noch keiner existiert
+    let emailToken = existing?.email_verification_token
+    if (!emailToken) {
+      emailToken = generateEmailVerificationToken()
+    }
+
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString() // 3 Tage gültig, optional
 
     const member = existing
       ? await updateMemberRegistrationData(existing.id, {
@@ -143,6 +150,7 @@ export async function POST(request: Request) {
           email_verified: false,
           email_verified_at: null,
           email_verification_token: emailToken,
+          email_verification_expires_at: expiresAt,
           base_group: baseGroup,
         })
       : await createMember({
@@ -157,18 +165,9 @@ export async function POST(request: Request) {
           member_pin: password,
           is_approved: false,
           base_group: baseGroup,
+          email_verification_token: emailToken,
+          email_verification_expires_at: expiresAt,
         })
-
-    if (!existing) {
-      await updateMemberRegistrationData(member.id, {
-        gender: gender || null,
-        privacy_accepted_at: new Date().toISOString(),
-        email_verified: false,
-        email_verified_at: null,
-        email_verification_token: emailToken,
-        base_group: baseGroup,
-      })
-    }
 
     await ensureMemberAuthUserLink({
       memberId: member.id,

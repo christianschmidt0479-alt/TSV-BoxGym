@@ -62,6 +62,8 @@ type MemberInput = {
   member_pin?: string
   is_approved?: boolean
   base_group?: string
+  email_verification_token?: string
+  email_verification_expires_at?: string
 }
 
 const SAFE_MEMBER_LIST_SELECT =
