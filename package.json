@@ -1,6 +1,6 @@
 {
   "name": "tsv-boxgym-app",
-  "version": "5.4.2",
+  "version": "5.4.4",
   "private": true,
   "scripts": {
     "dev": "next dev",
