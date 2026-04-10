@@ -791,21 +791,34 @@ export async function POST(request: Request) {
         return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 400 })
       }
 
-      const { data, error } = await supabase
+      // Ziel-Datensatz eindeutig per Token finden
+      const { data: member, error } = await supabase
+        .from("members")
+        .select("id, email")
+        .eq("email_verification_token", token)
+        .maybeSingle()
+
+      if (error) throw error
+      if (!member) {
+        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
+      }
+
+      // Verifizierung auf Ziel-Datensatz
+      await supabase
         .from("members")
         .update({
           email_verified: true,
           email_verified_at: new Date().toISOString(),
           email_verification_token: null,
         })
-        .eq("email_verification_token", token)
-        .select("id")
-        .maybeSingle()
+        .eq("id", member.id)
 
-      if (error) throw error
-      if (!data) {
-        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
-      }
+      // Konkurrierende Tokens für dieselbe E-Mail neutralisieren
+      await supabase
+        .from("members")
+        .update({ email_verification_token: null, email_verification_expires_at: null })
+        .eq("email", member.email)
+        .neq("id", member.id)
 
       return NextResponse.json({ ok: true })
     }

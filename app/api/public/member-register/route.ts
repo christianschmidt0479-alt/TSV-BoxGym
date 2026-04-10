@@ -122,52 +122,82 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte Datenschutz akzeptieren", { status: 400 })
     }
 
-    const existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
 
-    if (existing && hasExistingMemberAccess(existing as Record<string, unknown>)) {
-      return new NextResponse(
-        "Zu diesem Mitglied existiert bereits ein Zugang. Bitte Mein Bereich nutzen oder Trainer/Admin ansprechen.",
-        { status: 409 }
-      )
+    // --- NEU: Ziel-Datensatz nach klarer Regel bestimmen ---
+    const supabase = createServerSupabaseServiceClient()
+    // 1. Alle Members mit dieser E-Mail laden (absteigend nach created_at)
+    const { data: allByEmail, error: emailErr } = await supabase
+      .from("members")
+      .select("*")
+      .eq("email", email)
+      .order("created_at", { ascending: false })
+    if (emailErr) throw emailErr
+
+    // 2. Zielregel: Jüngster unverifizierter, nicht freigegebener Datensatz
+    let target = allByEmail?.find(m => !m.email_verified && !m.is_approved) ?? null
+    // 3. Sonst: Jüngster Datensatz mit passender E-Mail
+    if (!target && allByEmail && allByEmail.length > 0) target = allByEmail[0]
+
+    // 4. Wenn kein Datensatz existiert: nach Name/Geburtsdatum suchen
+    let existing = target
+    if (!existing) {
+      existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
     }
 
-    // Token nur setzen, wenn noch keiner existiert
-    let emailToken = existing?.email_verification_token
-    if (!emailToken) {
+    // 5. Wenn immer noch kein Datensatz: neu anlegen
+    let member
+    let emailToken
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString()
+    if (existing) {
+      // Neues Token generieren
       emailToken = generateEmailVerificationToken()
+      // Registrierungsdaten auf Ziel-Datensatz schreiben
+      member = await updateMemberRegistrationData(existing.id, {
+        first_name: firstName,
+        last_name: lastName,
+        birthdate: birthDate,
+        member_pin: password,
+        gender: gender || null,
+        email,
+        phone,
+        guardian_name: guardianName || null,
+        privacy_accepted_at: new Date().toISOString(),
+        email_verified: false,
+        email_verified_at: null,
+        email_verification_token: emailToken,
+        email_verification_expires_at: expiresAt,
+        base_group: baseGroup,
+      })
+
+      // Konkurrierende Tokens neutralisieren
+      if (allByEmail) {
+        for (const m of allByEmail) {
+          if (m.id !== existing.id && m.email_verification_token) {
+            await supabase
+              .from("members")
+              .update({ email_verification_token: null, email_verification_expires_at: null })
+              .eq("id", m.id)
+          }
+        }
+      }
+    } else {
+      emailToken = generateEmailVerificationToken()
+      member = await createMember({
+        first_name: firstName,
+        last_name: lastName,
+        birthdate: birthDate,
+        gender: gender || undefined,
+        email,
+        phone,
+        guardian_name: guardianName || undefined,
+        is_trial: false,
+        member_pin: password,
+        is_approved: false,
+        base_group: baseGroup,
+        email_verification_token: emailToken,
+        email_verification_expires_at: expiresAt,
+      })
     }
-
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString() // 3 Tage gültig, optional
-
-    const member = existing
-      ? await updateMemberRegistrationData(existing.id, {
-          member_pin: password,
-          gender: gender || null,
-          email,
-          phone,
-          guardian_name: guardianName || null,
-          privacy_accepted_at: new Date().toISOString(),
-          email_verified: false,
-          email_verified_at: null,
-          email_verification_token: emailToken,
-          email_verification_expires_at: expiresAt,
-          base_group: baseGroup,
-        })
-      : await createMember({
-          first_name: firstName,
-          last_name: lastName,
-          birthdate: birthDate,
-          gender: gender || undefined,
-          email,
-          phone,
-          guardian_name: guardianName || undefined,
-          is_trial: false,
-          member_pin: password,
-          is_approved: false,
-          base_group: baseGroup,
-          email_verification_token: emailToken,
-          email_verification_expires_at: expiresAt,
-        })
 
     await ensureMemberAuthUserLink({
       memberId: member.id,
