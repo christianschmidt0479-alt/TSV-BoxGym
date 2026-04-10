@@ -1,3 +1,14 @@
+// Hilfsfunktion zum Maskieren von E-Mails (c***@e***.de)
+function maskEmail(email: string | undefined | null): string {
+  if (!email) return ''
+  const [user, domain] = email.split("@")
+  if (!user || !domain) return "***"
+  const userMasked = user.length > 1 ? user[0] + "***" : "*"
+  const domainParts = domain.split(".")
+  const domainMasked = domainParts[0].length > 1 ? domainParts[0][0] + "***" : "*"
+  const tld = domainParts.slice(1).join(".")
+  return `${userMasked}@${domainMasked}${tld ? "." + tld : ""}`
+}
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, findMemberByEmailAndPin } from "@/lib/boxgymDb"
@@ -77,6 +88,7 @@ function parseWeightInput(value: string) {
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
+      console.warn('[member-flow][checkin][error] reason=forbidden')
       return new NextResponse("Forbidden", { status: 403 })
     }
 
@@ -101,16 +113,19 @@ export async function POST(request: Request) {
     const currentMonthKey = getMonthKey(liveDate)
     const todaysSessions = getSessionsForDate(liveDate)
     if (!email || !password) {
+      console.warn('[member-flow][checkin][error] reason=missing_credentials email=' + maskEmail(email))
       return new NextResponse("Bitte E-Mail und Passwort eingeben.", { status: 400 })
     }
 
     const memberMatch = await findMemberByEmailAndPin(email, password)
     if (memberMatch?.status === "missing_email") {
+      console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
       return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
     }
     const resolvedMember = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
 
     if (!resolvedMember) {
+      console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
       return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
     }
 
@@ -130,13 +145,11 @@ export async function POST(request: Request) {
     })
 
     if (!eligibility.eligible) {
-      // Minimal Logging
-      console.warn("[checkin] rejected", {
-        route: "/api/public/member-checkin",
-        member_id: resolvedMember?.id,
-        reason: eligibility.reason,
-      })
-      // Konsistente API-Antwort
+      console.warn('[member-flow][checkin][error] reason=' + eligibility.reason + ' id=' + resolvedMember.id)
+      // Minimalfix C: Fehlertext für fehlende Verifizierung explizit
+      if (eligibility.reason === "email_not_verified") {
+        return new NextResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink aus der E-Mail öffnen.", { status: 400 })
+      }
       return NextResponse.json({
         ok: false,
         reason: eligibility.reason,
@@ -148,11 +161,13 @@ export async function POST(request: Request) {
     if (requiresWeight) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
+        console.warn('[member-flow][checkin][error] reason=invalid_weight id=' + resolvedMember.id)
         return new NextResponse("Bitte für die L-Gruppe ein aktuelles Gewicht über 30 kg angeben.", { status: 400 })
       }
     }
 
     if (!resolvedMember.email_verified) {
+      console.warn('[member-flow][checkin][error] reason=not_verified id=' + resolvedMember.id)
       return new NextResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink öffnen.", { status: 400 })
     }
 
@@ -166,10 +181,12 @@ export async function POST(request: Request) {
     const existingCheckinCount = existingMemberCheckins?.length ?? 0
 
     if (resolvedMember.is_trial && existingCheckinCount >= 3) {
+      console.warn('[member-flow][checkin][error] reason=trial_limit id=' + resolvedMember.id)
       return new NextResponse("Probemitglieder können maximal 3 Trainingseinheiten absolvieren.", { status: 400 })
     }
 
     if (!resolvedMember.is_trial && !resolvedMember.is_approved && existingCheckinCount >= 6) {
+      console.warn('[member-flow][checkin][error] reason=approval_limit id=' + resolvedMember.id)
       return new NextResponse("Ohne Admin-Freigabe sind maximal 6 Trainingseinheiten möglich. Bitte Trainer oder Admin ansprechen.", { status: 400 })
     }
 
@@ -209,13 +226,18 @@ export async function POST(request: Request) {
         : null,
     })
 
+    console.info('[member-flow][checkin][success] id=' + resolvedMember.id)
     if (shouldRememberDevice && rememberToken) {
       return applyMemberDeviceCookie(response, rememberToken)
     }
-
     return clearMemberDeviceCookie(response)
-  } catch (error) {
-    console.error("public member checkin failed", error)
+  } catch (error: any) {
+    let masked = ''
+    try {
+      const req = error?.body || error?.requestBody || ''
+      if (typeof req === 'string' && req.includes('@')) masked = ' email=' + maskEmail(req)
+    } catch {}
+    console.error('[member-flow][checkin][error] reason=exception' + masked, error)
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }

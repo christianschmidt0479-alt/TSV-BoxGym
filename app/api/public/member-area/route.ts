@@ -680,6 +680,11 @@ export async function POST(request: Request) {
         return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
       }
 
+      // Minimalfix A: Blockiere Login, wenn nicht verifiziert
+      if (!member.email_verified) {
+        return new NextResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink aus der E-Mail öffnen.", { status: 403 })
+      }
+
       await clearLoginFailuresAsync(loginKey)
 
       if (!hasAcceptedPrivacy(member)) {
@@ -788,7 +793,7 @@ export async function POST(request: Request) {
     if (body.action === "verify_email") {
       const token = sanitizeToken(body.token)
       if (!token) {
-        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 400 })
+        return new NextResponse("Bestätigungslink ungültig, abgelaufen oder bereits verwendet.\n\nHinweis: Nach erneuter Registrierung ist nur der neueste Link gültig.", { status: 400 })
       }
 
       // Ziel-Datensatz eindeutig per Token finden
@@ -800,7 +805,7 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!member) {
-        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
+        return new NextResponse("Bestätigungslink ungültig, abgelaufen oder bereits verwendet.\n\nHinweis: Nach erneuter Registrierung ist nur der neueste Link gültig.", { status: 404 })
       }
 
       // Verifizierung auf Ziel-Datensatz
