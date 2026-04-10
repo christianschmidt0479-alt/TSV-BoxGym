@@ -3,7 +3,7 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { createCheckin, findMemberByEmailAndPin } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { applyMemberDeviceCookie, clearMemberDeviceCookie, createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
-import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
+import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility } from "@/lib/memberCheckin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
@@ -114,6 +114,7 @@ export async function POST(request: Request) {
       return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
     }
 
+
     const checkinAssignment = resolveMemberCheckinAssignment({
       dailySessions: todaysSessions,
       now,
@@ -121,12 +122,27 @@ export async function POST(request: Request) {
       mode: checkinMode,
     })
 
-    if (!checkinAssignment.allowed || !checkinAssignment.groupName) {
-      if (checkinMode === "ferien") {
-        return new NextResponse("Im Ferienmodus ist nur der Check-in über die Stammgruppe möglich.", { status: 400 })
-      }
-      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
+    // Eligibility-Prüfung (zentral)
+    const eligibility = checkMemberEligibility({
+      member: resolvedMember,
+      groupAllowed: Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
+      timeAllowed: Boolean(checkinAssignment.allowed && checkinAssignment.groupName), // Zeitfenster ist in groupAllowed enthalten
+    })
+
+    if (!eligibility.eligible) {
+      // Minimal Logging
+      console.warn("[checkin] rejected", {
+        route: "/api/public/member-checkin",
+        member_id: resolvedMember?.id,
+        reason: eligibility.reason,
+      })
+      // Konsistente API-Antwort
+      return NextResponse.json({
+        ok: false,
+        reason: eligibility.reason,
+      }, { status: 400 })
     }
+
 
     const requiresWeight = resolvedMember.is_competition_member || checkinAssignment.groupName === "L-Gruppe"
     if (requiresWeight) {
@@ -159,7 +175,7 @@ export async function POST(request: Request) {
 
     await createCheckin({
       member_id: resolvedMember.id,
-      group_name: checkinAssignment.groupName,
+      group_name: checkinAssignment.groupName ?? "",
       checkin_mode: checkinMode,
       weight: requiresWeight ? body.weight?.trim() : undefined,
       date: liveDate,

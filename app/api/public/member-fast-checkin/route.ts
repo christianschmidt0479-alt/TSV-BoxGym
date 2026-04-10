@@ -10,7 +10,7 @@ import {
   readMemberDeviceTokenFromHeaders,
   verifyMemberDeviceToken,
 } from "@/lib/memberDeviceSession"
-import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
+import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility } from "@/lib/memberCheckin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
@@ -116,6 +116,7 @@ export async function POST(request: Request) {
     const checkinSettings = await readCheckinSettings()
     const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
 
+
     const checkinAssignment = resolveMemberCheckinAssignment({
       dailySessions: todaysSessions,
       now,
@@ -123,11 +124,23 @@ export async function POST(request: Request) {
       mode: checkinMode,
     })
 
-    if (!checkinAssignment.allowed || !checkinAssignment.groupName) {
-      if (checkinMode === "ferien") {
-        return new NextResponse("Im Ferienmodus ist nur der Check-in über die Stammgruppe möglich.", { status: 400 })
-      }
-      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
+    // Eligibility-Prüfung (zentral, produktiv)
+    const eligibility = checkMemberEligibility({
+      member,
+      groupAllowed: Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
+      timeAllowed: Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
+    })
+    if (!eligibility.eligible) {
+      // Minimal Logging
+      console.warn("[checkin] rejected", {
+        route: "/api/public/member-fast-checkin",
+        member_id: member?.id,
+        reason: eligibility.reason,
+      })
+      return NextResponse.json({
+        ok: false,
+        reason: eligibility.reason,
+      }, { status: 400 })
     }
 
     const requiresWeight = member.is_competition_member || checkinAssignment.groupName === "L-Gruppe"
@@ -161,7 +174,7 @@ export async function POST(request: Request) {
 
     await createCheckin({
       member_id: member.id,
-      group_name: checkinAssignment.groupName,
+      group_name: checkinAssignment.groupName ?? "",
       checkin_mode: checkinMode,
       weight: requiresWeight ? body.weight?.trim() : undefined,
       date: liveDate,

@@ -199,13 +199,39 @@ export default function MemberCheckinPage() {
         }),
       })
 
+
       if (!response.ok) {
-        const message = await response.text()
+        let errorMessage = "Fehler beim Speichern des Check-ins."
+        try {
+          const result = await response.json()
+          if (result && typeof result.reason === "string") {
+            switch (result.reason) {
+              case "email_not_verified":
+                errorMessage = "Deine E-Mail-Adresse ist noch nicht bestätigt. Bitte bestätige zuerst den Link aus der E-Mail."
+                break
+              case "member_not_found":
+                errorMessage = "Dein Mitgliedskonto wurde nicht gefunden. Bitte melde dich beim Trainer oder im Verein."
+                break
+              case "group_not_allowed":
+                errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
+                break
+              case "outside_time_window":
+                errorMessage = "Check-in ist nur im freigegebenen Zeitfenster möglich."
+                break
+              default:
+                errorMessage = "Fehler beim Speichern des Check-ins."
+            }
+          }
+        } catch (e) {
+          // Fallback: Textantwort oder Standard
+          const message = await response.text()
+          if (message) errorMessage = message
+        }
         if (response.status === 403) {
           clearStoredQrAccess("member")
           setQrAccessToken("")
         }
-        alert(message || "Fehler beim Speichern des Check-ins.")
+        setCheckinError(errorMessage)
         return
       }
 
@@ -251,8 +277,33 @@ export default function MemberCheckinPage() {
         }),
       })
 
+
       if (!response.ok) {
-        const message = await response.text()
+        let errorMessage = "Fehler beim Schnell-Check-in."
+        try {
+          const result = await response.json()
+          if (result && typeof result.reason === "string") {
+            switch (result.reason) {
+              case "email_not_verified":
+                errorMessage = "Deine E-Mail-Adresse ist noch nicht bestätigt. Bitte bestätige zuerst den Link aus der E-Mail."
+                break
+              case "member_not_found":
+                errorMessage = "Dein Mitgliedskonto wurde nicht gefunden. Bitte melde dich beim Trainer oder im Verein."
+                break
+              case "group_not_allowed":
+                errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
+                break
+              case "outside_time_window":
+                errorMessage = "Check-in ist nur im freigegebenen Zeitfenster möglich."
+                break
+              default:
+                errorMessage = "Fehler beim Schnell-Check-in."
+            }
+          }
+        } catch (e) {
+          const message = await response.text()
+          if (message) errorMessage = message
+        }
         if (response.status === 401 || response.status === 404) {
           forgetRememberedDevice()
         }
@@ -260,7 +311,7 @@ export default function MemberCheckinPage() {
           clearStoredQrAccess("member")
           setQrAccessToken("")
         }
-        alert(message || "Fehler beim Schnell-Check-in.")
+        setCheckinError(errorMessage)
         return
       }
 

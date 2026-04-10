@@ -705,6 +705,20 @@ export default function MemberAreaPage() {
                     <PasswordInput value={memberAreaPin} onChange={(event) => setMemberAreaPin(event.target.value)} placeholder="Passwort" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                   </div>
 
+                  {/* Kontextabhängiger Passwort-zurücksetzen-Button nach Login-Fehler */}
+                  {privacyError && memberAreaEmail.trim().length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mb-4 rounded-2xl border-[#c8d8ea] text-[#154c83]"
+                      onClick={() => {
+                        window.location.href = `/mein-bereich/passwort-zuruecksetzen?email=${encodeURIComponent(memberAreaEmail.trim())}`
+                      }}
+                    >
+                      Passwort zurücksetzen
+                    </Button>
+                  )}
+
                   <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
                     <span>Passwort vergessen? Reset funktioniert nur mit bestätigter E-Mail-Adresse.</span>
                     <Link href="/mein-bereich/passwort-zuruecksetzen" className="font-medium text-[#154c83] underline underline-offset-4">

@@ -1,4 +1,257 @@
-"use client"
+"use client";
+// Kompaktes Inline-Panel für Check-in prüfen
+interface CheckinPruefenPanelProps {
+  member: any;
+  visits: number;
+  checkins?: any[];
+  setEditEmail?: any;
+  setEditingMemberId?: any;
+  resendVerificationEmail?: any;
+  openMemberEditor?: any;
+}
+function CheckinPruefenPanel({ member, visits, checkins = [], setEditEmail, setEditingMemberId, resendVerificationEmail, openMemberEditor }: CheckinPruefenPanelProps) {
+  const [open, setOpen] = useState(false)
+  const status = getMemberCheckStatus(member)
+  const { loginPossible, checkinPossible, primaryIssue, flags } = status
+  // Ampel-Icons
+  const ampel = (ok: boolean) => ok ? <span className="text-emerald-600 text-xl align-middle">✅</span> : <span className="text-red-500 text-xl align-middle">❌</span>
+  // Top-Statusblock
+  const topStatus = loginPossible ? (
+    <div className="flex flex-col items-center mb-2">
+      <div className="rounded-2xl bg-emerald-100 border border-emerald-300 px-4 py-2 text-lg font-bold text-emerald-900 shadow-sm mb-1">CHECK-IN GRUNDSÄTZLICH MÖGLICH</div>
+      <div className="font-semibold text-emerald-800 text-base">{primaryIssue}</div>
+    </div>
+  ) : (
+    <div className="flex flex-col items-center mb-2">
+      <div className="rounded-2xl bg-red-100 border border-red-300 px-4 py-2 text-lg font-bold text-red-800 shadow-sm mb-1">CHECK-IN NICHT MÖGLICH</div>
+      <div className="font-semibold text-red-700 text-base">{primaryIssue}</div>
+    </div>
+  );
+  // Live-Diagnose: Nur aus vorhandenen Daten (letzte Check-ins)
+  let liveDiagnoseBlock = null;
+  if (Array.isArray(checkins) && checkins.length > 0) {
+    const last = checkins[0];
+    let lastStatus = null;
+    if (typeof last.success === "boolean") {
+      lastStatus = last.success ? "erfolgreich" : "abgelehnt";
+    }
+    liveDiagnoseBlock = (
+      <div className="mt-2 mb-2 p-3 rounded-2xl bg-blue-50 border border-blue-200">
+        <div className="font-bold text-blue-900 mb-1">Live-Diagnose</div>
+        <div className="flex flex-col gap-1 text-base">
+          <div>
+            Letzter Check-in: <span className="font-mono">{formatIsoDateForDisplay(last.date)} {last.time}</span>
+            {lastStatus && (
+              <span className={last.success ? "ml-2 text-emerald-700 font-bold" : "ml-2 text-red-700 font-bold"}>{lastStatus}</span>
+            )}
+            {last.group && (
+              <span className="ml-2 text-zinc-700">({last.group})</span>
+            )}
+          </div>
+          {typeof last.reason === "string" && last.reason && (
+            <div className="text-red-700">Letzter Ablehnungsgrund: {last.reason}</div>
+          )}
+        </div>
+        <div className="mt-2 text-blue-900 font-semibold">
+          {/* Live-Hinweis */}
+          {last.success
+            ? "➡ Mitglied hat zuletzt erfolgreich eingecheckt"
+            : "➡ Letzter Check-in wurde abgelehnt"}
+        </div>
+      </div>
+    );
+  } else {
+    liveDiagnoseBlock = (
+      <div className="mt-2 mb-2 p-3 rounded-2xl bg-blue-50 border border-blue-200">
+        <div className="font-bold text-blue-900 mb-1">Live-Diagnose</div>
+        <div className="text-zinc-700">Live-Prüfung nur teilweise möglich (keine Check-in-Daten vorhanden)</div>
+      </div>
+    );
+  }
+  // Empfohlene Sofortaktion bestimmen
+  let mainAction = null;
+  let mainActionLabel = "";
+  let mainActionOnClick = null;
+  let mainActionVisible = true;
+  let secondaryActions: any[] = [];
+  // Regel: E-Mail fehlt → E-Mail bearbeiten
+  if (flags.emailMissing) {
+    mainActionLabel = "E-Mail bearbeiten";
+    mainActionOnClick = () => (typeof setEditEmail === "function" ? setEditEmail(member.email || "") : undefined);
+    secondaryActions = [
+      { label: "PIN zurücksetzen", onClick: () => (typeof setEditingMemberId === "function" ? setEditingMemberId(member.id) : undefined), visible: true },
+      member.email ? { label: "Verifizierungs-Mail senden", onClick: () => (typeof resendVerificationEmail === "function" ? resendVerificationEmail(member) : undefined), visible: true } : null,
+      { label: "Mitglied öffnen", onClick: () => (typeof openMemberEditor === "function" ? openMemberEditor(member) : undefined), visible: true },
+    ].filter(Boolean);
+  } else if (flags.pinMissing) {
+    mainActionLabel = "PIN zurücksetzen";
+    mainActionOnClick = () => (typeof setEditingMemberId === "function" ? setEditingMemberId(member.id) : undefined);
+    secondaryActions = [
+      { label: "E-Mail bearbeiten", onClick: () => (typeof setEditEmail === "function" ? setEditEmail(member.email || "") : undefined), visible: true },
+      member.email ? { label: "Verifizierungs-Mail senden", onClick: () => (typeof resendVerificationEmail === "function" ? resendVerificationEmail(member) : undefined), visible: true } : null,
+      { label: "Mitglied öffnen", onClick: () => (typeof openMemberEditor === "function" ? openMemberEditor(member) : undefined), visible: true },
+    ].filter(Boolean);
+  } else if (!flags.emailVerified && member.email) {
+    mainActionLabel = "Verifizierungs-Mail senden";
+    mainActionOnClick = () => (typeof resendVerificationEmail === "function" ? resendVerificationEmail(member) : undefined);
+    secondaryActions = [
+      { label: "E-Mail bearbeiten", onClick: () => (typeof setEditEmail === "function" ? setEditEmail(member.email || "") : undefined), visible: true },
+      { label: "PIN zurücksetzen", onClick: () => (typeof setEditingMemberId === "function" ? setEditingMemberId(member.id) : undefined), visible: true },
+      { label: "Mitglied öffnen", onClick: () => (typeof openMemberEditor === "function" ? openMemberEditor(member) : undefined), visible: true },
+    ];
+  } else if (member) {
+    mainActionLabel = "Mitglied öffnen";
+    mainActionOnClick = () => (typeof openMemberEditor === "function" ? openMemberEditor(member) : undefined);
+    secondaryActions = [
+      { label: "E-Mail bearbeiten", onClick: () => (typeof setEditEmail === "function" ? setEditEmail(member.email || "") : undefined), visible: true },
+      { label: "PIN zurücksetzen", onClick: () => (typeof setEditingMemberId === "function" ? setEditingMemberId(member.id) : undefined), visible: true },
+      member.email ? { label: "Verifizierungs-Mail senden", onClick: () => (typeof resendVerificationEmail === "function" ? resendVerificationEmail(member) : undefined), visible: true } : null,
+    ].filter(Boolean);
+  }
+  // Wenn alles ok, stattdessen Hinweis
+  let actionHint = null;
+  if (!flags.emailMissing && !flags.pinMissing && flags.emailVerified) {
+    mainActionVisible = false;
+    actionHint = <div className="mt-1 text-emerald-800 font-bold text-base">➡ Check-in jetzt direkt mit dem Mitglied testen</div>;
+  }
+  // Sekundärstatus (aufklappbar)
+  const [showDetails, setShowDetails] = useState(false)
+  // Letzte Check-ins (Dummy: checkins prop, sonst visits)
+  let checkinBlock = null
+  if (Array.isArray(checkins) && checkins.length > 0) {
+    checkinBlock = (
+      <div className="mt-2">
+        <div className="font-semibold text-zinc-900 mb-1">Letzte Check-ins</div>
+        <ul className="space-y-1">
+          {checkins.slice(0, 3).map((ci, i) => (
+            <li key={i} className="flex items-center gap-2 text-sm">
+              <span className="font-mono text-zinc-700">{formatIsoDateForDisplay(ci.date)} {ci.time}</span>
+              {ci.success ? <span className="text-emerald-600 font-bold">erfolgreich</span> : <span className="text-red-600 font-bold">abgelehnt</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  } else {
+    checkinBlock = <div className="mt-2 text-zinc-500">Noch kein Check-in vorhanden</div>
+  }
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        className="w-full rounded-2xl border border-blue-300 bg-blue-50 px-4 py-3 text-lg font-bold text-blue-900 shadow-sm hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "Status ausblenden" : "Status prüfen"}
+      </button>
+      {open && (
+        <div className="mt-2 rounded-2xl border border-zinc-200 bg-white p-4 text-base shadow-md">
+          {topStatus}
+          {liveDiagnoseBlock}
+          {/* Empfohlene Sofortaktion */}
+          <div className="mt-3">
+            <div className="font-bold text-blue-900 mb-2">Empfohlene Sofortaktion</div>
+            {mainActionVisible && mainActionOnClick ? (
+              <Button
+                size="lg"
+                className="w-full mb-2 rounded-2xl text-lg font-bold py-3"
+                onClick={mainActionOnClick as React.MouseEventHandler<HTMLButtonElement>}
+              >
+                {mainActionLabel}
+              </Button>
+            ) : (
+              actionHint
+            )}
+            {/* Sekundäre Aktionen */}
+            {mainActionVisible && secondaryActions.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {secondaryActions.map((a: any, i: number) => (
+                  <Button key={a.label} size="sm" variant="outline" onClick={a.onClick as React.MouseEventHandler<HTMLButtonElement>} className="rounded-2xl">
+                    {a.label}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Wichtigste Felder */}
+          <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2 text-lg">
+            <div>Login möglich:</div>
+            <div>{ampel(loginPossible)}</div>
+            <div>Check-in möglich:</div>
+            <div>{ampel(checkinPossible)}</div>
+          </div>
+          {/* Sekundärstatus aufklappbar */}
+          <div className="mt-3">
+            <button
+              type="button"
+              className="text-blue-700 underline text-sm"
+              onClick={() => setShowDetails((v) => !v)}
+            >
+              {showDetails ? "Details ausblenden" : "Weitere Statusdetails anzeigen"}
+            </button>
+            {showDetails && (
+              <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-2 text-base">
+                <div>E-Mail vorhanden:</div>
+                <div>{ampel(!flags.emailMissing)}</div>
+                <div>PIN vorhanden:</div>
+                <div>{ampel(!flags.pinMissing)}</div>
+                <div>E-Mail verifiziert:</div>
+                <div>{ampel(flags.emailVerified)}</div>
+                <div>Freigegeben:</div>
+                <div>{ampel(flags.approved)}</div>
+                <div>QR vorhanden:</div>
+                <div>{ampel(flags.qrToken)}</div>
+                <div>Datenschutz:</div>
+                <div>{ampel(flags.privacy)}</div>
+              </div>
+            )}
+          </div>
+          {checkinBlock}
+        </div>
+      )}
+    </div>
+  )
+}
+// Lokale Hilfsfunktion für Check-in/Log-in Status
+function getMemberCheckStatus(member: any) {
+  if (!member) {
+    return {
+      loginPossible: false,
+      checkinPossible: false,
+      primaryIssue: "Mitglied nicht gefunden",
+      flags: {
+        emailMissing: true,
+        pinMissing: true,
+        emailVerified: false,
+        approved: false,
+        qrToken: false,
+        privacy: false,
+      },
+    };
+  }
+  const emailMissing = !member.email;
+  const pinMissing = !member.member_pin;
+  const loginPossible = !(emailMissing || pinMissing);
+  const checkinPossible = loginPossible;
+  let primaryIssue = "Mitgliedsdaten grundsätzlich nutzbar";
+  if (emailMissing) primaryIssue = "E-Mail fehlt";
+  if (pinMissing && !emailMissing) primaryIssue = "PIN fehlt";
+  if (!member) primaryIssue = "Mitglied nicht gefunden";
+  return {
+    loginPossible,
+    checkinPossible,
+    primaryIssue,
+    flags: {
+      emailMissing,
+      pinMissing,
+      emailVerified: !!member.email_verified,
+      approved: !!member.is_approved,
+      qrToken: !!member.member_qr_token,
+      privacy: !!member.privacy_accepted_at,
+    },
+  };
+}
+
 
 import { Fragment, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
@@ -903,6 +1156,10 @@ export default function MitgliederverwaltungPage() {
                                     {" · "}
                                     <span className="text-zinc-500">Gruppe: </span>
                                     {editingMember.base_group || "—"}
+                                  </div>
+                                  {/* Check-in prüfen Button und Panel */}
+                                  <div className="mt-3">
+                                    <CheckinPruefenPanel member={editingMember} visits={visitsByMember[editingMember.id] || 0} />
                                   </div>
                                   <div>
                                     <span className="text-zinc-500">Geschlecht: </span>

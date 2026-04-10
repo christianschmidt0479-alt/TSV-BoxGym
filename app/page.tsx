@@ -234,16 +234,6 @@ export default function Home() {
                   <span>TSV Falkensee · BoxGym</span>
                 </div>
                 <div className="flex items-center gap-4 sm:gap-5">
-                  <div className="rounded-2xl bg-white/90 p-2 shadow-sm">
-                    <Image
-                      src="/boxgym-headline-old.png"
-                      alt="TSV Falkensee BoxGym"
-                      width={144}
-                      height={144}
-                      className="h-14 w-auto object-contain sm:h-20"
-                      priority
-                    />
-                  </div>
                   <div className="space-y-2">
                     <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Willkommen im TSV BoxGym</h1>
                     <p className="max-w-2xl text-sm leading-6 text-blue-50/85 sm:text-base">
@@ -273,7 +263,6 @@ export default function Home() {
         <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
           {navigationCards.map((card) => {
             const Icon = card.icon
-
             return (
               <Button
                 key={card.href}
@@ -292,7 +281,7 @@ export default function Home() {
                         <div className="mt-1 break-words text-xs leading-4 text-zinc-500">{card.description}</div>
                       </div>
                     </div>
-                     <ArrowRight className="h-5 w-5 shrink-0 self-center text-zinc-400" />
+                    <ArrowRight className="h-5 w-5 shrink-0 self-center text-zinc-400" />
                   </div>
                 </Link>
               </Button>

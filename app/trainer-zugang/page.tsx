@@ -384,15 +384,30 @@ export default function TrainerZugangPage() {
           <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
             <CardContent className="p-5">
               {authFeedback ? (
-                <div
-                  className={
-                    authFeedback.tone === "error"
-                      ? "mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-                      : "mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-                  }
-                >
-                  {authFeedback.message}
-                </div>
+                <>
+                  <div
+                    className={
+                      authFeedback.tone === "error"
+                        ? "mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                        : "mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+                    }
+                  >
+                    {authFeedback.message}
+                  </div>
+                  {/* Passwort zurücksetzen Button bei Login-Fehler und vorhandener E-Mail */}
+                  {authFeedback.tone === "error" && trainerLoginEmail.trim().length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mb-4 rounded-2xl border-[#c8d8ea] text-[#154c83]"
+                      onClick={() => {
+                        window.location.href = `/trainer/passwort-zuruecksetzen?email=${encodeURIComponent(trainerLoginEmail.trim())}`
+                      }}
+                    >
+                      Passwort zurücksetzen
+                    </Button>
+                  )}
+                </>
               ) : null}
 
               <Tabs

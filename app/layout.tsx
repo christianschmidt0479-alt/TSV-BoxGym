@@ -8,8 +8,8 @@ import "./globals.css"
 
 const brandName = "TSV BoxGym"
 const iconVersion = `v=${APP_VERSION}-tsv-boxgym-logo-v7`
-const tabIcon = `/boxgym-icon.png?${iconVersion}`
-const faviconIcon = `/boxgym-favicon.ico?${iconVersion}`
+const tabIcon = `/boxgym-headline-old.png?${iconVersion}`
+const faviconIcon = `/boxgym-headline-old.png?${iconVersion}`
 const appleIcon = `/boxgym-apple-icon.png?${iconVersion}`
 const socialImage = "/opengraph-image"
 const appBaseUrl = getAppBaseUrl()
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: faviconIcon },
+      { url: faviconIcon, type: "image/png" },
       { url: tabIcon, type: "image/png", sizes: "512x512" },
     ],
     shortcut: faviconIcon,

@@ -1,3 +1,31 @@
+// --- Zentrale Eligibility-Funktion für Member-Check-in ---
+
+export type CheckinEligibilityReason =
+  | "member_not_found"
+  | "email_not_verified"
+  | "group_not_allowed"
+  | "outside_time_window"
+  | "eligible"
+
+export type CheckinEligibilityResult =
+  | { eligible: true; reason: "eligible" }
+  | { eligible: false; reason: Exclude<CheckinEligibilityReason, "eligible"> }
+
+export function checkMemberEligibility({
+  member,
+  groupAllowed,
+  timeAllowed,
+}: {
+  member: { id?: string; email_verified?: boolean | null; base_group?: string | null } | null
+  groupAllowed: boolean
+  timeAllowed: boolean
+}): CheckinEligibilityResult {
+  if (!member) return { eligible: false, reason: "member_not_found" }
+  if (!member.email_verified) return { eligible: false, reason: "email_not_verified" }
+  if (!groupAllowed) return { eligible: false, reason: "group_not_allowed" }
+  if (!timeAllowed) return { eligible: false, reason: "outside_time_window" }
+  return { eligible: true, reason: "eligible" }
+}
 import { sessions, type Session } from "@/lib/boxgymSessions"
 import { getActiveCheckinSession } from "@/lib/checkinWindow"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
