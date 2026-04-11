@@ -16,7 +16,7 @@ import {
   sanitizeTextInput,
 } from "@/lib/apiSecurity"
 
-import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+// Keine Trainer-/Admin-Session-Logik importieren oder verwenden
 import {
   findMemberByEmail,
   findMemberByEmailAndPin,
@@ -480,7 +480,7 @@ async function resolveMemberFromSessionOrCredentials(
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
-      return new NextResponse("Forbidden", { status: 403 })
+      return NextResponse.json({ ok: false, code: "forbidden", message: "Forbidden" }, { status: 403 })
     }
 
     const body = (await request.json()) as MemberAreaBody
@@ -496,16 +496,17 @@ export async function POST(request: Request) {
         10 * 60 * 1000
       )
     if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
+      return NextResponse.json({ ok: false, code: "rate_limit", message: "Too many requests" }, { status: 429 })
     }
 
     if (body.action === "member_login") {
+      // Nur Member-Session-Logik verwenden
       const email = sanitizeMemberAreaEmail(body.email)
       const password = sanitizeMemberAreaPassword(body.password ?? body.pin)
       const requestIp = getRequestIp(request)
       const rateLimit = await checkRateLimitAsync(`member-login:${requestIp}`, 5, 15 * 60 * 1000)
       if (!rateLimit.ok) {
-        return new NextResponse("Too many requests", { status: 429 })
+        return NextResponse.json({ ok: false, code: "rate_limit", message: "Too many requests" }, { status: 429 })
       }
 
       const loginKey = `member:${email || "__email__"}`
@@ -513,67 +514,73 @@ export async function POST(request: Request) {
       if (lockState.blocked) {
         await delayFailedLogin()
         const minutes = Math.max(1, Math.ceil((lockState.retryAfterMs ?? 0) / 60000))
-        return new NextResponse(`Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.`, { status: 429 })
+        return NextResponse.json({ ok: false, code: "login_locked", message: `Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.` }, { status: 429 })
       }
 
       if (!email || !password) {
-        return new NextResponse("Bitte E-Mail und Passwort eingeben.", { status: 400 })
+        return NextResponse.json({ ok: false, code: "missing_credentials", message: "Bitte E-Mail und Passwort eingeben." }, { status: 400 })
       }
 
       if (!isWithinMaxLength(email, 254) || !isWithinMaxLength(password, 64)) {
-        return new NextResponse("Ungültige Anmeldedaten.", { status: 400 })
+        return NextResponse.json({ ok: false, code: "invalid_credentials", message: "Ungültige Anmeldedaten." }, { status: 400 })
       }
 
       const memberMatch = await findMemberByEmailAndPin(email, password)
       if (memberMatch?.status === "missing_email") {
         await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
         await delayFailedLogin()
-        return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
+        return NextResponse.json({ ok: false, code: "not_found", message: MEMBER_LOGIN_ERROR_MESSAGE }, { status: 401 })
       }
 
       const member = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
       if (!member) {
         await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
         await delayFailedLogin()
-        return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
+        return NextResponse.json({ ok: false, code: "not_found", message: MEMBER_LOGIN_ERROR_MESSAGE }, { status: 401 })
       }
 
       await clearLoginFailuresAsync(loginKey)
 
       if (!hasAcceptedPrivacy(member)) {
-        return privacyConsentRequiredResponse()
+        return NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
       }
 
-      const response = NextResponse.json(await buildMemberSnapshot(member))
-      return await applyMemberAreaSessionCookie(response, {
-        memberId: member.id,
-        email,
-      })
+      const memberData = await buildMemberSnapshot(member)
+      return await applyMemberAreaSessionCookie(
+        NextResponse.json({ ok: true, code: "login_success", message: "Login erfolgreich.", member: memberData }),
+        { memberId: member.id, email }
+      )
     }
 
     if (body.action === "member_session") {
+      // Nur Member-Session-Logik verwenden
       const session = await readMemberAreaSessionFromHeaders(request)
       if (!session) {
-        return new NextResponse("Unauthorized", { status: 401 })
+        return NextResponse.json({ ok: false, code: "not_logged_in", message: "Nicht eingeloggt." }, { status: 401 })
       }
 
       const member = (await findMemberById(session.memberId)) as MemberRecord | null
       if (!member) {
-        const response = new NextResponse("Unauthorized", { status: 401 })
-        return clearMemberAreaSessionCookie(response)
+        return clearMemberAreaSessionCookie(
+          NextResponse.json({ ok: false, code: "not_found", message: "Mitglied nicht gefunden." }, { status: 401 })
+        )
       }
 
       if (!hasAcceptedPrivacy(member)) {
-        const response = privacyConsentRequiredResponse()
-        return clearMemberAreaSessionCookie(response)
+        return clearMemberAreaSessionCookie(
+          NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
+        )
       }
 
-      return NextResponse.json(await buildMemberSnapshot(member))
+      const memberData = await buildMemberSnapshot(member)
+      return NextResponse.json({ ok: true, code: "session_valid", message: "Session gültig.", member: memberData })
     }
 
     if (body.action === "logout_member_session") {
-      const response = NextResponse.json({ ok: true })
-      return clearMemberAreaSessionCookie(response)
+      // Nur Member-Session-Logik verwenden
+      return clearMemberAreaSessionCookie(
+        NextResponse.json({ ok: true, code: "logout_success", message: "Logout erfolgreich." })
+      )
     }
 
     if (body.action === "trainer_linked_member") {

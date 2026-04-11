@@ -20,15 +20,10 @@ export type ParentAreaSessionPayload = {
 }
 
 function getSessionSecret() {
-  const secret =
-    process.env.PUBLIC_AREA_SESSION_SECRET ||
-    process.env.TRAINER_SESSION_SECRET ||
-    ""
-
+  const secret = process.env.PUBLIC_AREA_SESSION_SECRET || ""
   if (!secret) {
     throw new Error("Missing PUBLIC_AREA_SESSION_SECRET")
   }
-
   return secret
 }
 

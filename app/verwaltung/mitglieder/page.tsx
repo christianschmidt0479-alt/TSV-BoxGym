@@ -147,6 +147,9 @@ type MemberStatusFilter =
   | "wartet_auf_email"
   | "registriert"
   | "freigegeben"
+  | "nur_email_bestaetigt"
+  | "nur_nicht_bestaetigt"
+  | "nur_offene_freigabe"
 
 const memberGroupOptions = TRAINING_GROUPS
 
@@ -368,7 +371,21 @@ export default function MitgliederverwaltungPage() {
         (member.email ?? "").toLowerCase().includes(trimmedSearch) ||
         (member.guardian_name ?? "").toLowerCase().includes(trimmedSearch)
 
-      const matchesStatus = statusFilter === "alle" || status === statusFilter
+      let matchesStatus = false
+      if (statusFilter === "alle") {
+        matchesStatus = true
+      } else if (statusFilter === "nur_email_bestaetigt") {
+        matchesStatus = !!member.email_verified
+      } else if (statusFilter === "nur_nicht_bestaetigt") {
+        matchesStatus = !member.email_verified
+      } else if (statusFilter === "nur_offene_freigabe") {
+        matchesStatus = !!member.email_verified && !member.is_approved
+      } else if (statusFilter === "freigegeben") {
+        matchesStatus = !!member.is_approved
+      } else {
+        matchesStatus = status === statusFilter
+      }
+
       const matchesGroup = groupFilter === "alle" || getMemberGroupValue(member.base_group) === groupFilter
 
       return matchesSearch && matchesStatus && matchesGroup
@@ -386,8 +403,6 @@ export default function MitgliederverwaltungPage() {
       if (sortBy === "aktivitaet") {
         return (lastActivityByMember[b.id] ?? "").localeCompare(lastActivityByMember[a.id] ?? "")
       }
-
-
 
       return getMemberDisplayName(a).localeCompare(getMemberDisplayName(b))
     })
@@ -641,11 +656,14 @@ export default function MitgliederverwaltungPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="alle">Alle Stati</SelectItem>
+                  <SelectItem value="alle">Alle Mitglieder</SelectItem>
+                  <SelectItem value="nur_email_bestaetigt">Nur E-Mail bestätigt</SelectItem>
+                  <SelectItem value="nur_nicht_bestaetigt">Nur E-Mail nicht bestätigt</SelectItem>
+                  <SelectItem value="freigegeben">Nur freigegeben</SelectItem>
+                  <SelectItem value="nur_offene_freigabe">Nur offene Freigaben</SelectItem>
                   <SelectItem value="probemitglied">Probemitglied</SelectItem>
                   <SelectItem value="wartet_auf_email">Wartet auf E-Mail-Bestätigung</SelectItem>
                   <SelectItem value="registriert">Registriert</SelectItem>
-                  <SelectItem value="freigegeben">Freigegeben</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -717,6 +735,42 @@ export default function MitgliederverwaltungPage() {
         </CardContent>
       </Card>
 
+      {/* Kompakte Status-Summary */}
+
+      <div className="mb-2 flex flex-wrap gap-4 items-center">
+        {(() => {
+          const total = members.length
+          const emailVerified = members.filter(m => !!m.email_verified).length
+          const notEmailVerified = members.filter(m => !m.email_verified).length
+          const openApproval = members.filter(m => !!m.email_verified && !m.is_approved).length
+          const approved = members.filter(m => !!m.is_approved).length
+          return (
+            <>
+              <div className="rounded-xl bg-zinc-100 px-4 py-2 text-sm text-zinc-700">
+                <span className="font-semibold text-zinc-900">{total}</span> Mitglieder
+              </div>
+              <div className="rounded-xl bg-green-100 px-4 py-2 text-sm text-green-800">
+                <span className="font-semibold">{emailVerified}</span> E-Mail bestätigt
+              </div>
+              <div className="rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
+                <span className="font-semibold">{notEmailVerified}</span> nicht bestätigt
+              </div>
+              <div className="rounded-xl bg-yellow-100 px-4 py-2 text-sm text-yellow-800">
+                <span className="font-semibold">{openApproval}</span> offene Freigaben
+              </div>
+              <div className="rounded-xl bg-emerald-100 px-4 py-2 text-sm text-emerald-800">
+                <span className="font-semibold">{approved}</span> freigegeben
+              </div>
+            </>
+          )
+        })()}
+      </div>
+      <div className="mb-4 text-xs text-zinc-500 flex flex-wrap gap-4">
+        <span><span className="font-semibold text-yellow-700">Offene Freigabe</span>: E-Mail bestätigt, aber noch nicht freigegeben</span>
+        <span><span className="font-semibold text-red-700">Nicht bestätigt</span>: Mitglied hat den Bestätigungslink noch nicht abgeschlossen</span>
+        <span><span className="font-semibold text-emerald-800">Freigegeben</span>: Mitglied ist aktiv</span>
+      </div>
+
       <Card className="rounded-[24px] border-0 shadow-sm">
         <CardHeader>
           <CardTitle>Mitgliederliste</CardTitle>
@@ -734,7 +788,9 @@ export default function MitgliederverwaltungPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Gruppe</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="text-center">E-Mail bestätigt</TableHead>
+                  <TableHead className="text-center">Freigegeben</TableHead>
+                  <TableHead className="text-center">Aktion</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -747,16 +803,20 @@ export default function MitgliederverwaltungPage() {
                   const age = getAgeInYears(member.birthdate)
                   const nextBirthday = getNextBirthdayEntry(member, today)
                   const showBirthdayMarker = nextBirthday && nextBirthday.days_from_today >= 0 && nextBirthday.days_from_today <= 14
-                  // Boxzwerge-Warnung entfernt
                   const isBoxzwerge = isBoxzwergeMember(member)
                   const parentLink = parentLinksByMember[member.id] ?? null
                   const isExpanded = editingMemberId === member.id
                   const usesParentLogin = hasParentManagedMemberLogin(member, parentLink)
 
+                  // Statusfelder für Icons
+                  const emailVerified = !!member.email_verified
+                  const isApproved = !!member.is_approved
+                  const needsApproval = emailVerified && !isApproved
+
                   return (
                     <Fragment key={member.id}>
                       <TableRow
-                        className={`cursor-pointer transition-colors ${isExpanded ? "bg-zinc-100/60" : ""}`}
+                        className={`cursor-pointer transition-colors ${isExpanded ? "bg-zinc-100/60" : needsApproval ? "bg-yellow-50" : ""}`}
                         onClick={() => toggleMemberEditor(member)}
                       >
                         <TableCell className="align-top min-w-[140px]">
@@ -794,18 +854,69 @@ export default function MitgliederverwaltungPage() {
                           </div>
                         </TableCell>
                         <TableCell className="align-top text-sm">{member.base_group || "—"}</TableCell>
-                        <TableCell className="align-top">
-                          {status !== "freigegeben" ? (
-                            <Badge variant="outline" className={getStatusBadgeClass(status)}>
-                              {getStatusLabel(status)}
-                            </Badge>
-                          ) : null}
+                        {/* E-Mail bestätigt Icon */}
+                        <TableCell className="align-top text-center">
+                          {emailVerified ? (
+                            <span title="E-Mail bestätigt" className="inline-block text-green-600">✔️</span>
+                          ) : (
+                            <span title="E-Mail nicht bestätigt" className="inline-block text-red-400">✖️</span>
+                          )}
+                        </TableCell>
+                        {/* Freigegeben Icon */}
+                        <TableCell className="align-top text-center">
+                          {isApproved ? (
+                            <span title="Freigegeben" className="inline-block text-green-600">✔️</span>
+                          ) : (
+                            <span title="Nicht freigegeben" className="inline-block text-red-400">✖️</span>
+                          )}
+                          {/* Offener Freigabefall: gelbes Warnicon */}
+                          {needsApproval && (
+                            <span title="E-Mail bestätigt, aber noch nicht freigegeben" className="inline-block ml-2 text-yellow-500">⚠️</span>
+                          )}
+                        </TableCell>
+                        {/* Direkte Freigabeaktion */}
+                        <TableCell className="align-top text-center">
+                          {needsApproval && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="rounded-xl bg-green-700 text-white hover:bg-green-800"
+                              disabled={savingMemberId === member.id}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  setSavingMemberId(member.id)
+                                  const response = await fetch("/api/admin/member-action", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      action: "approve_member",
+                                      memberId: member.id,
+                                    }),
+                                  })
+                                  if (!response.ok) throw new Error(await response.text())
+                                  const payload = (await response.json()) as { member: MemberRecord }
+                                  const updated = payload.member
+                                  setMembers((current) =>
+                                    current.map((row) => (row.id === member.id ? { ...row, is_approved: updated.is_approved } : row))
+                                  )
+                                } catch (error) {
+                                  alert(getErrorMessage(error, "Die Freigabe konnte nicht gespeichert werden."))
+                                } finally {
+                                  setSavingMemberId(null)
+                                }
+                              }}
+                            >
+                              Freigeben
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                       {isExpanded && editingMember ? (
                         <TableRow className="bg-zinc-50/80 hover:bg-zinc-50/80">
                           <TableCell colSpan={3} className="p-4">
                             <div className="space-y-4 rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
+
                               <div className="rounded-2xl bg-zinc-100 p-4 text-sm">
                                 <div className="font-semibold text-zinc-900">{getMemberDisplayName(editingMember)}</div>
                                 <div className="mt-2 space-y-1 text-zinc-700">
@@ -832,6 +943,55 @@ export default function MitgliederverwaltungPage() {
                                     <span className="text-zinc-500">Telefon: </span>
                                     {editingMember.phone || "—"}
                                   </div>
+                                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4 mt-2">
+                                    <div className="flex flex-col gap-1 text-sm">
+                                      <div>
+                                        <span className="text-zinc-500">E-Mail bestätigt: </span>
+                                        {editingMember.email_verified ? "Ja" : "Nein"}
+                                      </div>
+                                      <div>
+                                        <span className="text-zinc-500">Bestätigt am: </span>
+                                        {editingMember.email_verified_at ? formatDisplayDateTime(new Date(editingMember.email_verified_at)) : "—"}
+                                      </div>
+                                      <div>
+                                        <span className="text-zinc-500">Freigegeben: </span>
+                                        {editingMember.is_approved ? "Ja" : "Nein"}
+                                      </div>
+                                    </div>
+                                    {/* Freigabeaktion nur wenn E-Mail bestätigt und noch nicht freigegeben */}
+                                    {editingMember.email_verified && !editingMember.is_approved && (
+                                      <Button
+                                        type="button"
+                                        className="rounded-2xl bg-green-700 text-white hover:bg-green-800 ml-0 md:ml-4"
+                                        disabled={savingMemberId === editingMember.id}
+                                        onClick={async () => {
+                                          try {
+                                            setSavingMemberId(editingMember.id)
+                                            const response = await fetch("/api/admin/member-action", {
+                                              method: "POST",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({
+                                                action: "approve_member",
+                                                memberId: editingMember.id,
+                                              }),
+                                            })
+                                            if (!response.ok) throw new Error(await response.text())
+                                            const payload = (await response.json()) as { member: MemberRecord }
+                                            const updated = payload.member
+                                            setMembers((current) =>
+                                              current.map((row) => (row.id === editingMember.id ? { ...row, is_approved: updated.is_approved } : row))
+                                            )
+                                          } catch (error) {
+                                            alert(getErrorMessage(error, "Die Freigabe konnte nicht gespeichert werden."))
+                                          } finally {
+                                            setSavingMemberId(null)
+                                          }
+                                        }}
+                                      >
+                                        Mitglied freigeben
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
                                 <div className="mt-2 space-y-1 text-xs text-zinc-500">
                                   <div>
@@ -856,7 +1016,6 @@ export default function MitgliederverwaltungPage() {
                                     </div>
                                   ) : null}
                                 </div>
-                                {/* Boxzwerge-spezifischer Elternkonto-Hinweis entfernt */}
                               </div>
 
 
