@@ -180,6 +180,8 @@ export async function POST(request: Request) {
         member_pin: password,
         is_approved: false,
         base_group: baseGroup,
+      })
+      await updateMemberRegistrationData(member.id, {
         email_verification_token: emailToken,
       })
       console.log("TOKEN_SAVED_FOR_MEMBER", member.id)

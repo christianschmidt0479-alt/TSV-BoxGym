@@ -137,38 +137,45 @@ async function sendMailWithResend(input: {
     throw new Error("Missing RESEND_API_KEY")
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [input.to],
-      subject: input.subject,
-      text: input.text,
-      html: input.html,
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend request failed")
-  }
-
+  console.log("MAIL_SEND_START", { to: input.to, from })
+  let response
   try {
-    const payload = (await response.json()) as { id?: string | null }
-    return {
-      provider: "resend",
-      messageId: typeof payload?.id === "string" ? payload.id : null,
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        reply_to: replyTo,
+        to: [input.to],
+        subject: input.subject,
+        text: input.text,
+        html: input.html,
+      }),
+    })
+    console.log("MAIL_SEND_RESPONSE_STATUS", response.status)
+    const text = await response.text()
+    console.log("MAIL_SEND_RESPONSE_BODY", text)
+    if (!response.ok) {
+      throw new Error(text || "Resend request failed")
     }
-  } catch {
-    return {
-      provider: "resend",
-      messageId: null,
+    try {
+      const payload = JSON.parse(text) as { id?: string | null }
+      return {
+        provider: "resend",
+        messageId: typeof payload?.id === "string" ? payload.id : null,
+      }
+    } catch {
+      return {
+        provider: "resend",
+        messageId: null,
+      }
     }
+  } catch (error) {
+    console.error("MAIL_SEND_ERROR", error)
+    throw error
   }
 }
 
