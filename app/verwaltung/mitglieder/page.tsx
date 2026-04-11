@@ -330,9 +330,39 @@ function getBirthdayMarkerLabel(daysFromToday: number) {
 }
 
 export default function MitgliederverwaltungPage() {
-  const router = useRouter()
-  const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [members, setMembers] = useState<MemberRecord[]>([])
+  // Mapping: E-Mail → alle Members mit dieser E-Mail
+  const membersByEmail = useMemo(() => {
+    const map: Record<string, MemberRecord[]> = {};
+    for (const member of members) {
+      const email = (member.email ?? "").trim().toLowerCase();
+      if (!email) continue;
+      if (!map[email]) map[email] = [];
+      map[email].push(member);
+    }
+    // Sortiere pro E-Mail: verifizierte zuerst
+    for (const email in map) {
+      map[email].sort((a, b) => {
+        if (a.email_verified && !b.email_verified) return -1;
+        if (!a.email_verified && b.email_verified) return 1;
+        return 0;
+      });
+    }
+    return map;
+  }, [members]);
+  const router = useRouter()
+  // emailCountByValue muss nach 'members' stehen:
+  // Hilfsfunktion: Zählt, wie oft eine E-Mail in der aktuellen Member-Liste vorkommt (case-insensitive, getrimmt)
+  const emailCountByValue = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const member of members) {
+      const email = (member.email ?? "").trim().toLowerCase();
+      if (!email) continue;
+      map[email] = (map[email] ?? 0) + 1;
+    }
+    return map;
+  }, [members]);
+  const { resolved: authResolved, role: trainerRole } = useTrainerAccess()
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [search, setSearch] = useState("")
@@ -938,7 +968,11 @@ export default function MitgliederverwaltungPage() {
               </TableHeader>
               <TableBody>
                 {filteredMembers.map((member) => {
-                  const status = getMemberStatus(member)
+                  // Statusableitung: verifizierten Member für Anzeige bevorzugen
+                  const email = (member.email ?? "").trim().toLowerCase();
+                  const group = membersByEmail[email] || [];
+                  const preferred = group.find((m: MemberRecord) => m.email_verified) || group[0] || member;
+                  const status = getMemberStatus(preferred);
                   const age = getAgeInYears(member.birthdate)
                   const nextBirthday = getNextBirthdayEntry(member, today)
                   const showBirthdayMarker = nextBirthday && nextBirthday.days_from_today >= 0 && nextBirthday.days_from_today <= 14
@@ -955,7 +989,21 @@ export default function MitgliederverwaltungPage() {
                         onClick={() => toggleMemberEditor(member)}
                       >
                         <TableCell className="align-top min-w-[140px]">
-                          <div className="font-medium text-zinc-900">{getMemberDisplayName(member)}</div>
+                          <div className="font-medium text-zinc-900 flex items-center gap-2">
+                            {getMemberDisplayName(member)}
+                            {/* Minimaler Badge für doppelte E-Mail */}
+                            {(() => {
+                              const email = (member.email ?? "").trim().toLowerCase();
+                              if (email && emailCountByValue[email] > 1) {
+                                return (
+                                  <Badge variant="destructive" className="ml-1" title="Diese E-Mail ist mehrfach vergeben">
+                                    Doppel
+                                  </Badge>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                           {showBirthdayMarker ? (
                             <div className="mt-1 flex flex-wrap gap-1">
                               <Badge

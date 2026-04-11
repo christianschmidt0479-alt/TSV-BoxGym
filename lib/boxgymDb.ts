@@ -158,9 +158,46 @@ export async function findMemberByFirstLastAndBirthdate(
   return data?.[0] ?? null
 }
 
+
+
+export async function findMemberById(memberId: string) {
+  const { data, error } = await supabase
+    .from("members")
+    .select("*")
+    .eq("id", memberId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data ?? null
+}
+
+
+// Dubletten-Prioritätsregel: 1. verifiziert, 2. jüngster nicht-verifizierter, nicht-freigegebener, 3. jüngster
+export async function findMemberByEmail(email: string) {
+  const normalized = email.trim().toLowerCase()
+  const { data, error } = await supabase
+    .from("members")
+    .select("*")
+    .eq("email", normalized)
+    .order("created_at", { ascending: false })
+    .limit(10)
+
+  if (error) throw error
+  if (!data || data.length === 0) return null
+  // 1. verifizierter Datensatz
+  const verified = data.find((m) => m.email_verified)
+  if (verified) return verified
+  // 2. jüngster nicht-verifizierter, nicht-freigegebener
+  const notVerifiedNotApproved = data.find((m) => !m.email_verified && !m.is_approved)
+  if (notVerifiedNotApproved) return notVerifiedNotApproved
+  // 3. jüngster Datensatz
+  return data[0]
+}
+// Dubletten-Prioritätsregel: 1. verifiziert, 2. jüngster nicht-verifizierter, nicht-freigegebener, 3. jüngster
 export async function findMemberByEmailAndPin(email: string, pin: string): Promise<MemberAuthResult | null> {
   const normalizedEmail = email.trim().toLowerCase()
   const normalizedPin = pin.trim()
+
 
   const { data, error } = await supabase
     .from("members")
@@ -170,21 +207,44 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
     .limit(10)
 
   if (error) throw error
+  if (!data || data.length === 0) return null
 
-  for (const member of data ?? []) {
+  // 1. Alle verifizierten Datensätze mit passendem Pin, nach created_at absteigend
+  const verified = data.filter((m) => m.email_verified)
+  for (const member of verified) {
     if (await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))) {
       if (!isBcryptHash(String(member.member_pin ?? ""))) {
         await setStoredMemberPin(member.id, normalizedPin)
         member.member_pin = await hashMemberPinValue(normalizedPin)
       }
-
-      return {
-        status: "success",
-        member,
-      }
+      return { status: "success", member }
     }
   }
 
+  // 2. Jüngster nicht-verifizierter, nicht-freigegebener mit passendem Pin
+  const notVerifiedNotApproved = data.filter((m) => !m.email_verified && !m.is_approved)
+  for (const member of notVerifiedNotApproved) {
+    if (await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))) {
+      if (!isBcryptHash(String(member.member_pin ?? ""))) {
+        await setStoredMemberPin(member.id, normalizedPin)
+        member.member_pin = await hashMemberPinValue(normalizedPin)
+      }
+      return { status: "success", member }
+    }
+  }
+
+  // 3. Jüngster Datensatz mit passendem Pin
+  for (const member of data) {
+    if (await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))) {
+      if (!isBcryptHash(String(member.member_pin ?? ""))) {
+        await setStoredMemberPin(member.id, normalizedPin)
+        member.member_pin = await hashMemberPinValue(normalizedPin)
+      }
+      return { status: "success", member }
+    }
+  }
+
+  // Fallback: missing_email-Status wie bisher
   const { data: missingEmailRows, error: missingEmailError } = await supabase
     .from("members")
     .select("id, member_pin")
@@ -199,38 +259,11 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
       if (!isBcryptHash(String(row.member_pin ?? ""))) {
         await setStoredMemberPin(row.id, normalizedPin)
       }
-
-      return {
-        status: "missing_email",
-      }
+      return { status: "missing_email" }
     }
   }
 
   return null
-}
-
-export async function findMemberById(memberId: string) {
-  const { data, error } = await supabase
-    .from("members")
-    .select("*")
-    .eq("id", memberId)
-    .maybeSingle()
-
-  if (error) throw error
-  return data ?? null
-}
-
-export async function findMemberByEmail(email: string) {
-  const normalized = email.trim().toLowerCase()
-  const { data, error } = await supabase
-    .from("members")
-    .select("*")
-    .eq("email", normalized)
-    .order("created_at", { ascending: false })
-    .limit(1)
-
-  if (error) throw error
-  return data?.[0] ?? null
 }
 
 export async function findMemberByFirstLastName(firstName: string, lastName: string) {

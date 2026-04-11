@@ -1,3 +1,13 @@
+// Hilfsfunktion zum Maskieren von E-Mails (c***@e***.de)
+function maskEmail(email: string): string {
+  const [user, domain] = email.split("@")
+  if (!user || !domain) return "***"
+  const userMasked = user.length > 1 ? user[0] + "***" : "*"
+  const domainParts = domain.split(".")
+  const domainMasked = domainParts[0].length > 1 ? domainParts[0][0] + "***" : "*"
+  const tld = domainParts.slice(1).join(".")
+  return `${userMasked}@${domainMasked}${tld ? "." + tld : ""}`
+}
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
@@ -62,6 +72,8 @@ function hasExistingMemberAccess(record: Record<string, unknown>) {
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
+      // Kein Zugriff auf body möglich, daher ohne E-Mail loggen
+      console.warn('[member-flow][register][error] reason=forbidden')
       return new NextResponse("Forbidden", { status: 403 })
     }
 
@@ -86,26 +98,32 @@ export async function POST(request: Request) {
     }
 
     if (!firstName || !lastName) {
+      console.warn('[member-flow][register][error] reason=missing_name email=' + maskEmail(email))
       return new NextResponse("Bitte Vorname und Nachname eingeben.", { status: 400 })
     }
 
     if (!birthDate) {
+      console.warn('[member-flow][register][error] reason=invalid_birthdate email=' + maskEmail(email))
       return new NextResponse("Bitte ein gültiges Geburtsdatum angeben.", { status: 400 })
     }
 
     if (!baseGroup) {
+      console.warn('[member-flow][register][error] reason=missing_basegroup email=' + maskEmail(email))
       return new NextResponse("Bitte Stammgruppe auswählen.", { status: 400 })
     }
 
     if (!gender) {
+      console.warn('[member-flow][register][error] reason=missing_gender email=' + maskEmail(email))
       return new NextResponse("Bitte Geschlecht angeben.", { status: 400 })
     }
 
     if (!isValidMemberPassword(password)) {
+      console.warn('[member-flow][register][error] reason=invalid_password email=' + maskEmail(email))
       return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
     if (!email) {
+      console.warn('[member-flow][register][error] reason=missing_email')
       return new NextResponse("Bitte E-Mail angeben.", { status: 400 })
     }
 
@@ -115,10 +133,12 @@ export async function POST(request: Request) {
     }
 
     if (!phone) {
+      console.warn('[member-flow][register][error] reason=missing_phone email=' + maskEmail(email))
       return new NextResponse("Telefonnummer ist erforderlich.", { status: 400 })
     }
 
     if (!consent) {
+      console.warn('[member-flow][register][error] reason=missing_consent email=' + maskEmail(email))
       return new NextResponse("Bitte Datenschutz akzeptieren", { status: 400 })
     }
 
@@ -131,7 +151,10 @@ export async function POST(request: Request) {
       .select("*")
       .eq("email", email)
       .order("created_at", { ascending: false })
-    if (emailErr) throw emailErr
+    if (emailErr) {
+      console.error('[member-flow][register][error] reason=email_lookup_failed email=' + maskEmail(email))
+      throw emailErr
+    }
 
     // 2. Zielregel: Jüngster unverifizierter, nicht freigegebener Datensatz
     let target = allByEmail?.find(m => !m.email_verified && !m.is_approved) ?? null
@@ -210,7 +233,6 @@ export async function POST(request: Request) {
     const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${emailToken}`
 
     let verificationSent = true
-
     try {
       await sendVerificationEmail({
         email,
@@ -220,7 +242,7 @@ export async function POST(request: Request) {
       })
     } catch (error) {
       verificationSent = false
-      console.error("member verification mail failed", error)
+      console.error('[member-flow][register][error] reason=verification_mail_failed email=' + maskEmail(email), error)
     }
 
     try {
@@ -231,7 +253,7 @@ export async function POST(request: Request) {
         group: baseGroup,
       })
     } catch (error) {
-      console.error("member admin notification failed", error)
+      console.error('[member-flow][register][error] reason=admin_notification_failed email=' + maskEmail(email), error)
     }
     // Automatic Office/GS list match — non-blocking, does not affect registration flow
     try {
@@ -275,12 +297,16 @@ export async function POST(request: Request) {
       console.warn("[member-register] office match failed (non-blocking)", officeError)
     }
 
-    if (process.env.NODE_ENV !== "production") {
-      console.info("[member-register] success", { memberId: member.id, email, verificationSent })
-    }
+    console.info('[member-flow][register][success] id=' + member.id + ' email=' + maskEmail(email))
     return NextResponse.json({ ok: true, verificationSent })
-  } catch (error) {
-    console.error("[member-register] failed", error)
+  } catch (error: any) {
+    // Versuche, E-Mail zu maskieren, falls im Body vorhanden
+    let masked = ''
+    try {
+      const req = error?.body || error?.requestBody || ''
+      if (typeof req === 'string' && req.includes('@')) masked = ' email=' + maskEmail(req)
+    } catch {}
+    console.error('[member-flow][register][error] reason=exception' + masked, error)
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }
