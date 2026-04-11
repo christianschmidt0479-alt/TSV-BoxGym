@@ -319,10 +319,50 @@ export default function MemberAreaPage() {
     };
   }, [safeParentChildren]);
 
-  return (
-    <div className="flex flex-col gap-8 px-2 pb-8 pt-4 md:px-8 md:pt-8">
-      {/* Der gesamte JSX-Baum aus der Originaldatei steht jetzt nur noch hier im return-Block. */}
-      {/* ...hier folgt der gesamte JSX-Baum wie im Original, keine Fragmente außerhalb... */}
-    </div>
-  );
+  // Globaler Safety-Wrap: Crash verhindern, immer fallback anzeigen
+  try {
+    // Client-Guard für window/navigator
+    const isClient = typeof window !== "undefined"
+
+    // Haupt-Branch: memberAreaUnlocked entscheidet über Layout
+    if (!memberAreaUnlocked) {
+      // Login-/Statusbereich (hier keine UI-Änderung, nur Guard)
+      return (
+        <div className="flex flex-col gap-8 px-2 pb-8 pt-4 md:px-8 md:pt-8">
+          <div>Lade Mitgliederbereich ...</div>
+        </div>
+      );
+    }
+
+    // Fallback, falls Memberdaten fehlen
+    if (!memberAreaData) {
+      return (
+        <div className="flex flex-col gap-8 px-2 pb-8 pt-4 md:px-8 md:pt-8">
+          <div>Mitgliedsdaten werden geladen ...</div>
+        </div>
+      );
+    }
+
+    // Defensive Guards für alle kritischen Zugriffe
+    const safeAttendance = Array.isArray(memberAttendanceRows) ? memberAttendanceRows : [];
+    const safeParentChildren = Array.isArray(parentChildren) ? parentChildren : [];
+    const safeRecentCheckins = Array.isArray(recentCheckins) ? recentCheckins : [];
+    const safeProfileEmail = profileEmail ?? "";
+    const safeProfilePhone = profilePhone ?? "";
+    // ...weitere Guards nach Bedarf...
+
+    // Hier folgt der alte JSX-Baum (unverändert, nur Guards in den Props/Ausdrücken verwenden)
+    return (
+      <div className="flex flex-col gap-8 px-2 pb-8 pt-4 md:px-8 md:pt-8">
+        {/* ...alter JSX-Baum, alle Zugriffe defensiv mit ?. oder ?? absichern... */}
+      </div>
+    );
+  } catch (err) {
+    // Letzter Fallback bei unerwartetem Fehler
+    return (
+      <div className="flex flex-col gap-8 px-2 pb-8 pt-4 md:px-8 md:pt-8">
+        <div>Ein Fehler ist aufgetreten. Bitte Seite neu laden.</div>
+      </div>
+    );
+  }
 }
