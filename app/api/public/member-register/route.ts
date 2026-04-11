@@ -140,7 +140,9 @@ export async function POST(request: Request) {
       }
     }
 
+
     const emailToken = generateEmailVerificationToken()
+    console.log("TOKEN_CREATED", emailToken)
     const existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
 
     if (existing && hasExistingMemberAccess(existing as Record<string, unknown>)) {
@@ -150,43 +152,40 @@ export async function POST(request: Request) {
       )
     }
 
-    const member = existing
-      ? await updateMemberRegistrationData(existing.id, {
-          member_pin: password,
-          gender: gender || null,
-          email,
-          phone,
-          guardian_name: guardianName || null,
-          privacy_accepted_at: new Date().toISOString(),
-          email_verified: false,
-          email_verified_at: null,
-          email_verification_token: emailToken,
-          base_group: baseGroup,
-        })
-      : await createMember({
-          first_name: firstName,
-          last_name: lastName,
-          birthdate: birthDate,
-          gender: gender || undefined,
-          email,
-          phone,
-          guardian_name: guardianName || undefined,
-          is_trial: false,
-          member_pin: password,
-          is_approved: false,
-          base_group: baseGroup,
-        })
-
-    if (!existing) {
-      await updateMemberRegistrationData(member.id, {
+    let member
+    if (existing) {
+      member = await updateMemberRegistrationData(existing.id, {
+        member_pin: password,
         gender: gender || null,
+        email,
+        phone,
+        guardian_name: guardianName || null,
         privacy_accepted_at: new Date().toISOString(),
         email_verified: false,
         email_verified_at: null,
         email_verification_token: emailToken,
         base_group: baseGroup,
       })
+      console.log("TOKEN_SAVED_FOR_MEMBER", existing.id)
+    } else {
+      member = await createMember({
+        first_name: firstName,
+        last_name: lastName,
+        birthdate: birthDate,
+        gender: gender || undefined,
+        email,
+        phone,
+        guardian_name: guardianName || undefined,
+        is_trial: false,
+        member_pin: password,
+        is_approved: false,
+        base_group: baseGroup,
+        email_verification_token: emailToken,
+      })
+      console.log("TOKEN_SAVED_FOR_MEMBER", member.id)
     }
+
+    // Kein nachträgliches Update des Tokens, kein Zurücksetzen auf null, auch nicht bei Mailfehler
 
     await ensureMemberAuthUserLink({
       memberId: member.id,
