@@ -115,24 +115,29 @@ export async function POST(request: Request) {
       return new NextResponse("Bitte Datenschutz akzeptieren", { status: 400 })
     }
 
-    // Rate-Limit nur anwenden, wenn E-Mail und echte IP vorhanden
-    const ip = getRequestIp(request)
-    const emailKey = email.toLowerCase()
-    if (ip && ip !== "unknown" && emailKey) {
-      const rateLimitKey = `public-member-register:${ip}:${emailKey}`
-      const rateLimit = await checkRateLimitAsync(
-        rateLimitKey,
-        20,
-        10 * 60 * 1000
-      )
-      // Optionales Logging für Debug
-      console.log("[member-register] RateLimit", { key: rateLimitKey, ip, email: emailKey, ok: rateLimit.ok })
-      if (!rateLimit.ok) {
-        return new NextResponse("Too many requests", { status: 429 })
-      }
+    // Rate-Limit in Preview-Deployments deaktivieren
+    if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") {
+      console.log("RATE_LIMIT_SKIPPED_PREVIEW")
     } else {
-      // Kein Rate-Limit bei fehlender E-Mail oder IP
-      console.log("[member-register] RateLimit skipped", { ip, email: emailKey })
+      // Rate-Limit nur anwenden, wenn E-Mail und echte IP vorhanden
+      const ip = getRequestIp(request)
+      const emailKey = email.toLowerCase()
+      if (ip && ip !== "unknown" && emailKey) {
+        const rateLimitKey = `public-member-register:${ip}:${emailKey}`
+        const rateLimit = await checkRateLimitAsync(
+          rateLimitKey,
+          20,
+          10 * 60 * 1000
+        )
+        // Optionales Logging für Debug
+        console.log("[member-register] RateLimit", { key: rateLimitKey, ip, email: emailKey, ok: rateLimit.ok })
+        if (!rateLimit.ok) {
+          return new NextResponse("Too many requests", { status: 429 })
+        }
+      } else {
+        // Kein Rate-Limit bei fehlender E-Mail oder IP
+        console.log("[member-register] RateLimit skipped", { ip, email: emailKey })
+      }
     }
 
     const emailToken = generateEmailVerificationToken()
