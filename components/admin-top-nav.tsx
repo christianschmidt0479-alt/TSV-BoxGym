@@ -51,7 +51,6 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
         { label: "Check-ins", href: "/verwaltung/checkins" },
         { label: "Gruppen", href: "/verwaltung/gruppen" },
         { label: "Wettkampf", href: "/verwaltung/wettkampf" },
-        { label: "Abgleich", href: "/verwaltung/excel-abgleich" },
       ],
     },
     {

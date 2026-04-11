@@ -19,7 +19,7 @@ const NAV_SECTIONS = [
   {
     title: "Sportler",
     items: [
-      { href: "/trainer/boxzwerge", label: "Boxzwerge" },
+      // { href: "/trainer/boxzwerge", label: "Boxzwerge" }, // Boxzwerge-Navigationseintrag entfernt
       { href: "/trainer/mitglieder", label: "Mitglieder" },
       { href: "/trainer/wettkampf", label: "Wettkampf" },
     ],

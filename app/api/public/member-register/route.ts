@@ -1,17 +1,7 @@
-// Hilfsfunktion zum Maskieren von E-Mails (c***@e***.de)
-function maskEmail(email: string): string {
-  const [user, domain] = email.split("@")
-  if (!user || !domain) return "***"
-  const userMasked = user.length > 1 ? user[0] + "***" : "*"
-  const domainParts = domain.split(".")
-  const domainMasked = domainParts[0].length > 1 ? domainParts[0][0] + "***" : "*"
-  const tld = domainParts.slice(1).join(".")
-  return `${userMasked}@${domainMasked}${tld ? "." + tld : ""}`
-}
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
-import { createMember, updateMemberRegistrationData } from "@/lib/boxgymDb"
+import { createMember, findMemberByFirstLastAndBirthdate, updateMemberRegistrationData } from "@/lib/boxgymDb"
 import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
 import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
@@ -20,7 +10,6 @@ import { validateEmail } from "@/lib/formValidation"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { parseTrainingGroup } from "@/lib/trainingGroups"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { matchMemberAgainstExcelRows } from "@/lib/officeMatch"
 
 type MemberRegisterBody = {
   firstName?: string
@@ -72,8 +61,6 @@ function hasExistingMemberAccess(record: Record<string, unknown>) {
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
-      // Kein Zugriff auf body möglich, daher ohne E-Mail loggen
-      console.warn('[member-flow][register][error] reason=forbidden')
       return new NextResponse("Forbidden", { status: 403 })
     }
 
@@ -83,47 +70,34 @@ export async function POST(request: Request) {
     const birthDate = normalizeBirthDateInput(body.birthDate)
     const gender = body.gender?.trim() ?? ""
     const password = body.password?.trim() ?? body.pin?.trim() ?? ""
-    const email = body.email?.trim().toLowerCase() ?? ""
+    const email = body.email?.trim() ?? ""
     const phone = body.phone?.trim() ?? ""
     const guardianName = body.guardianName?.trim() ?? ""
     const baseGroup = parseTrainingGroup(body.baseGroup)
     const consent = body.consent === true
-    const rateLimit = await checkRateLimitAsync(
-      `public-member-register:${getRequestIp(request)}:${email.toLowerCase() || "__email__"}`,
-      12,
-      10 * 60 * 1000
-    )
-    if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
-    }
 
+    // Basisvalidierung vor Rate-Limit
     if (!firstName || !lastName) {
-      console.warn('[member-flow][register][error] reason=missing_name email=' + maskEmail(email))
       return new NextResponse("Bitte Vorname und Nachname eingeben.", { status: 400 })
     }
 
     if (!birthDate) {
-      console.warn('[member-flow][register][error] reason=invalid_birthdate email=' + maskEmail(email))
       return new NextResponse("Bitte ein gültiges Geburtsdatum angeben.", { status: 400 })
     }
 
     if (!baseGroup) {
-      console.warn('[member-flow][register][error] reason=missing_basegroup email=' + maskEmail(email))
       return new NextResponse("Bitte Stammgruppe auswählen.", { status: 400 })
     }
 
     if (!gender) {
-      console.warn('[member-flow][register][error] reason=missing_gender email=' + maskEmail(email))
       return new NextResponse("Bitte Geschlecht angeben.", { status: 400 })
     }
 
     if (!isValidMemberPassword(password)) {
-      console.warn('[member-flow][register][error] reason=invalid_password email=' + maskEmail(email))
       return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
     }
 
     if (!email) {
-      console.warn('[member-flow][register][error] reason=missing_email')
       return new NextResponse("Bitte E-Mail angeben.", { status: 400 })
     }
 
@@ -133,40 +107,54 @@ export async function POST(request: Request) {
     }
 
     if (!phone) {
-      console.warn('[member-flow][register][error] reason=missing_phone email=' + maskEmail(email))
       return new NextResponse("Telefonnummer ist erforderlich.", { status: 400 })
     }
 
     if (!consent) {
-      console.warn('[member-flow][register][error] reason=missing_consent email=' + maskEmail(email))
       return new NextResponse("Bitte Datenschutz akzeptieren", { status: 400 })
     }
 
-
-    // --- Vereinfachte Entscheidungslogik: Nur E-Mail zählt ---
-    const supabase = createServerSupabaseServiceClient()
-    const { data: existingMembers, error: emailErr } = await supabase
-      .from("members")
-      .select("*")
-      .eq("email", email)
-      .limit(1)
-    if (emailErr) {
-      console.error('[member-register][error] DB-Fehler bei E-Mail-Suche', emailErr)
-      return new NextResponse("Interner Fehler bei E-Mail-Suche", { status: 500 })
+    // Rate-Limit in Preview-Deployments deaktivieren
+    if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") {
+      console.log("RATE_LIMIT_SKIPPED_PREVIEW")
+    } else {
+      // Rate-Limit nur anwenden, wenn E-Mail und echte IP vorhanden
+      const ip = getRequestIp(request)
+      const emailKey = email.toLowerCase()
+      if (ip && ip !== "unknown" && emailKey) {
+        const rateLimitKey = `public-member-register:${ip}:${emailKey}`
+        const rateLimit = await checkRateLimitAsync(
+          rateLimitKey,
+          20,
+          10 * 60 * 1000
+        )
+        // Optionales Logging für Debug
+        console.log("[member-register] RateLimit", { key: rateLimitKey, ip, email: emailKey, ok: rateLimit.ok })
+        if (!rateLimit.ok) {
+          return new NextResponse("Too many requests", { status: 429 })
+        }
+      } else {
+        // Kein Rate-Limit bei fehlender E-Mail oder IP
+        console.log("[member-register] RateLimit skipped", { ip, email: emailKey })
+      }
     }
 
-    let member
-    let actionType
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString()
-    const emailToken = generateEmailVerificationToken()
 
-    if (existingMembers && existingMembers.length > 0) {
-      // UPDATE
-      const existing = existingMembers[0]
+    // Token immer vor Mailversand erzeugen und speichern
+    const emailToken = generateEmailVerificationToken();
+    console.log("TOKEN_CREATED", emailToken);
+    const existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate);
+
+    if (existing && hasExistingMemberAccess(existing as Record<string, unknown>)) {
+      return new NextResponse(
+        "Zu diesem Mitglied existiert bereits ein Zugang. Bitte Mein Bereich nutzen oder Trainer/Admin ansprechen.",
+        { status: 409 }
+      );
+    }
+
+    let member;
+    if (existing) {
       member = await updateMemberRegistrationData(existing.id, {
-        first_name: firstName,
-        last_name: lastName,
-        birthdate: birthDate,
         member_pin: password,
         gender: gender || null,
         email,
@@ -176,12 +164,10 @@ export async function POST(request: Request) {
         email_verified: false,
         email_verified_at: null,
         email_verification_token: emailToken,
-        email_verification_expires_at: expiresAt,
         base_group: baseGroup,
-      })
-      actionType = 'UPDATE'
+      });
+      console.log("TOKEN_SAVED_FOR_MEMBER", existing.id);
     } else {
-      // CREATE
       member = await createMember({
         first_name: firstName,
         last_name: lastName,
@@ -194,53 +180,36 @@ export async function POST(request: Request) {
         member_pin: password,
         is_approved: false,
         base_group: baseGroup,
+      });
+      await updateMemberRegistrationData(member.id, {
         email_verification_token: emailToken,
-        email_verification_expires_at: expiresAt,
-      })
-      actionType = 'CREATE'
+      });
+      console.log("TOKEN_SAVED_FOR_MEMBER", member.id);
     }
 
-    // Nach Insert/Update finalen Datensatz laden (Token-Sicherheit)
-    const { data: finalMember, error: reloadErr } = await supabase
-      .from("members")
-      .select("*")
-      .eq("email", email)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (reloadErr || !finalMember) {
-      console.error('[member-register][error] Reload nach ' + actionType + ' fehlgeschlagen', reloadErr)
-      return new NextResponse("Interner Fehler nach Registrierung", { status: 500 })
-    }
+    // Kein nachträgliches Update des Tokens, kein Zurücksetzen auf null, auch nicht bei Mailfehler
 
-    try {
-      await ensureMemberAuthUserLink({
-        memberId: finalMember.id,
-        email,
-        password,
-        emailVerified: false,
-      })
-      console.info(`[member-register] ${actionType} | Auth-Linking erfolgreich für ${email}`)
-    } catch (authErr) {
-      console.error(`[member-register][error] ${actionType} | Auth-Linking fehlgeschlagen für ${email}`, authErr)
-      return new NextResponse("Interner Fehler bei Auth-Linking", { status: 500 })
-    }
+    await ensureMemberAuthUserLink({
+      memberId: member.id,
+      email,
+      password,
+      emailVerified: false,
+    });
 
-    const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-    const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${finalMember.email_verification_token}`
+    const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL;
+    const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${encodeURIComponent(emailToken)}`;
 
-    let verificationSent = true
+    let verificationSent = true;
     try {
       await sendVerificationEmail({
         email,
         name: `${firstName} ${lastName}`.trim(),
         link: verificationLink,
         kind: "member",
-      })
-      console.info(`[member-register] ${actionType} | Verifizierungs-Mail erfolgreich an ${email}`)
+      });
     } catch (error) {
-      verificationSent = false
-      console.error(`[member-register][error] ${actionType} | Verifizierungs-Mail fehlgeschlagen an ${email}`, error)
+      verificationSent = false;
+      console.error("member verification mail failed", error);
     }
 
     try {
@@ -249,62 +218,32 @@ export async function POST(request: Request) {
         memberName: `${firstName} ${lastName}`.trim(),
         email,
         group: baseGroup,
-      })
+      });
     } catch (error) {
-      console.error(`[member-register][warn] ${actionType} | Admin-Benachrichtigung fehlgeschlagen für ${email}`, error)
+      console.error("member admin notification failed", error);
     }
-    // Automatic Office/GS list match — non-blocking, does not affect registration flow
+    // GS-/Excel-Abgleich deaktiviert: office_list_status wird standardmäßig gesetzt
     try {
-      const supabase = createServerSupabaseServiceClient()
-      const runResponse = await supabase
-        .from("office_reconciliation_runs")
-        .select("rows")
-        .eq("is_active", true)
-        .order("checked_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (!runResponse.error && runResponse.data) {
-        const storedRows = Array.isArray(runResponse.data.rows) ? (runResponse.data.rows as Array<Record<string, unknown>>) : []
-        const excelRows = storedRows
-          .filter((r) => r.excel === "Ja")
-          .map((r) => ({
-            firstName: String(r.firstName ?? ""),
-            lastName: String(r.lastName ?? ""),
-            birthdate: String(r.birthdate ?? ""),
-            email: typeof r.email === "string" ? r.email : "",
-            phone: typeof r.phone === "string" ? r.phone : "",
-            groupExcel: String(r.groupExcel ?? ""),
-          }))
-
-        const matchResult = matchMemberAgainstExcelRows(
-          { firstName, lastName, birthdate: birthDate, email, phone },
-          excelRows,
-        )
-
-        await supabase
-          .from("members")
-          .update({
-            office_list_status: matchResult ? matchResult.status : "red",
-            office_list_group: matchResult?.group || null,
-            office_list_checked_at: new Date().toISOString(),
-          })
-          .eq("id", member.id)
-      }
+      const supabase = createServerSupabaseServiceClient();
+      await supabase
+        .from("members")
+        .update({
+          office_list_status: "unknown",
+          office_list_group: null,
+          office_list_checked_at: new Date().toISOString(),
+        })
+        .eq("id", member.id);
     } catch (officeError) {
-      console.warn("[member-register] office match failed (non-blocking)", officeError)
+      console.warn("[member-register] office match skipped (deactivated)", officeError);
     }
 
-    console.info(`[member-register][success] ${actionType} | id=${finalMember.id} email=${email}`)
-    return NextResponse.json({ ok: true, verificationSent })
-  } catch (error: any) {
-    // Versuche, E-Mail zu maskieren, falls im Body vorhanden
-    let masked = ''
-    try {
-      const req = error?.body || error?.requestBody || ''
-      if (typeof req === 'string' && req.includes('@')) masked = ' email=' + maskEmail(req)
-    } catch {}
-    console.error('[member-flow][register][error] reason=exception' + masked, error)
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[member-register] success", { memberId: member.id, email, verificationSent });
+    }
+    // verificationSent wird nur für die Rückmeldung verwendet
+    return NextResponse.json({ ok: true, verificationSent });
+  } catch (error) {
+    console.error("[member-register] failed", error)
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }

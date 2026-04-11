@@ -16,7 +16,6 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { sessions } from "@/lib/boxgymSessions"
 import { formatDisplayDate, formatIsoDateForDisplay } from "@/lib/dateFormat"
-import { getOfficeListStatusMessage, getOfficeListStatusPanelClass } from "@/lib/officeListStatus"
 import { readTrainerAccess } from "@/lib/trainerAccess"
 
 type CheckinRow = {
@@ -296,6 +295,10 @@ export default function MemberAreaPage() {
     return null
   }, [liveDate, memberAreaData?.base_group])
 
+  // State für Verify-Rückmeldung
+  const [verifyStatus, setVerifyStatus] = useState<null | "success" | "already" | "invalid" | "error">(null)
+  const [verifyMessage, setVerifyMessage] = useState<string>("")
+
   useEffect(() => {
     setIsClient(true)
     setMemberAreaEmail(getStoredString("tsv_member_area_email"))
@@ -325,7 +328,12 @@ export default function MemberAreaPage() {
       }
 
       if (verifyToken) {
-        ;(async () => {
+        // Nur einmal verarbeiten
+        params.delete("verify");
+        const nextQuery = params.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+        window.history.replaceState({}, "", nextUrl);
+        (async () => {
           try {
             const response = await fetch("/api/public/member-area", {
               method: "POST",
@@ -334,44 +342,32 @@ export default function MemberAreaPage() {
                 action: "verify_email",
                 token: verifyToken,
               }),
-            })
-
-            let alreadyVerified = false
-            let success = false
-            if (!response.ok) {
-              // Versuche, JSON zu lesen (idempotenter Pfad)
-              try {
-                const result = await response.json()
-                if (result && result.alreadyVerified) {
-                  alreadyVerified = true
-                  success = true
-                }
-              } catch {
-                // Fallback auf Text
-                const message = await response.text()
-                alert(message || "Bestätigungslink ungültig oder bereits verwendet.")
-                return
+            });
+            if (response.ok) {
+              setVerifyStatus("success")
+              setVerifyMessage("E-Mail erfolgreich bestätigt. Das Mitglied kann jetzt vom Admin freigegeben werden.")
+              return
+            }
+            // Fehlerauswertung nach Status
+            if (response.status === 404 || response.status === 400) {
+              const text = await response.text()
+              if (text.includes("bereits verwendet") || text.includes("bereits bestätigt") || text.includes("bereits verifiziert")) {
+                setVerifyStatus("already")
+                setVerifyMessage("Diese E-Mail wurde bereits bestätigt. Du kannst dich jetzt anmelden.")
+              } else {
+                setVerifyStatus("invalid")
+                setVerifyMessage("Bestätigungslink ungültig oder bereits verwendet.")
               }
-            } else {
-              success = true
+              return
             }
-
-            if (success) {
-              alert(
-                alreadyVerified
-                  ? "E-Mail war bereits bestätigt. Du kannst dich jetzt anmelden."
-                  : "E-Mail erfolgreich bestätigt. Du kannst dich jetzt anmelden."
-              )
-              params.delete("verify")
-              const nextQuery = params.toString()
-              const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`
-              window.history.replaceState({}, "", nextUrl)
-            }
+            setVerifyStatus("error")
+            setVerifyMessage("Technischer Fehler bei der E-Mail-Bestätigung.")
           } catch (error) {
             console.error(error)
-            alert("Fehler bei der E-Mail-Bestätigung.")
+            setVerifyStatus("error")
+            setVerifyMessage("Technischer Fehler bei der E-Mail-Bestätigung.")
           }
-        })()
+        })();
       }
     } catch (error) {
       console.error("Verify handling failed", error)
@@ -703,6 +699,18 @@ export default function MemberAreaPage() {
           </TabsList>
 
           <TabsContent value="member" className="space-y-6">
+            {/* Rückmeldung für E-Mail-Verifizierung */}
+            {verifyStatus && (
+              <div className="mb-6 rounded-2xl border p-4 text-center text-base font-medium"
+                style={{
+                  background: verifyStatus === "success" ? "#e6f9e6" : verifyStatus === "already" ? "#f0f4ff" : verifyStatus === "invalid" ? "#fff4f4" : "#fff8e1",
+                  color: verifyStatus === "success" ? "#1a7f37" : verifyStatus === "already" ? "#1a237e" : verifyStatus === "invalid" ? "#b71c1c" : "#b26a00",
+                  borderColor: verifyStatus === "success" ? "#b2dfdb" : verifyStatus === "already" ? "#90caf9" : verifyStatus === "invalid" ? "#ffcdd2" : "#ffe082",
+                }}
+              >
+                {verifyMessage}
+              </div>
+            )}
             <Card className="rounded-[24px] border-0 shadow-sm">
               <CardHeader>
                 <CardTitle>Zugang zum Mitgliederbereich</CardTitle>
@@ -724,20 +732,6 @@ export default function MemberAreaPage() {
                     <Label>Passwort</Label>
                     <PasswordInput value={memberAreaPin} onChange={(event) => setMemberAreaPin(event.target.value)} placeholder="Passwort" className="rounded-2xl border-zinc-300 bg-white text-zinc-900" />
                   </div>
-
-                  {/* Kontextabhängiger Passwort-zurücksetzen-Button nach Login-Fehler */}
-                  {privacyError && memberAreaEmail.trim().length > 0 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="mb-4 rounded-2xl border-[#c8d8ea] text-[#154c83]"
-                      onClick={() => {
-                        window.location.href = `/mein-bereich/passwort-zuruecksetzen?email=${encodeURIComponent(memberAreaEmail.trim())}`
-                      }}
-                    >
-                      Passwort zurücksetzen
-                    </Button>
-                  )}
 
                   <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
                     <span>Passwort vergessen? Reset funktioniert nur mit bestätigter E-Mail-Adresse.</span>
@@ -838,15 +832,6 @@ export default function MemberAreaPage() {
                   <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">
                     Stammgruppe: <span className="font-semibold">{memberAreaData.base_group || "Nicht festgelegt"}</span>
                     {baseGroupPosition ? <> · Position in deiner Gruppe diesen Monat: <span className="font-semibold">{baseGroupPosition}</span></> : null}
-                  </div>
-
-                  <div className={getOfficeListStatusPanelClass(memberAreaData.office_list_status)}>
-                    <div className="font-semibold text-zinc-900">GS-Abgleich</div>
-                    <div className="mt-1">{getOfficeListStatusMessage(memberAreaData.office_list_status)}</div>
-                    <div className="mt-1 text-xs">
-                      Letzter GS-Abgleich: {memberAreaData.office_list_checked_at ? formatDisplayDate(new Date(memberAreaData.office_list_checked_at)) : "—"}
-                      {memberAreaData.office_list_group ? ` · ${memberAreaData.office_list_group}` : ""}
-                    </div>
                   </div>
 
                   <div className="rounded-2xl border bg-white p-4 text-sm text-zinc-700">

@@ -86,7 +86,6 @@ import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { getNextBirthdayEntry } from "@/lib/birthdays"
 import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 import { MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, isValidMemberPassword } from "@/lib/memberPassword"
-import { getOfficeListStatusLabel } from "@/lib/officeListStatus"
 import { buildTrainingGroupOptions, compareTrainingGroupOrder, isCompatibleOfficeListGroup, normalizeTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { clearTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -141,42 +140,13 @@ type TrainerLinkSummary = {
   is_approved?: boolean | null
 }
 
+
 type MemberStatusFilter =
   | "alle"
   | "probemitglied"
   | "wartet_auf_email"
   | "registriert"
   | "freigegeben"
-
-type OfficeReconcileFilter = "alle" | "kein_abgleich" | "green" | "yellow" | "red"
-
-type OfficeRunRow = {
-  memberId: string | null
-  status: "green" | "yellow" | "red" | "gray"
-  note: string
-  source: string
-  groupExcel: string
-}
-
-type OfficeRunMemberInfo = {
-  status: "green" | "yellow" | "red" | "gray"
-  note: string
-  source: string
-  groupExcel: string
-}
-
-function getOfficeRunPriority(status: OfficeRunMemberInfo["status"]) {
-  switch (status) {
-    case "yellow":
-      return 3
-    case "red":
-      return 2
-    case "gray":
-      return 1
-    case "green":
-      return 0
-  }
-}
 
 const memberGroupOptions = TRAINING_GROUPS
 
@@ -220,27 +190,7 @@ function getStatusBadgeClass(status: Exclude<MemberStatusFilter, "alle">) {
   }
 }
 
-function getOfficeFilterLabel(filter: Exclude<OfficeReconcileFilter, "alle">) {
-  switch (filter) {
-    case "kein_abgleich":
-      return "Kein GS-Abgleich"
-    case "green":
-      return getOfficeListStatusLabel("green")
-    case "yellow":
-      return getOfficeListStatusLabel("yellow")
-    case "red":
-      return getOfficeListStatusLabel("red")
-  }
-}
 
-function getOfficeDifferenceParts(note?: string | null) {
-  if (!note || note === "Excel und DB stimmen überein") return []
-
-  return note
-    .split(" · ")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-}
 
 function getAgeInYears(birthdate?: string) {
   if (!birthdate) return null
@@ -367,10 +317,8 @@ export default function MitgliederverwaltungPage() {
   const [loadError, setLoadError] = useState("")
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<MemberStatusFilter>("alle")
-  const [officeFilter, setOfficeFilter] = useState<OfficeReconcileFilter>("alle")
   const [groupFilter, setGroupFilter] = useState("alle")
   const [sortBy, setSortBy] = useState("name")
-  const [officeRunInfoByMember, setOfficeRunInfoByMember] = useState<Record<string, OfficeRunMemberInfo>>({})
   const [visitsByMember, setVisitsByMember] = useState<Record<string, number>>({})
   const [lastActivityByMember, setLastActivityByMember] = useState<Record<string, string>>({})
   const [savingMemberId, setSavingMemberId] = useState<string | null>(null)
@@ -403,152 +351,7 @@ export default function MitgliederverwaltungPage() {
     }
   }, [])
 
-  useEffect(() => {
-    if (!authResolved || trainerRole !== "admin") {
-      setLoading(false)
-      return
-    }
 
-    ;(async () => {
-      try {
-        setLoading(true)
-        setLoadError("")
-        const response = await fetch("/api/admin/members-overview", {
-          cache: "no-store",
-        })
-        if (!response.ok) {
-          if (response.status === 401) {
-            clearTrainerAccess()
-            throw new Error("Admin-Sitzung abgelaufen. Bitte neu anmelden.")
-          }
-          throw new Error(await readResponseError(response, "Mitglieder konnten nicht geladen werden."))
-        }
-
-        const payload = (await response.json()) as {
-          members: MemberRecord[]
-          checkinRows: CheckinSummaryRow[]
-          trainerLinks: TrainerLinkSummary[]
-          parentLinks: Array<{
-            member_id: string
-            parent_account_id: string
-            parent_accounts?: ParentLinkSummary | null
-          }>
-        }
-
-        const normalizedMembers = Array.isArray(payload.members)
-          ? payload.members.map((member) => ({
-              ...member,
-              base_group: getMemberGroupValue(member.base_group) || null,
-            }))
-          : []
-
-        setMembers(normalizedMembers)
-
-        const nextLinks: Record<string, ParentLinkSummary> = {}
-        for (const row of Array.isArray(payload.parentLinks) ? payload.parentLinks : []) {
-          if (!row?.member_id || !row.parent_accounts) continue
-          nextLinks[row.member_id] = {
-            parent_account_id: row.parent_account_id,
-            parent_name: row.parent_accounts.parent_name ?? "—",
-            email: row.parent_accounts.email ?? "",
-            phone: row.parent_accounts.phone ?? null,
-          }
-        }
-        setParentLinksByMember(nextLinks)
-
-        const nextTrainerLinks: Record<string, TrainerLinkSummary> = {}
-        for (const trainer of Array.isArray(payload.trainerLinks) ? payload.trainerLinks : []) {
-          const linkedMemberId = trainer.linked_member_id?.trim() ?? ""
-          if (linkedMemberId) {
-            nextTrainerLinks[linkedMemberId] = trainer
-            continue
-          }
-
-          const trainerEmail = trainer.email?.trim().toLowerCase() ?? ""
-          if (!trainerEmail) continue
-          const matchedMember = normalizedMembers.find((member) => (member.email ?? "").trim().toLowerCase() === trainerEmail)
-          if (matchedMember) {
-            nextTrainerLinks[matchedMember.id] = trainer
-          }
-        }
-        setTrainerLinksByMember(nextTrainerLinks)
-
-        const checkinRows = Array.isArray(payload.checkinRows) ? payload.checkinRows : []
-        const nextVisits: Record<string, number> = {}
-        const nextLastActivity: Record<string, string> = {}
-
-        for (const row of checkinRows) {
-          if (!row?.member_id) continue
-          nextVisits[row.member_id] = (nextVisits[row.member_id] ?? 0) + 1
-          if (!nextLastActivity[row.member_id] && row.created_at) {
-            nextLastActivity[row.member_id] = row.created_at
-          }
-        }
-
-        setVisitsByMember(nextVisits)
-        setLastActivityByMember(nextLastActivity)
-      } catch (error) {
-        console.error(error)
-        setLoadError(getErrorMessage(error, "Mitglieder konnten nicht geladen werden."))
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [authResolved, trainerRole])
-
-  useEffect(() => {
-    if (!authResolved || trainerRole !== "admin") return
-
-    let cancelled = false
-
-    void (async () => {
-      try {
-        const response = await fetch("/api/admin/excel-abgleich", { method: "GET", cache: "no-store" })
-
-        if (response.status === 204) {
-          if (!cancelled) setOfficeRunInfoByMember({})
-          return
-        }
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            clearTrainerAccess()
-          }
-          return
-        }
-
-        const payload = (await response.json()) as { rows?: OfficeRunRow[] }
-        const nextMap: Record<string, OfficeRunMemberInfo> = {}
-
-        for (const row of Array.isArray(payload.rows) ? payload.rows : []) {
-          if (!row.memberId) continue
-          const nextInfo = {
-            status: row.status,
-            note: row.note,
-            source: row.source,
-            groupExcel: row.groupExcel,
-          }
-          const currentInfo = nextMap[row.memberId]
-
-          if (!currentInfo || getOfficeRunPriority(nextInfo.status) > getOfficeRunPriority(currentInfo.status)) {
-            nextMap[row.memberId] = nextInfo
-          }
-        }
-
-        if (!cancelled) {
-          setOfficeRunInfoByMember(nextMap)
-        }
-      } catch {
-        if (!cancelled) {
-          setOfficeRunInfoByMember({})
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [authResolved, trainerRole])
 
   const groupOptions = useMemo(() => {
     return buildTrainingGroupOptions(members.map((member) => getMemberGroupValue(member.base_group))).sort(compareMemberGroupNames)
@@ -566,12 +369,9 @@ export default function MitgliederverwaltungPage() {
         (member.guardian_name ?? "").toLowerCase().includes(trimmedSearch)
 
       const matchesStatus = statusFilter === "alle" || status === statusFilter
-      const matchesOfficeFilter =
-        officeFilter === "alle" ||
-        (officeFilter === "kein_abgleich" ? !member.office_list_status : member.office_list_status === officeFilter)
       const matchesGroup = groupFilter === "alle" || getMemberGroupValue(member.base_group) === groupFilter
 
-      return matchesSearch && matchesStatus && matchesOfficeFilter && matchesGroup
+      return matchesSearch && matchesStatus && matchesGroup
     })
 
     rows.sort((a, b) => {
@@ -587,21 +387,16 @@ export default function MitgliederverwaltungPage() {
         return (lastActivityByMember[b.id] ?? "").localeCompare(lastActivityByMember[a.id] ?? "")
       }
 
-      if (sortBy === "boxzwerge_warnung") {
-        const aWarning = a.base_group === "Boxzwerge" && (getAgeInYears(a.birthdate) ?? -1) >= 10
-        const bWarning = b.base_group === "Boxzwerge" && (getAgeInYears(b.birthdate) ?? -1) >= 10
 
-        if (aWarning !== bWarning) return aWarning ? -1 : 1
-      }
 
       return getMemberDisplayName(a).localeCompare(getMemberDisplayName(b))
     })
 
     return rows
-  }, [groupFilter, lastActivityByMember, members, officeFilter, search, sortBy, statusFilter, visitsByMember])
+  }, [groupFilter, lastActivityByMember, members, search, sortBy, statusFilter, visitsByMember])
 
   const hasActiveFilters =
-    search.trim() !== "" || statusFilter !== "alle" || officeFilter !== "alle" || groupFilter !== "alle" || sortBy !== "name"
+    search.trim() !== "" || statusFilter !== "alle" || groupFilter !== "alle" || sortBy !== "name"
 
   const summary = useMemo(() => {
     return {
@@ -611,7 +406,7 @@ export default function MitgliederverwaltungPage() {
       registered: members.filter((member) => getMemberStatus(member) === "registriert").length,
       approved: members.filter((member) => getMemberStatus(member) === "freigegeben").length,
       missingPhone: members.filter((member) => !(member.phone ?? "").trim()).length,
-      boxzwergeWarning: members.filter((member) => member.base_group === "Boxzwerge" && (getAgeInYears(member.birthdate) ?? -1) >= 10).length,
+      // boxzwergeWarning entfernt
       parentLinked: Object.keys(parentLinksByMember).length,
     }
   }, [members, parentLinksByMember])
@@ -622,8 +417,6 @@ export default function MitgliederverwaltungPage() {
   )
   const editingParentLink = editingMemberId ? parentLinksByMember[editingMemberId] ?? null : null
   const editingMemberIsBoxzwerge = isBoxzwergeMember(editingMember)
-  const editingOfficeRunInfo = editingMemberId ? officeRunInfoByMember[editingMemberId] ?? null : null
-  const editingOfficeDifferences = getOfficeDifferenceParts(editingOfficeRunInfo?.note)
 
   // Minimaler Fix: checkinRowsByMember als Memo im Scope
   const checkinRowsByMember = useMemo(() => {
@@ -810,12 +603,7 @@ export default function MitgliederverwaltungPage() {
             <div className="mt-1 text-3xl font-bold text-amber-600">{summary.missingPhone}</div>
           </CardContent>
         </Card>
-        <Card className="rounded-[24px] border-0 shadow-sm">
-          <CardContent className="p-5">
-            <div className="text-sm text-zinc-500">Boxzwerge Warnung 10+</div>
-            <div className="mt-1 text-3xl font-bold text-red-600">{summary.boxzwergeWarning}</div>
-          </CardContent>
-        </Card>
+
         <Card className="rounded-[24px] border-0 shadow-sm">
           <CardContent className="p-5">
             <div className="text-sm text-zinc-500">Mit Elternkonto verknüpft</div>
@@ -879,21 +667,7 @@ export default function MitgliederverwaltungPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>GS-Abgleich</Label>
-              <Select value={officeFilter} onValueChange={(value) => setOfficeFilter(value as OfficeReconcileFilter)}>
-                <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="alle">Alle GS-Status</SelectItem>
-                  <SelectItem value="kein_abgleich">Kein GS-Abgleich</SelectItem>
-                  <SelectItem value="green">In aktueller Liste</SelectItem>
-                  <SelectItem value="yellow">Gefunden, Abweichung</SelectItem>
-                  <SelectItem value="red">Nicht in aktueller Liste</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+
 
             <div className="space-y-2">
               <Label>Sortierung</Label>
@@ -906,7 +680,7 @@ export default function MitgliederverwaltungPage() {
                   <SelectItem value="gruppe">Gruppe</SelectItem>
                   <SelectItem value="checkins">Check-ins</SelectItem>
                   <SelectItem value="aktivitaet">Letzte Aktivität</SelectItem>
-                  <SelectItem value="boxzwerge_warnung">Boxzwerge 10+</SelectItem>
+
                 </SelectContent>
               </Select>
             </div>
@@ -922,9 +696,7 @@ export default function MitgliederverwaltungPage() {
               {statusFilter !== "alle" ? (
                 <span className="ml-2 text-zinc-500">· Status: {getStatusLabel(statusFilter)}</span>
               ) : null}
-              {officeFilter !== "alle" ? (
-                <span className="ml-2 text-zinc-500">· GS-Abgleich: {getOfficeFilterLabel(officeFilter)}</span>
-              ) : null}
+
             </div>
             {hasActiveFilters ? (
               <Button
@@ -934,7 +706,6 @@ export default function MitgliederverwaltungPage() {
                 onClick={() => {
                   setSearch("")
                   setStatusFilter("alle")
-                  setOfficeFilter("alle")
                   setGroupFilter("alle")
                   setSortBy("name")
                 }}
@@ -976,7 +747,7 @@ export default function MitgliederverwaltungPage() {
                   const age = getAgeInYears(member.birthdate)
                   const nextBirthday = getNextBirthdayEntry(member, today)
                   const showBirthdayMarker = nextBirthday && nextBirthday.days_from_today >= 0 && nextBirthday.days_from_today <= 14
-                  const isBoxzwergeWarning = member.base_group === "Boxzwerge" && (age ?? -1) >= 10
+                  // Boxzwerge-Warnung entfernt
                   const isBoxzwerge = isBoxzwergeMember(member)
                   const parentLink = parentLinksByMember[member.id] ?? null
                   const isExpanded = editingMemberId === member.id
@@ -985,7 +756,7 @@ export default function MitgliederverwaltungPage() {
                   return (
                     <Fragment key={member.id}>
                       <TableRow
-                        className={`cursor-pointer transition-colors ${isBoxzwergeWarning ? "bg-red-50/80" : isExpanded ? "bg-zinc-100/60" : ""}`}
+                        className={`cursor-pointer transition-colors ${isExpanded ? "bg-zinc-100/60" : ""}`}
                         onClick={() => toggleMemberEditor(member)}
                       >
                         <TableCell className="align-top min-w-[140px]">
@@ -1017,20 +788,10 @@ export default function MitgliederverwaltungPage() {
                               </Badge>
                             </div>
                           ) : null}
-                          <div className={`text-xs ${isBoxzwergeWarning ? "text-red-700" : "text-zinc-500"}`}>
-                            {isBoxzwerge ? "Kind · " : ""}
+                          <div className={`text-xs text-zinc-500`}>
                             {formatIsoDateForDisplay(member.birthdate) || "Geburtsdatum offen"}
                             {age !== null ? ` · ${age} Jahre` : ""}
                           </div>
-                          {isBoxzwergeWarning ? (
-                            <div className="mt-1 text-xs font-semibold text-red-700">Boxzwerge-Warnung ab 10 Jahren</div>
-                          ) : null}
-                          {isBoxzwerge ? (
-                            <div className="mt-1 text-xs text-zinc-500">
-                              {member.guardian_name ? `Notfallkontakt: ${member.guardian_name}` : "Kein Notfallkontakt"}
-                              {usesParentLogin ? " · Zugang über Elternkonto" : ""}
-                            </div>
-                          ) : null}
                         </TableCell>
                         <TableCell className="align-top text-sm">{member.base_group || "—"}</TableCell>
                         <TableCell className="align-top">
@@ -1049,7 +810,7 @@ export default function MitgliederverwaltungPage() {
                                 <div className="font-semibold text-zinc-900">{getMemberDisplayName(editingMember)}</div>
                                 <div className="mt-2 space-y-1 text-zinc-700">
                                   <div>
-                                    <span className="text-zinc-500">{editingMemberIsBoxzwerge ? "Geburtstag (Kind)" : "Geburtstag"}: </span>
+                                    <span className="text-zinc-500">Geburtstag: </span>
                                     {formatIsoDateForDisplay(editingMember.birthdate) || "—"}
                                     {" · "}
                                     <span className="text-zinc-500">Gruppe: </span>
@@ -1064,11 +825,11 @@ export default function MitgliederverwaltungPage() {
                                     {editingMember.gender || "—"}
                                   </div>
                                   <div className="break-all">
-                                    <span className="text-zinc-500">{editingMemberIsBoxzwerge ? "Eltern-E-Mail" : "E-Mail"}: </span>
+                                    <span className="text-zinc-500">E-Mail: </span>
                                     {editingMember.email || "—"}
                                   </div>
                                   <div>
-                                    <span className="text-zinc-500">{editingMemberIsBoxzwerge ? "Eltern-Telefon" : "Telefon"}: </span>
+                                    <span className="text-zinc-500">Telefon: </span>
                                     {editingMember.phone || "—"}
                                   </div>
                                 </div>
@@ -1085,25 +846,7 @@ export default function MitgliederverwaltungPage() {
                                         : "—"}
                                     </span>
                                   </div>
-                                  {editingMember.office_list_status ? (
-                                    <div>
-                                      {"GS-Abgleich: "}
-                                      <span className={
-                                        editingMember.office_list_status === "green" ? "font-medium text-green-700" :
-                                        editingMember.office_list_status === "yellow" ? "font-medium text-amber-700" :
-                                        editingMember.office_list_status === "red" ? "font-medium text-red-700" : "text-zinc-700"
-                                      }>
-                                        {getOfficeListStatusLabel(editingMember.office_list_status)}
-                                      </span>
-                                      {editingMember.office_list_group ? <>{" · "}{editingMember.office_list_group}</> : null}
-                                    </div>
-                                  ) : null}
-                                  {editingMember.created_from_excel ? (
-                                    <div>
-                                      {"Herkunft: "}
-                                      <span className="font-medium text-violet-700">Aus Excel-Abgleich angelegt</span>
-                                    </div>
-                                  ) : null}
+
                                   {trainerLinksByMember[editingMember.id] ? (
                                     <div>
                                       {"Rolle: "}
@@ -1112,36 +855,11 @@ export default function MitgliederverwaltungPage() {
                                       </span>
                                     </div>
                                   ) : null}
-                                  {editingMemberIsBoxzwerge ? (
-                                    <div>E-Mail und Telefon gehören zu den Eltern des Kindes.</div>
-                                  ) : null}
                                 </div>
-                                {hasParentManagedMemberLogin(editingMember, editingParentLink) ? (
-                                  <div className="mt-3 rounded-2xl border border-[#c8d8ea] bg-white px-3 py-2 text-xs font-medium text-[#154c83]">
-                                    Zugang läuft über das Elternkonto – kein eigener Mitglieder-Login.
-                                  </div>
-                                ) : null}
+                                {/* Boxzwerge-spezifischer Elternkonto-Hinweis entfernt */}
                               </div>
 
-                              {editingOfficeRunInfo && editingOfficeDifferences.length > 0 ? (
-                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                                  <div className="font-semibold">GS-Abweichungen</div>
-                                  <div className="mt-1 text-xs text-amber-800">
-                                    {getOfficeListStatusLabel(editingOfficeRunInfo.status)}
-                                    {editingOfficeRunInfo.groupExcel && editingOfficeRunInfo.groupExcel !== "—"
-                                      ? ` · GS-Liste: ${editingOfficeRunInfo.groupExcel}`
-                                      : ""}
-                                    {editingOfficeRunInfo.source && editingOfficeRunInfo.source !== "—"
-                                      ? ` · Datei: ${editingOfficeRunInfo.source}`
-                                      : ""}
-                                  </div>
-                                  <div className="mt-2 space-y-1">
-                                    {editingOfficeDifferences.map((entry) => (
-                                      <div key={entry}>• {entry}</div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
+
 
                               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="space-y-2">
@@ -1371,101 +1089,26 @@ export default function MitgliederverwaltungPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                  <Label>{editingMemberIsBoxzwerge ? "Eltern-E-Mail" : "E-Mail"}</Label>
+                                  <Label>E-Mail</Label>
                                   <Input
                                     value={editEmail}
                                     onChange={(event) => setEditEmail(event.target.value)}
-                                    placeholder={editingMemberIsBoxzwerge ? "E-Mail der Eltern" : "E-Mail-Adresse"}
+                                    placeholder="E-Mail-Adresse"
                                     className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                                   />
                                 </div>
 
                                 <div className="space-y-2">
-                                  <Label>{editingMemberIsBoxzwerge ? "Eltern-Telefon" : "Telefon"}</Label>
+                                  <Label>Telefon</Label>
                                   <Input
                                     value={editPhone}
                                     onChange={(event) => setEditPhone(event.target.value)}
-                                    placeholder={editingMemberIsBoxzwerge ? "Telefon der Eltern" : "Telefonnummer"}
+                                    placeholder="Telefonnummer"
                                     className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
                                   />
                                 </div>
 
-                                {editingMemberIsBoxzwerge ? (
-                                  <>
-                                    <div className="space-y-2 md:col-span-2">
-                                      <Label>Eltern / Notfallkontakt</Label>
-                                      <Input
-                                        value={editGuardianName}
-                                        onChange={(event) => setEditGuardianName(event.target.value)}
-                                        placeholder="Name des Elternteils oder Notfallkontakts"
-                                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                                      />
-                                    </div>
-
-                                    <div className="space-y-2 md:col-span-2">
-                                      <Label>Zusätzliches Elternkonto / Familienkonto</Label>
-                                      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-                                        <div className="flex items-center gap-2">
-                                          <span>Elternkonto hier verknüpfen.</span>
-                                          <InfoHint text="Hier kannst du ein bestehendes oder neues Elternkonto mit dem Kind verknüpfen. Dieselbe Eltern-E-Mail kann parallel auch zu einem eigenen Sportlerkonto in der Ü18-Gruppe gehören." />
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      <Label>Elternkonto-Name</Label>
-                                      <Input
-                                        value={editParentName}
-                                        onChange={(event) => setEditParentName(event.target.value)}
-                                        placeholder="Name des Elternkontos"
-                                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                                      />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      <Label>Elternkonto-E-Mail</Label>
-                                      <Input
-                                        type="email"
-                                        value={editParentEmail}
-                                        onChange={(event) => setEditParentEmail(event.target.value)}
-                                        placeholder="E-Mail des Elternkontos"
-                                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                                      />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      <Label>Elternkonto-Telefon</Label>
-                                      <Input
-                                        value={editParentPhone}
-                                        onChange={(event) => setEditParentPhone(event.target.value)}
-                                        placeholder="Telefon des Elternkontos"
-                                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                                      />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      <Label>Neues Eltern-Passwort</Label>
-                                      <PasswordInput
-                                        value={editParentAccessCode}
-                                        onChange={(event) => setEditParentAccessCode(event.target.value)}
-                                        placeholder={editingParentLink ? "Nur ausfüllen, wenn das Passwort geändert werden soll" : "8 bis 64 Zeichen für neues Elternkonto"}
-                                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                                      />
-                                      <div className="text-xs text-zinc-500">{MEMBER_PASSWORD_HINT}</div>
-                                    </div>
-
-                                    <div className="space-y-2 md:col-span-2">
-                                      <Label>Eigenes Passwort für das Kind</Label>
-                                      <PasswordInput
-                                        value={editMemberAccessCode}
-                                        onChange={(event) => setEditMemberAccessCode(event.target.value)}
-                                        placeholder="Optional, z. B. wenn das Kind aus dem Elternkonto gelöst wird"
-                                        className="rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                                      />
-                                      <div className="text-xs text-zinc-500">{MEMBER_PASSWORD_HINT}</div>
-                                    </div>
-                                  </>
-                                ) : null}
+                                {/* Eltern-/Notfallkontakt-Felder entfernt */}
 
                                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3 md:col-span-2">
                                   <Button

@@ -1,3 +1,7 @@
+import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
+import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
+import { getAppBaseUrl, DEFAULT_APP_BASE_URL } from "@/lib/mailConfig"
+import { sendVerificationEmail } from "@/lib/resendClient"
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import {
@@ -11,6 +15,7 @@ import {
   registerLoginFailureAsync,
   sanitizeTextInput,
 } from "@/lib/apiSecurity"
+
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import {
   findMemberByEmail,
@@ -18,158 +23,58 @@ import {
   findMemberByFirstLastName,
   findMemberById,
   updateMemberProfile,
-  setMemberPinOnly,
+  setMemberPinOnly
 } from "@/lib/boxgymDb"
-import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
-import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
-import {
-  getChildrenForParent,
-  getParentAccountByEmail,
-  getParentAccountByLogin,
-  isParentAccountSetupPending,
-  type ParentAccountRow,
-} from "@/lib/parentAccountsDb"
-import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { sessions } from "@/lib/boxgymSessions"
+import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import {
   applyMemberAreaSessionCookie,
-  applyParentAreaSessionCookie,
   clearMemberAreaSessionCookie,
-  clearParentAreaSessionCookie,
-  getPublicAreaSessionMaxAgeMs,
-  readMemberAreaSessionFromHeaders,
-  readParentAreaSessionFromHeaders,
+  readMemberAreaSessionFromHeaders
 } from "@/lib/publicAreaSession"
-import { sendVerificationEmail } from "@/lib/resendClient"
-import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
-const supabase = createServerSupabaseServiceClient()
+type MemberAreaBody =
+  | { action: "member_login"; email?: string; password?: string; pin?: string }
+  | { action: "member_session" }
+  | { action: "logout_member_session" }
+  | { action: "trainer_linked_member" }
+  | { action: "verify_email"; token?: string }
+  | { action: "update_profile"; memberId?: string; email?: string; phone?: string; newPassword?: string; newPin?: string; loginEmail?: string; password?: string; pin?: string }
+  | { action: "resend_verification"; memberId?: string; email?: string; loginEmail?: string; password?: string; pin?: string }
+  | { action: "verify_and_set_password"; token?: string; password?: string }
+  | { action: "accept_privacy_consent"; email?: string; password?: string; pin?: string; consent?: boolean }
 
-type CheckinRow = {
-  id: string
-  member_id: string
-  group_name: string
-  weight: number | null
-  created_at: string
-  date: string
-  time: string
-  year: number
-  month_key: string
-}
+const MEMBER_LOGIN_ERROR_MESSAGE = "Mitglied nicht gefunden oder Passwort nicht korrekt."
 
+// Minimal benötigte lokale Typen
 type MemberRecord = {
   id: string
-  name?: string
   first_name?: string
   last_name?: string
-  birthdate?: string
+  name?: string
   email?: string | null
   email_verified?: boolean
   email_verified_at?: string | null
   privacy_accepted_at?: string | null
   email_verification_token?: string | null
   phone?: string | null
-  guardian_name?: string | null
-  has_competition_pass?: boolean | null
-  is_competition_member?: boolean | null
-  competition_license_number?: string | null
-  competition_target_weight?: number | null
-  last_medical_exam_date?: string | null
-  competition_fights?: number | null
-  competition_wins?: number | null
-  competition_losses?: number | null
-  competition_draws?: number | null
-  is_trial?: boolean
-  is_approved?: boolean
   base_group?: string | null
-  office_list_status?: string | null
-  office_list_group?: string | null
-  office_list_checked_at?: string | null
   member_qr_token?: string | null
   member_qr_active?: boolean | null
 }
 
-type ParentChildRow = {
-  member_id: string
-  members?: MemberRecord | MemberRecord[] | null
-}
-
-type SafeParentAccountRow = {
+type CheckinRow = {
   id: string
-  parent_name: string
-  email: string
-  phone?: string | null
+  member_id: string
+  group_name: string
+  created_at: string
+  date: string
+  month_key: string
 }
 
-type MemberAreaBody =
-  | {
-      action: "member_login"
-      email?: string
-      password?: string
-      pin?: string
-    }
-  | {
-      action: "member_session"
-    }
-  | {
-      action: "logout_member_session"
-    }
-  | {
-      action: "trainer_linked_member"
-    }
-  | {
-      action: "parent_session"
-    }
-  | {
-      action: "logout_parent_session"
-    }
-  | {
-      action: "parent_login"
-      email?: string
-      firstName?: string
-      lastName?: string
-      accessCode?: string
-    }
-  | {
-      action: "verify_email"
-      token?: string
-    }
-  | {
-      action: "update_profile"
-      memberId?: string
-      email?: string
-      phone?: string
-      newPassword?: string
-      newPin?: string
-      loginEmail?: string
-      password?: string
-      pin?: string
-    }
-  | {
-      action: "resend_verification"
-      memberId?: string
-      email?: string
-      loginEmail?: string
-      password?: string
-      pin?: string
-    }
-  | {
-      action: "verify_and_set_password"
-      token?: string
-      password?: string
-    }
-  | {
-      action: "accept_privacy_consent"
-      email?: string
-      password?: string
-      pin?: string
-      consent?: boolean
-    }
-
-const MEMBER_LOGIN_ERROR_MESSAGE = "Mitglied nicht gefunden oder Passwort nicht korrekt."
-const PARENT_LOGIN_ERROR_MESSAGE = "Elternkonto nicht gefunden oder Passwort nicht korrekt."
+const supabase = createServerSupabaseServiceClient()
 
 function getMonthKey(dateString: string) {
   return dateString.slice(0, 7)
@@ -239,8 +144,6 @@ function calculateScheduledBaseGroupTrainingStreak({
   ).sort().reverse()
 
   if (attendedDates.length === 0) return 0
-
-  const attendedDateSet = new Set(attendedDates)
   const latestScheduledAttendance = attendedDates.find((date) => hasScheduledBaseGroupTraining(normalizedBaseGroup, date))
 
   if (!latestScheduledAttendance) return 0
@@ -251,7 +154,7 @@ function calculateScheduledBaseGroupTrainingStreak({
   while (true) {
     const previousScheduledDate = findPreviousScheduledBaseGroupDate(normalizedBaseGroup, currentDate)
     if (!previousScheduledDate) return streak
-    if (!attendedDateSet.has(previousScheduledDate)) return streak
+    if (!attendedDates.includes(previousScheduledDate)) return streak
 
     streak += 1
     currentDate = previousScheduledDate
@@ -347,14 +250,6 @@ function sanitizeToken(value: unknown) {
   return sanitizeTextInput(value, { maxLength: 200 })
 }
 
-function toSafeParentAccount(parent: ParentAccountRow): SafeParentAccountRow {
-  return {
-    id: parent.id,
-    parent_name: parent.parent_name,
-    email: parent.email,
-    phone: parent.phone ?? null,
-  }
-}
 
 async function buildMemberSnapshot(member: MemberRecord) {
   const normalizedMember = {
@@ -505,41 +400,6 @@ async function buildMemberSnapshot(member: MemberRecord) {
   }
 }
 
-async function buildParentSnapshot(parent: ParentAccountRow) {
-  const childrenResponse = (await getChildrenForParent(parent.id)) as ParentChildRow[]
-  const children = childrenResponse
-    .map((row) => (Array.isArray(row.members) ? row.members[0] ?? null : row.members ?? null))
-    .filter((member): member is MemberRecord => Boolean(member))
-    .map((member) => sanitizeMemberForClient(member as MemberRecord & Record<string, unknown>))
-    .sort((a, b) => getMemberDisplayName(a).localeCompare(getMemberDisplayName(b)))
-
-  const childIds = children.map((child) => child.id)
-  const checkinsByMember: Record<string, CheckinRow[]> = {}
-
-  if (childIds.length > 0) {
-    const { data, error } = await supabase
-      .from("checkins")
-      .select("*")
-      .in("member_id", childIds)
-      .order("created_at", { ascending: false })
-
-    if (error) throw error
-
-    for (const row of ((data as CheckinRow[] | null) ?? [])) {
-      if (!checkinsByMember[row.member_id]) {
-        checkinsByMember[row.member_id] = []
-      }
-      checkinsByMember[row.member_id].push(row)
-    }
-  }
-
-  return {
-    parent: toSafeParentAccount(parent),
-    children,
-    checkinsByMember,
-    sessionUntil: Date.now() + getPublicAreaSessionMaxAgeMs(),
-  }
-}
 
 async function resolveTrainerLinkedMember(request: Request) {
   const session = await readTrainerSessionFromHeaders(request)
@@ -627,16 +487,14 @@ export async function POST(request: Request) {
     const normalizedIdentifier =
       body.action === "member_login"
         ? sanitizeMemberAreaEmail(body.email)
-        : body.action === "parent_login"
-          ? sanitizeMemberAreaEmail(body.email)
-          : body.action === "update_profile" || body.action === "resend_verification"
+        : body.action === "update_profile" || body.action === "resend_verification"
             ? sanitizeMemberId(body.memberId) || sanitizeMemberAreaEmail(body.loginEmail) || sanitizeMemberAreaEmail(body.email) || ""
             : body.action
-    const rateLimit = await checkRateLimitAsync(
-      `public-member-area:${getRequestIp(request)}:${body.action}:${normalizedIdentifier || "__subject__"}`,
-      40,
-      10 * 60 * 1000
-    )
+      const rateLimit = await checkRateLimitAsync(
+        `public-member-area:${getRequestIp(request)}:${body.action}:${normalizedIdentifier || "__subject__"}`,
+        40,
+        10 * 60 * 1000
+      )
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })
     }
@@ -678,11 +536,6 @@ export async function POST(request: Request) {
         await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
         await delayFailedLogin()
         return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
-      }
-
-      // Minimalfix A: Blockiere Login, wenn nicht verifiziert
-      if (!member.email_verified) {
-        return new NextResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink aus der E-Mail öffnen.", { status: 403 })
       }
 
       await clearLoginFailuresAsync(loginKey)
@@ -740,114 +593,51 @@ export async function POST(request: Request) {
       })
     }
 
-    if (body.action === "parent_session") {
-      const session = await readParentAreaSessionFromHeaders(request)
-      if (!session) {
-        return new NextResponse("Unauthorized", { status: 401 })
-      }
-
-      const parent = await getParentAccountByEmail(session.email)
-      if (!parent || parent.id !== session.parentAccountId) {
-        const response = new NextResponse("Unauthorized", { status: 401 })
-        return clearParentAreaSessionCookie(response)
-      }
-
-      return NextResponse.json(await buildParentSnapshot(parent))
-    }
-
-    if (body.action === "logout_parent_session") {
-      const response = NextResponse.json({ ok: true })
-      return clearParentAreaSessionCookie(response)
-    }
-
-    if (body.action === "parent_login") {
-      const email = sanitizeMemberAreaEmail(body.email)
-      const accessCode = sanitizeParentAccessCode(body.accessCode)
-
-      if (!email || !accessCode) {
-        return new NextResponse("Bitte Eltern-E-Mail und Eltern-Passwort eingeben.", { status: 400 })
-      }
-
-      if (!isWithinMaxLength(email, 254) || !isWithinMaxLength(accessCode, 64)) {
-        return new NextResponse("Ungültige Zugangsdaten.", { status: 400 })
-      }
-
-      const existingParent = await getParentAccountByEmail(email)
-      if (existingParent && isParentAccountSetupPending(existingParent)) {
-        return new NextResponse(PARENT_LOGIN_ERROR_MESSAGE, { status: 401 })
-      }
-
-      const parent = await getParentAccountByLogin(email, accessCode)
-
-      if (!parent) {
-        return new NextResponse(PARENT_LOGIN_ERROR_MESSAGE, { status: 401 })
-      }
-
-      const response = NextResponse.json(await buildParentSnapshot(parent))
-      return await applyParentAreaSessionCookie(response, {
-        parentAccountId: parent.id,
-        email: parent.email,
-      })
-    }
 
     if (body.action === "verify_email") {
-      const token = sanitizeToken(body.token)
+      const token = sanitizeToken(body.token);
+      console.log("VERIFY_START", { token });
       if (!token) {
-        return new NextResponse("Bestätigungslink ungültig, abgelaufen oder bereits verwendet.\n\nHinweis: Nach erneuter Registrierung ist nur der neueste Link gültig.", { status: 400 })
+        console.warn("VERIFY_TOKEN_MISSING");
+        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 400 });
       }
 
-      // Ziel-Datensatz eindeutig per Token finden
-      const { data: member, error } = await supabase
-        .from("members")
-        .select("id, email")
-        .eq("email_verification_token", token)
-        .maybeSingle()
-
-      if (error) throw error
-
-      if (!member) {
-        return new NextResponse("Bestätigungslink ungültig, abgelaufen oder bereits verwendet.\n\nHinweis: Nach erneuter Registrierung ist nur der neueste Link gültig.", { status: 404 })
-      }
-
-      // Verifizierung auf Ziel-Datensatz (atomar, mit Re-Read und Erfolgskontrolle)
-      const now = new Date().toISOString()
-      // Atomarer Update-Versuch nur auf Basis der ID
-      const { data: updateData, error: updateError } = await supabase
-        .from("members")
-        .update({
-          email_verified: true,
-          email_verified_at: now,
-          email_verification_token: null,
-        })
-        .eq("id", member.id)
-        .select("*")
-        .maybeSingle()
-      if (updateError) throw updateError
-      // Prüfe, ob Zielzustand erreicht wurde
-      if (!updateData) {
-        // Wenn kein Update, prüfe ob bereits verifiziert
-        const { data: reread } = await supabase
+      let member = null;
+      try {
+        const { data, error } = await supabase
           .from("members")
-          .select("email_verified, email_verification_token")
-          .eq("id", member.id)
-          .maybeSingle()
-        if (reread && reread.email_verified && reread.email_verification_token === null) {
-          return NextResponse.json({ ok: true, alreadyVerified: true })
+          .update({
+            email_verified: true,
+            email_verified_at: new Date().toISOString(),
+            email_verification_token: null,
+          })
+          .eq("email_verification_token", token)
+          .select("id, email_verified")
+          .maybeSingle();
+
+        if (error) {
+          console.error("VERIFY_FAILED", { error });
+          return new NextResponse("Technischer Fehler bei der Bestätigung.", { status: 500 });
         }
-        return new NextResponse("Verifizierungsstatus konnte nicht bestätigt werden (kein Treffer). Bitte erneut versuchen oder Support kontaktieren.", { status: 500 })
-      }
-      if (!updateData.email_verified || !updateData.email_verified_at || updateData.email_verification_token !== null) {
-        return new NextResponse("Verifizierungsstatus konnte nicht bestätigt werden (Zielwerte fehlen). Bitte erneut versuchen oder Support kontaktieren.", { status: 500 })
+        if (!data) {
+          console.warn("VERIFY_TOKEN_NOT_FOUND", { token });
+          return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 });
+        }
+        member = data;
+      } catch (updateError) {
+        console.error("VERIFY_FAILED", { error: updateError });
+        return new NextResponse("Technischer Fehler bei der Bestätigung.", { status: 500 });
       }
 
-      // Konkurrierende Tokens für dieselbe E-Mail neutralisieren
-      await supabase
-        .from("members")
-        .update({ email_verification_token: null, email_verification_expires_at: null })
-        .eq("email", member.email)
-        .neq("id", member.id)
-
-      return NextResponse.json({ ok: true })
+      if (member && member.id) {
+        console.log("VERIFY_TOKEN_FOUND", { id: member.id });
+        if (member.email_verified) {
+          console.log("VERIFY_ALREADY_VERIFIED", { id: member.id });
+        } else {
+          console.log("VERIFY_UPDATED", { id: member.id });
+        }
+      }
+      return NextResponse.json({ ok: true });
     }
 
     if (body.action === "verify_and_set_password") {
@@ -953,7 +743,7 @@ export async function POST(request: Request) {
       }
 
       const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-      const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`
+      const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${encodeURIComponent(verificationToken)}`
 
       const delivery = await sendVerificationEmail({
         email: targetEmail,

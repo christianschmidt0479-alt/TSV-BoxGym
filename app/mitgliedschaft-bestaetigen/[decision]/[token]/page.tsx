@@ -1,4 +1,5 @@
-import { GsMembershipConfirmationClient } from "../../confirmation-client"
+
+import GsMembershipConfirmationClient from "../../confirmation-client"
 
 type PageProps = {
   params: Promise<{
@@ -10,5 +11,5 @@ type PageProps = {
 export default async function MitgliedschaftBestaetigenDecisionPage({ params }: PageProps) {
   const resolvedParams = await params
 
-  return <GsMembershipConfirmationClient decision={resolvedParams.decision} token={resolvedParams.token} />
+  return <GsMembershipConfirmationClient />
 }

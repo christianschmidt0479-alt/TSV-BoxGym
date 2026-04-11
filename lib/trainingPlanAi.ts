@@ -1,3 +1,4 @@
+// Boxzwerge-spezifische Trainingshinweise stillgelegt
 import { reportAppError } from "@/lib/appErrorReporter"
 
 // ─── Typen ────────────────────────────────────────────────────────────────────

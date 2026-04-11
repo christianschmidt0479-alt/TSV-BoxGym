@@ -14,7 +14,6 @@ import { ChevronDown, ChevronUp } from "lucide-react"
 import { buildAdminMailComposeHref } from "@/lib/adminMailComposeClient"
 import { formatDateInputForDisplay, formatDisplayDateTime } from "@/lib/dateFormat"
 import { MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, isValidMemberPassword } from "@/lib/memberPassword"
-import { getOfficeListStatusBadgeClass, getOfficeListStatusLabel } from "@/lib/officeListStatus"
 import { getRecommendedTrainingGroup, normalizeTrainingGroupOrFallback, TRAINING_GROUPS } from "@/lib/trainingGroups"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
 import { useMarkSectionSeen } from "@/lib/useMarkSectionSeen"
@@ -275,7 +274,6 @@ export default function FreigabenPage() {
 
     const topicIds: Array<"email_confirmation" | "data_review" | "gs_correction" | "missing_details" | "general_followup"> = []
     if (!member.email_verified) topicIds.push("email_confirmation")
-    if (officeRunInfoByMember[member.id] && officeRunInfoByMember[member.id]?.status !== "green") topicIds.push("gs_correction")
     if (!member.first_name || !member.last_name || !member.birthdate || !member.email) topicIds.push("missing_details")
     topicIds.push("data_review")
 
@@ -737,11 +735,6 @@ export default function FreigabenPage() {
                         >
                           {member.email_verified ? "E-Mail bestätigt" : "E-Mail nicht bestätigt"}
                         </Badge>
-                        {member.office_list_status ? (
-                          <Badge variant="outline" className={getOfficeListStatusBadgeClass(member.office_list_status)}>
-                            GS-Abgleich: {getOfficeListStatusLabel(member.office_list_status)}
-                          </Badge>
-                        ) : null}
                         {member.created_from_excel ? (
                           <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">
                             Aus Excel
@@ -1012,11 +1005,6 @@ export default function FreigabenPage() {
                       {officeRunInfo && officeDifferences.length > 0 ? (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 md:col-span-2 xl:col-span-3">
                           <div className="font-semibold">GS-Abweichungen</div>
-                          <div className="mt-1 text-xs text-amber-800">
-                            {getOfficeListStatusLabel(officeRunInfo.status)}
-                            {officeRunInfo.groupExcel && officeRunInfo.groupExcel !== "—" ? ` · GS-Liste: ${officeRunInfo.groupExcel}` : ""}
-                            {officeRunInfo.source && officeRunInfo.source !== "—" ? ` · Datei: ${officeRunInfo.source}` : ""}
-                          </div>
                           <div className="mt-2 space-y-1">
                             {officeDifferences.map((entry) => (
                               <div key={entry}>• {entry}</div>

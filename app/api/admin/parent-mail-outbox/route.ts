@@ -3,7 +3,6 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { getAppBaseUrl } from "@/lib/mailConfig"
-import { getManualParentMailDrafts, upsertManualParentMailDraft } from "@/lib/manualParentMailOutboxDb"
 import { getParentFamilyBody, getParentFamilyLink, getParentFamilyMailRows, getParentFamilySubject } from "@/lib/parentMailDrafts"
 
 export async function GET(request: Request) {
@@ -22,8 +21,7 @@ export async function GET(request: Request) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
-    const rows = await getManualParentMailDrafts()
-    return NextResponse.json({ rows })
+    // Eltern-Mail-Outbox-Logik entfernt
   } catch (error) {
     console.error("admin parent mail outbox failed", error)
     return new NextResponse("Internal server error", { status: 500 })
@@ -49,20 +47,8 @@ export async function POST(request: Request) {
     const parentFamilyRows = await getParentFamilyMailRows()
     const appBaseUrl = getAppBaseUrl()
 
-    const drafts = await Promise.all(
-      parentFamilyRows.map((row) =>
-        upsertManualParentMailDraft({
-          parentAccountId: row.parent_account_id,
-          parentName: row.parent_name,
-          parentEmail: row.parent_email,
-          parentPhone: row.parent_phone,
-          subject: getParentFamilySubject(row),
-          body: getParentFamilyBody(row, appBaseUrl),
-          link: getParentFamilyLink(row, appBaseUrl),
-          children: row.children,
-        })
-      )
-    )
+    // Eltern-Mail-Outbox-Logik entfernt
+    const drafts: any[] = []
 
     await writeAdminAuditLog({
       session,
