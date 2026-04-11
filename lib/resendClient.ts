@@ -1,13 +1,30 @@
-// Minimaler Stub für Build-Fix: sendVerificationEmail
-export async function sendVerificationEmail(input: {
-  email: string;
-  name?: string;
-  link: string;
-  kind?: "member" | "trainer" | "boxzwerge";
-}): Promise<ResendEmailDeliveryResult> {
-  // Kein Versand, nur Dummy-Objekt für Build/Typecheck
-  console.log("sendVerificationEmail (Stub)", input);
-  return { provider: "resend", messageId: null };
+import { Resend } from "resend"
+const resend = new Resend(process.env.RESEND_API_KEY)
+
+// Echter E-Mail-Versand via Resend
+export async function sendVerificationEmail({
+  email,
+  token,
+}: {
+  email: string
+  token: string
+}): Promise<void> {
+  try {
+    const verifyUrl = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/mitgliedschaft-bestaetigen?token=${token}`
+    console.log("MAIL_SEND_START", { email })
+    const result = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL!,
+      to: email,
+      subject: "Bitte bestätige deine Registrierung – TSV BoxGym",
+      html: `
+        <p>Bitte bestätige deine E-Mail:</p>
+        <p><a href="${verifyUrl}">Jetzt bestätigen</a></p>
+      `,
+    })
+    console.log("MAIL_SEND_SUCCESS", { email, id: result.id })
+  } catch (err) {
+    console.error("MAIL_SEND_FAILED", { email, err })
+  }
 }
 import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
 
