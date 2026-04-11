@@ -11,7 +11,7 @@ function maskEmail(email: string): string {
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
-import { createMember, findMemberByFirstLastAndBirthdate, updateMemberRegistrationData } from "@/lib/boxgymDb"
+import { createMember, updateMemberRegistrationData } from "@/lib/boxgymDb"
 import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
 import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     const birthDate = normalizeBirthDateInput(body.birthDate)
     const gender = body.gender?.trim() ?? ""
     const password = body.password?.trim() ?? body.pin?.trim() ?? ""
-    const email = body.email?.trim() ?? ""
+    const email = body.email?.trim().toLowerCase() ?? ""
     const phone = body.phone?.trim() ?? ""
     const guardianName = body.guardianName?.trim() ?? ""
     const baseGroup = parseTrainingGroup(body.baseGroup)
@@ -143,38 +143,26 @@ export async function POST(request: Request) {
     }
 
 
-    // --- NEU: Ziel-Datensatz nach klarer Regel bestimmen ---
+    // --- Vereinfachte Entscheidungslogik: Nur E-Mail zählt ---
     const supabase = createServerSupabaseServiceClient()
-    // 1. Alle Members mit dieser E-Mail laden (absteigend nach created_at)
-    const { data: allByEmail, error: emailErr } = await supabase
+    const { data: existingMembers, error: emailErr } = await supabase
       .from("members")
       .select("*")
       .eq("email", email)
-      .order("created_at", { ascending: false })
+      .limit(1)
     if (emailErr) {
-      console.error('[member-flow][register][error] reason=email_lookup_failed email=' + maskEmail(email))
-      throw emailErr
+      console.error('[member-register][error] DB-Fehler bei E-Mail-Suche', emailErr)
+      return new NextResponse("Interner Fehler bei E-Mail-Suche", { status: 500 })
     }
 
-    // 2. Zielregel: Jüngster unverifizierter, nicht freigegebener Datensatz
-    let target = allByEmail?.find(m => !m.email_verified && !m.is_approved) ?? null
-    // 3. Sonst: Jüngster Datensatz mit passender E-Mail
-    if (!target && allByEmail && allByEmail.length > 0) target = allByEmail[0]
-
-    // 4. Wenn kein Datensatz existiert: nach Name/Geburtsdatum suchen
-    let existing = target
-    if (!existing) {
-      existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
-    }
-
-    // 5. Wenn immer noch kein Datensatz: neu anlegen
     let member
-    let emailToken
+    let actionType
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString()
-    if (existing) {
-      // Neues Token generieren
-      emailToken = generateEmailVerificationToken()
-      // Registrierungsdaten auf Ziel-Datensatz schreiben
+    const emailToken = generateEmailVerificationToken()
+
+    if (existingMembers && existingMembers.length > 0) {
+      // UPDATE
+      const existing = existingMembers[0]
       member = await updateMemberRegistrationData(existing.id, {
         first_name: firstName,
         last_name: lastName,
@@ -191,20 +179,9 @@ export async function POST(request: Request) {
         email_verification_expires_at: expiresAt,
         base_group: baseGroup,
       })
-
-      // Konkurrierende Tokens neutralisieren
-      if (allByEmail) {
-        for (const m of allByEmail) {
-          if (m.id !== existing.id && m.email_verification_token) {
-            await supabase
-              .from("members")
-              .update({ email_verification_token: null, email_verification_expires_at: null })
-              .eq("id", m.id)
-          }
-        }
-      }
+      actionType = 'UPDATE'
     } else {
-      emailToken = generateEmailVerificationToken()
+      // CREATE
       member = await createMember({
         first_name: firstName,
         last_name: lastName,
@@ -220,17 +197,37 @@ export async function POST(request: Request) {
         email_verification_token: emailToken,
         email_verification_expires_at: expiresAt,
       })
+      actionType = 'CREATE'
     }
 
-    await ensureMemberAuthUserLink({
-      memberId: member.id,
-      email,
-      password,
-      emailVerified: false,
-    })
+    // Nach Insert/Update finalen Datensatz laden (Token-Sicherheit)
+    const { data: finalMember, error: reloadErr } = await supabase
+      .from("members")
+      .select("*")
+      .eq("email", email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (reloadErr || !finalMember) {
+      console.error('[member-register][error] Reload nach ' + actionType + ' fehlgeschlagen', reloadErr)
+      return new NextResponse("Interner Fehler nach Registrierung", { status: 500 })
+    }
+
+    try {
+      await ensureMemberAuthUserLink({
+        memberId: finalMember.id,
+        email,
+        password,
+        emailVerified: false,
+      })
+      console.info(`[member-register] ${actionType} | Auth-Linking erfolgreich für ${email}`)
+    } catch (authErr) {
+      console.error(`[member-register][error] ${actionType} | Auth-Linking fehlgeschlagen für ${email}`, authErr)
+      return new NextResponse("Interner Fehler bei Auth-Linking", { status: 500 })
+    }
 
     const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-    const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${emailToken}`
+    const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${finalMember.email_verification_token}`
 
     let verificationSent = true
     try {
@@ -240,9 +237,10 @@ export async function POST(request: Request) {
         link: verificationLink,
         kind: "member",
       })
+      console.info(`[member-register] ${actionType} | Verifizierungs-Mail erfolgreich an ${email}`)
     } catch (error) {
       verificationSent = false
-      console.error('[member-flow][register][error] reason=verification_mail_failed email=' + maskEmail(email), error)
+      console.error(`[member-register][error] ${actionType} | Verifizierungs-Mail fehlgeschlagen an ${email}`, error)
     }
 
     try {
@@ -253,7 +251,7 @@ export async function POST(request: Request) {
         group: baseGroup,
       })
     } catch (error) {
-      console.error('[member-flow][register][error] reason=admin_notification_failed email=' + maskEmail(email), error)
+      console.error(`[member-register][warn] ${actionType} | Admin-Benachrichtigung fehlgeschlagen für ${email}`, error)
     }
     // Automatic Office/GS list match — non-blocking, does not affect registration flow
     try {
@@ -297,7 +295,7 @@ export async function POST(request: Request) {
       console.warn("[member-register] office match failed (non-blocking)", officeError)
     }
 
-    console.info('[member-flow][register][success] id=' + member.id + ' email=' + maskEmail(email))
+    console.info(`[member-register][success] ${actionType} | id=${finalMember.id} email=${email}`)
     return NextResponse.json({ ok: true, verificationSent })
   } catch (error: any) {
     // Versuche, E-Mail zu maskieren, falls im Body vorhanden
