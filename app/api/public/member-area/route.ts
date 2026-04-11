@@ -787,26 +787,43 @@ export async function POST(request: Request) {
 
     if (body.action === "verify_email") {
       const token = sanitizeToken(body.token)
+      console.log("VERIFY_START", { token })
       if (!token) {
+        console.warn("VERIFY_TOKEN_MISSING")
         return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 400 })
       }
 
-      const { data, error } = await supabase
-        .from("members")
-        .update({
-          email_verified: true,
-          email_verified_at: new Date().toISOString(),
-          email_verification_token: null,
-        })
-        .eq("email_verification_token", token)
-        .select("id")
-        .maybeSingle()
+      let member = null
+      try {
+        const { data, error } = await supabase
+          .from("members")
+          .update({
+            email_verified: true,
+            email_verified_at: new Date().toISOString(),
+            email_verification_token: null,
+          })
+          .eq("email_verification_token", token)
+          .select("id")
+          .maybeSingle()
 
-      if (error) throw error
-      if (!data) {
-        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
+        if (error) {
+          console.error("VERIFY_FAILED", { error })
+          return new NextResponse("Fehler bei der Verarbeitung des Bestätigungslinks.", { status: 500 })
+        }
+        if (!data) {
+          console.warn("VERIFY_TOKEN_NOT_FOUND", { token })
+          return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
+        }
+        member = data
+      } catch (updateError) {
+        console.error("VERIFY_FAILED", { error: updateError })
+        return new NextResponse("Fehler bei der Verarbeitung des Bestätigungslinks.", { status: 500 })
       }
 
+      if (member && member.id) {
+        console.log("VERIFY_TOKEN_FOUND", { id: member.id })
+        console.log("VERIFY_UPDATED", { id: member.id })
+      }
       return NextResponse.json({ ok: true })
     }
 
@@ -913,7 +930,7 @@ export async function POST(request: Request) {
       }
 
       const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-      const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`
+      const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${encodeURIComponent(verificationToken)}`
 
       const delivery = await sendVerificationEmail({
         email: targetEmail,

@@ -191,7 +191,7 @@ export async function POST(request: Request) {
     })
 
     const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-    const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${emailToken}`
+    const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${encodeURIComponent(emailToken)}`
 
     let verificationSent = true
 
