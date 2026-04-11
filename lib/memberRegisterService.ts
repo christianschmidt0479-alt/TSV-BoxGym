@@ -27,6 +27,8 @@ import { randomUUID } from "crypto"
 import { sendMemberVerificationMail } from "./mail/memberVerificationMail"
 
 export async function registerMemberService(input: RegisterMemberInput): Promise<RegisterMemberResult> {
+  // Debug-Log: Einstieg Service
+  console.log("MEMBER_REGISTER_SERVICE_START", { email: input.email })
 
   // 1. Eingaben validieren (nur Kernfelder, keine Altlogik)
   const firstNameResult = validateName(input.firstName, "Vorname")
@@ -111,6 +113,8 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
       return { status: "error", error: "Fehler beim Speichern des Verifizierungstokens: " + (err instanceof Error ? err.message : String(err)) }
     }
 
+    // Debug-Log: Vor Mailversand
+    console.log("MEMBER_REGISTER_BEFORE_MAIL", { email: input.email })
     // 5. Verifizierungs-Mail versenden
     try {
       await sendMemberVerificationMail({ email: input.email.trim().toLowerCase(), token })

@@ -401,25 +401,6 @@ async function buildMemberSnapshot(member: MemberRecord) {
 }
 
 
-async function resolveTrainerLinkedMember(request: Request) {
-  const session = await readTrainerSessionFromHeaders(request)
-  if (!session) return null
-
-  if (session.linkedMemberId) {
-    return (await findMemberById(session.linkedMemberId)) as MemberRecord | null
-  }
-
-  if (session.accountEmail) {
-    const byEmail = (await findMemberByEmail(session.accountEmail)) as MemberRecord | null
-    if (byEmail) return byEmail
-  }
-
-  if (session.accountFirstName && session.accountLastName) {
-    return (await findMemberByFirstLastName(session.accountFirstName, session.accountLastName)) as MemberRecord | null
-  }
-
-  return null
-}
 
 async function resolveEditableMember(request: Request, body: { memberId?: string; loginEmail?: string; password?: string; pin?: string }) {
   const memberSession = await readMemberAreaSessionFromHeaders(request)
@@ -430,10 +411,7 @@ async function resolveEditableMember(request: Request, body: { memberId?: string
     }
   }
 
-  const sessionMember = await resolveTrainerLinkedMember(request)
-  if (sessionMember && sessionMember.id === body.memberId) {
-    return sessionMember
-  }
+    // Trainer-Linked-Member-Logik entfernt: Nur noch echte Member-Session
 
   const loginEmail = sanitizeMemberAreaEmail(body.loginEmail)
   const password = sanitizeMemberAreaPassword(body.password ?? body.pin)
@@ -583,22 +561,7 @@ export async function POST(request: Request) {
       )
     }
 
-    if (body.action === "trainer_linked_member") {
-      const member = await resolveTrainerLinkedMember(request)
-      if (!member) {
-        return new NextResponse("Kein verknuepftes Mitglied gefunden.", { status: 404 })
-      }
-
-      if (!hasAcceptedPrivacy(member)) {
-        return privacyConsentRequiredResponse()
-      }
-
-      const response = NextResponse.json(await buildMemberSnapshot(member))
-      return await applyMemberAreaSessionCookie(response, {
-        memberId: member.id,
-        email: member.email ?? "",
-      })
-    }
+    // Aktion "trainer_linked_member" entfernt: Nur noch dedizierte Member-Session
 
 
     if (body.action === "verify_email") {

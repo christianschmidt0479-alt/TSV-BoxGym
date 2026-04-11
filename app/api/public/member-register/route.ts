@@ -25,6 +25,8 @@ export async function POST(request: Request) {
       consent: body.consent === true,
     }
 
+    // Debug-Log: Start der Route
+    console.log("MEMBER_REGISTER_ROUTE_START", { email: input.email })
     const result = await registerMemberService(input)
 
     switch (result.status) {

@@ -7,6 +7,8 @@ export type MemberVerificationMailInput = {
 }
 
 export async function sendMemberVerificationMail(input: MemberVerificationMailInput): Promise<void> {
+  // Debug-Log: Einstieg Mailbaustein
+  console.log("MEMBER_VERIFICATION_MAIL_START", { email: input.email })
   const { email, token } = input
   // Verify-Link bauen
   const verifyUrl = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/mitgliedschaft-bestaetigen?token=${token}`
@@ -18,9 +20,6 @@ export async function sendMemberVerificationMail(input: MemberVerificationMailIn
     <p><a href="${verifyUrl}">Jetzt bestätigen</a></p>
   `
   const text = `Bitte bestätige deine E-Mail: ${verifyUrl}`
-
-  // Fachliches Logging (optional)
-  console.log("MEMBER_VERIFICATION_MAIL_SEND", { email })
 
   // MailService aufrufen
   await sendMail({

@@ -17,6 +17,8 @@ import { resendProvider } from "./providers/resendProvider"
 
 // Zentrale Funktion für Mailversand
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
+  // Debug-Log: Einstieg MailService
+  console.log("MAIL_SERVICE_SEND_START", { to: input.to })
   // Aktuell nur resendProvider, später erweiterbar
   return resendProvider.sendMail(input)
 }
