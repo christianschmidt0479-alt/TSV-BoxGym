@@ -28,33 +28,7 @@ function toCompactTrainingGroup(value?: string | null) {
 }
 
 function getTrainingGroupSignature(value?: string | null) {
-  const compact = toCompactTrainingGroup(value)
-  if (!compact) return ""
-
-  if (hasAnyGroupKeyword(compact, ["boxzwerge", "boxzwerge gruppe", "boxzwergekurs", "boxzwerge kurs"])) {
-    return "boxzwerge"
-  }
-
-  if (
-    /^l[\s-]*gruppe$/i.test(sanitizeTrainingGroup(value)) ||
-    hasAnyGroupKeyword(compact, ["leistungsgruppe", "leistung gruppe", "leistungskader", "olymp boxen lk", "kader", "l gruppe"])
-  ) {
-    return "l-gruppe"
-  }
-
-  if (/\b10\b/.test(compact) && /\b14\b/.test(compact)) {
-    return "basic-10-14"
-  }
-
-  if (/\b15\b/.test(compact) && /\b18\b/.test(compact)) {
-    return "basic-15-18"
-  }
-
-  const compactNoSpaces = compact.replace(/\s+/g, "")
-  if (/ue18|u18|18plus|ab18|18\+/.test(compactNoSpaces)) {
-    return "basic-ue18"
-  }
-
+  // Boxzwerge-Logik stillgelegt
   return ""
 }
 
@@ -64,19 +38,7 @@ export function parseTrainingGroup(value?: string | null): TrainingGroup | null 
 }
 
 export function normalizeTrainingGroup(value?: string | null): TrainingGroup | "" {
-  const exact = parseTrainingGroup(value)
-  if (exact) return exact
-
-  const normalized = sanitizeTrainingGroup(value).toLowerCase()
-  if (!normalized) return ""
-
-  const signature = getTrainingGroupSignature(value)
-  if (signature === "boxzwerge") return "Boxzwerge"
-  if (signature === "l-gruppe") return "L-Gruppe"
-  if (signature === "basic-10-14") return "Basic 10 - 14 Jahre"
-  if (signature === "basic-15-18") return "Basic 15 - 18 Jahre"
-  if (signature === "basic-ue18") return "Basic Ü18"
-
+  // Boxzwerge-Logik stillgelegt
   return ""
 }
 
@@ -98,31 +60,13 @@ export function areEquivalentTrainingGroups(left?: string | null, right?: string
 }
 
 export function isCompatibleOfficeListGroup(baseGroup?: string | null, officeGroup?: string | null, options?: { isTrainer?: boolean }) {
-  const sanitizedBaseGroup = sanitizeTrainingGroup(baseGroup)
-  const sanitizedOfficeGroup = sanitizeTrainingGroup(officeGroup)
-
-  if (!sanitizedBaseGroup || !sanitizedOfficeGroup) {
-    return false
-  }
-
-  if (options?.isTrainer) {
-    return true
-  }
-
-  if (areEquivalentTrainingGroups(sanitizedBaseGroup, sanitizedOfficeGroup)) {
-    return true
-  }
-
-  const normalizedBaseGroup = normalizeTrainingGroup(sanitizedBaseGroup)
-  if (normalizedBaseGroup !== "L-Gruppe") {
-    return false
-  }
-
-  return normalizeTrainingGroup(sanitizedOfficeGroup) !== "Boxzwerge"
+  // Boxzwerge-Logik stillgelegt
+  return false
 }
 
 export function normalizeTrainingGroupOrFallback(value?: string | null, fallback: TrainingGroup = TRAINING_GROUPS[0]) {
-  return normalizeTrainingGroup(value) || fallback
+  // Boxzwerge-Logik stillgelegt
+  return fallback
 }
 
 export function isTrainingGroup(value?: string | null): value is TrainingGroup {

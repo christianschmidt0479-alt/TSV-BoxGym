@@ -4,7 +4,6 @@ import { type AdminMailboxRecord, createMailboxSnippet, buildReplySubject } from
 import { validateEmail } from "@/lib/formValidation"
 import { getAdminNotificationAddress, getReplyToAddress } from "@/lib/mailConfig"
 import { getManualAdminMailDrafts } from "@/lib/manualAdminMailOutboxDb"
-import { getManualParentMailDrafts } from "@/lib/manualParentMailOutboxDb"
 import { sendCustomEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
@@ -155,7 +154,7 @@ async function getLegacyInboxRows() {
 }
 
 async function getLegacyDraftRows() {
-  const [manualAdminDrafts, manualParentDrafts] = await Promise.all([getManualAdminMailDrafts(), getManualParentMailDrafts()])
+  const [manualAdminDrafts] = await Promise.all([getManualAdminMailDrafts()])
 
   const adminDraftRows: AdminMailboxRecord[] = manualAdminDrafts.map((row) => ({
     id: `${LEGACY_ADMIN_DRAFT_PREFIX}${row.id}`,
@@ -169,19 +168,9 @@ async function getLegacyDraftRows() {
     created_at: row.created_at,
   }))
 
-  const parentDraftRows: AdminMailboxRecord[] = manualParentDrafts.map((row) => ({
-    id: `${LEGACY_PARENT_DRAFT_PREFIX}${row.id}`,
-    from: getReplyToAddress(),
-    to: row.parent_email,
-    subject: row.subject,
-    snippet: createMailboxSnippet(row.body),
-    content: row.body,
-    status: "draft",
-    type: "draft",
-    created_at: row.created_at,
-  }))
+  // manualParentDrafts entfernt
 
-  return [...adminDraftRows, ...parentDraftRows]
+  return [...adminDraftRows]
 }
 
 async function getMergedMailboxRecords() {

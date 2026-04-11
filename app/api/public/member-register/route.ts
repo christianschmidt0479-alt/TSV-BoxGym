@@ -10,7 +10,6 @@ import { validateEmail } from "@/lib/formValidation"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { parseTrainingGroup } from "@/lib/trainingGroups"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { matchMemberAgainstExcelRows } from "@/lib/officeMatch"
 
 type MemberRegisterBody = {
   firstName?: string
@@ -141,18 +140,19 @@ export async function POST(request: Request) {
     }
 
 
-    const emailToken = generateEmailVerificationToken()
-    console.log("TOKEN_CREATED", emailToken)
-    const existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
+    // Token immer vor Mailversand erzeugen und speichern
+    const emailToken = generateEmailVerificationToken();
+    console.log("TOKEN_CREATED", emailToken);
+    const existing = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate);
 
     if (existing && hasExistingMemberAccess(existing as Record<string, unknown>)) {
       return new NextResponse(
         "Zu diesem Mitglied existiert bereits ein Zugang. Bitte Mein Bereich nutzen oder Trainer/Admin ansprechen.",
         { status: 409 }
-      )
+      );
     }
 
-    let member
+    let member;
     if (existing) {
       member = await updateMemberRegistrationData(existing.id, {
         member_pin: password,
@@ -165,8 +165,8 @@ export async function POST(request: Request) {
         email_verified_at: null,
         email_verification_token: emailToken,
         base_group: baseGroup,
-      })
-      console.log("TOKEN_SAVED_FOR_MEMBER", existing.id)
+      });
+      console.log("TOKEN_SAVED_FOR_MEMBER", existing.id);
     } else {
       member = await createMember({
         first_name: firstName,
@@ -180,11 +180,11 @@ export async function POST(request: Request) {
         member_pin: password,
         is_approved: false,
         base_group: baseGroup,
-      })
+      });
       await updateMemberRegistrationData(member.id, {
         email_verification_token: emailToken,
-      })
-      console.log("TOKEN_SAVED_FOR_MEMBER", member.id)
+      });
+      console.log("TOKEN_SAVED_FOR_MEMBER", member.id);
     }
 
     // Kein nachträgliches Update des Tokens, kein Zurücksetzen auf null, auch nicht bei Mailfehler
@@ -194,23 +194,22 @@ export async function POST(request: Request) {
       email,
       password,
       emailVerified: false,
-    })
+    });
 
-    const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-    const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${encodeURIComponent(emailToken)}`
+    const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL;
+    const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${encodeURIComponent(emailToken)}`;
 
-    let verificationSent = true
-
+    let verificationSent = true;
     try {
       await sendVerificationEmail({
         email,
         name: `${firstName} ${lastName}`.trim(),
         link: verificationLink,
         kind: "member",
-      })
+      });
     } catch (error) {
-      verificationSent = false
-      console.error("member verification mail failed", error)
+      verificationSent = false;
+      console.error("member verification mail failed", error);
     }
 
     try {
@@ -219,13 +218,13 @@ export async function POST(request: Request) {
         memberName: `${firstName} ${lastName}`.trim(),
         email,
         group: baseGroup,
-      })
+      });
     } catch (error) {
-      console.error("member admin notification failed", error)
+      console.error("member admin notification failed", error);
     }
     // GS-/Excel-Abgleich deaktiviert: office_list_status wird standardmäßig gesetzt
     try {
-      const supabase = createServerSupabaseServiceClient()
+      const supabase = createServerSupabaseServiceClient();
       await supabase
         .from("members")
         .update({
@@ -233,15 +232,16 @@ export async function POST(request: Request) {
           office_list_group: null,
           office_list_checked_at: new Date().toISOString(),
         })
-        .eq("id", member.id)
+        .eq("id", member.id);
     } catch (officeError) {
-      console.warn("[member-register] office match skipped (deactivated)", officeError)
+      console.warn("[member-register] office match skipped (deactivated)", officeError);
     }
 
     if (process.env.NODE_ENV !== "production") {
-      console.info("[member-register] success", { memberId: member.id, email, verificationSent })
+      console.info("[member-register] success", { memberId: member.id, email, verificationSent });
     }
-    return NextResponse.json({ ok: true, verificationSent })
+    // verificationSent wird nur für die Rückmeldung verwendet
+    return NextResponse.json({ ok: true, verificationSent });
   } catch (error) {
     console.error("[member-register] failed", error)
     return new NextResponse("Interner Fehler", { status: 500 })

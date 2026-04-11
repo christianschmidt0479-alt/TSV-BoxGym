@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { getManualAdminMailDrafts, isManualAdminMailRecord } from "@/lib/manualAdminMailOutboxDb"
-import { getManualParentMailDrafts, isManualParentMailRecord } from "@/lib/manualParentMailOutboxDb"
+// Eltern-Mail-Logik entfernt
 import { getParentFamilyMailRows } from "@/lib/parentMailDrafts"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
@@ -32,14 +32,13 @@ export async function GET(request: Request) {
     }
 
     const supabase = getServerSupabase()
-    const [adminQueueResponse, parentFamilyMailRows, manualParentOutboxRows, manualAdminOutboxRows] = await Promise.all([
+    const [adminQueueResponse, parentFamilyMailRows, manualAdminOutboxRows] = await Promise.all([
       supabase
         .from("admin_notification_queue")
         .select("id, kind, member_name, email, group_name, created_at, sent_at")
         .is("sent_at", null)
         .order("created_at", { ascending: false }),
       getParentFamilyMailRows(),
-      getManualParentMailDrafts(),
       getManualAdminMailDrafts(),
     ])
 
@@ -63,9 +62,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       adminQueueRows: adminQueueResponse.data ?? [],
-      outgoingQueueRows: (outgoingQueueResponse.data ?? []).filter((row) => !isManualParentMailRecord(row) && !isManualAdminMailRecord(row)),
+      outgoingQueueRows: (outgoingQueueResponse.data ?? []).filter((row) => !isManualAdminMailRecord(row)),
       parentFamilyMailRows,
-      manualParentOutboxRows,
+      // manualParentOutboxRows entfernt
       manualAdminOutboxRows,
     })
   } catch (error) {

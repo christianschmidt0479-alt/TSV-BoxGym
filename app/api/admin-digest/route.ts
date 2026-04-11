@@ -6,7 +6,7 @@ import { formatDisplayDate } from "@/lib/dateFormat"
 import { buildAdminMailDraftPreview } from "@/lib/adminMailComposer"
 import { convertQueueItemToAdminDraft, isManualAdminMailRecord } from "@/lib/manualAdminMailOutboxDb"
 import { enqueueMedicalExamReminderMails } from "@/lib/medicalExamReminderDb"
-import { isManualParentMailRecord } from "@/lib/manualParentMailOutboxDb"
+// Eltern-Mail-Logik entfernt
 import { getPendingOutgoingMails, markOutgoingMailsSent } from "@/lib/outgoingMailQueueDb"
 import {
   sendAdminDigestEmail,
@@ -96,7 +96,7 @@ export async function GET(request: Request) {
     getPendingOutgoingMails(),
   ])
 
-  const sendableOutgoingMails = outgoingMails.filter((item) => !isManualParentMailRecord(item) && !isManualAdminMailRecord(item))
+  const sendableOutgoingMails = outgoingMails.filter((item) => !isManualAdminMailRecord(item))
 
   if (items.length === 0 && sendableOutgoingMails.length === 0) {
     return NextResponse.json({
@@ -234,7 +234,7 @@ export async function POST(request: Request) {
     getPendingOutgoingMails(),
   ])
 
-  const sendableOutgoingMails = outgoingMails.filter((item) => !isManualParentMailRecord(item) && !isManualAdminMailRecord(item))
+  const sendableOutgoingMails = outgoingMails.filter((item) => !isManualAdminMailRecord(item))
 
   if (items.length === 0 && sendableOutgoingMails.length === 0) {
     return NextResponse.json({
