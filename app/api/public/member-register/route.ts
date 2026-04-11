@@ -76,15 +76,8 @@ export async function POST(request: Request) {
     const guardianName = body.guardianName?.trim() ?? ""
     const baseGroup = parseTrainingGroup(body.baseGroup)
     const consent = body.consent === true
-    const rateLimit = await checkRateLimitAsync(
-      `public-member-register:${getRequestIp(request)}:${email.toLowerCase() || "__email__"}`,
-      12,
-      10 * 60 * 1000
-    )
-    if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
-    }
 
+    // Basisvalidierung vor Rate-Limit
     if (!firstName || !lastName) {
       return new NextResponse("Bitte Vorname und Nachname eingeben.", { status: 400 })
     }
@@ -120,6 +113,20 @@ export async function POST(request: Request) {
 
     if (!consent) {
       return new NextResponse("Bitte Datenschutz akzeptieren", { status: 400 })
+    }
+
+    // Robusterer Rate-Limit-Key: nur mit sinnvoller IP und E-Mail
+    const ip = getRequestIp(request)
+    const emailKey = email.toLowerCase()
+    if (ip && ip !== "unknown" && emailKey) {
+      const rateLimit = await checkRateLimitAsync(
+        `public-member-register:${ip}:${emailKey}`,
+        20,
+        10 * 60 * 1000
+      )
+      if (!rateLimit.ok) {
+        return new NextResponse("Too many requests", { status: 429 })
+      }
     }
 
     const emailToken = generateEmailVerificationToken()
