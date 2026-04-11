@@ -11,7 +11,7 @@ export async function sendMemberVerificationMail(input: MemberVerificationMailIn
   console.log("MEMBER_VERIFICATION_MAIL_START", { email: input.email })
   const { email, token } = input
   // Verify-Link bauen
-  const verifyUrl = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/mitgliedschaft-bestaetigen?token=${token}`
+  const verifyUrl = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/mein-bereich?verify=${token}`
 
   // Mailinhalt bauen
   const subject = "Bitte bestätige deine Registrierung – TSV BoxGym"
