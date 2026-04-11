@@ -378,7 +378,7 @@ export async function POST(request: Request) {
         targetType: "trainer",
         targetId: trainerId,
         targetName: trainerName,
-        details: `Verification email resent to ${trainer.email}${delivery.messageId ? ` · Resend ${delivery.messageId}` : ""}`,
+          details: `Verification email resent to ${trainer.email}`,
       })
 
       return NextResponse.json({ ok: true, verificationLink, delivery })

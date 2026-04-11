@@ -355,13 +355,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
     }
 
-    if (body.action === "update_name") {
-      if (typeof body.memberId !== "string" || typeof body.firstName !== "string" || typeof body.lastName !== "string") {
-        return jsonError("Invalid update name payload", 400)
-      }
-      const firstName = body.firstName.trim()
-      const lastName = body.lastName.trim()
-      if (!firstName || !lastName) {
+          await writeAdminAuditLog({
+            session,
+            action: "member_verification_resent",
+            targetType: "member",
+            targetId: member.id,
+            targetName: getMemberDisplayName(member),
+            details: `Verification email resent to ${member.email}`,
         return jsonError("Vorname und Nachname dürfen nicht leer sein.", 400)
       }
 
