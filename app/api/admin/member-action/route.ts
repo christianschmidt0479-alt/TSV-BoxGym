@@ -250,10 +250,6 @@ export async function POST(request: Request) {
         return jsonError("Mitglied hat keine E-Mail-Adresse", 400)
       }
 
-      if (member.email_verified) {
-        return jsonError("E-Mail wurde bereits bestätigt", 400)
-      }
-
       const verificationToken = member.email_verification_token || generateEmailVerificationToken()
 
       if (!member.email_verification_token) {
@@ -294,7 +290,7 @@ export async function POST(request: Request) {
         targetType: "member",
         targetId: member.id,
         targetName: getMemberDisplayName(member),
-        details: `Verification email resent to ${member.email}${delivery.messageId ? ` · Resend ${delivery.messageId}` : ""}`,
+        details: `Verification email resent to ${member.email}`,
       })
 
       return NextResponse.json({
@@ -355,36 +351,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
     }
 
-          await writeAdminAuditLog({
-            session,
-            action: "member_verification_resent",
-            targetType: "member",
-            targetId: member.id,
-            targetName: getMemberDisplayName(member),
-            details: `Verification email resent to ${member.email}`,
-        return jsonError("Vorname und Nachname dürfen nicht leer sein.", 400)
-      }
-
-      const { data, error } = await updateMemberWithFallback(supabase, body.memberId, {
-        first_name: firstName,
-        last_name: lastName,
-        name: `${firstName} ${lastName}`.trim(),
-      })
-
-      if (error) throw error
-      if (!data) return jsonError("Mitglied nicht gefunden", 404)
-
-      await writeAdminAuditLog({
-        session,
-        action: "member_name_changed",
-        targetType: "member",
-        targetId: data.id,
-        targetName: getMemberDisplayName(data),
-        details: "Name aktualisiert",
-      })
-
-      return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
-    }
 
     if (body.action === "set_competition") {
       if (typeof body.memberId !== "string" || typeof body.isCompetitionMember !== "boolean") {
@@ -456,7 +422,8 @@ export async function POST(request: Request) {
     }
 
     return jsonError("Invalid action", 400)
-  } catch (error) {
+  }
+  catch (error) {
     console.error("admin member action failed", error)
     return jsonError("Internal server error", 500)
   }
