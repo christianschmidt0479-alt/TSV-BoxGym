@@ -1,10 +1,11 @@
 import { getPendingMembers, getAllMembers } from "@/lib/boxgymDb";
 import Link from "next/link";
 
+
 export default async function DashboardPage() {
   let pending = [];
   let members = [];
-  let error = null;
+  let error: unknown = null;
   try {
     pending = await getPendingMembers();
     members = await getAllMembers();
@@ -12,17 +13,19 @@ export default async function DashboardPage() {
     error = e;
   }
 
+  let errorMessage: string | null = null;
+  if (error instanceof Error) errorMessage = error.message;
+  else if (typeof error === "string") errorMessage = error;
+  else if (error) errorMessage = "Unbekannter Fehler";
+
   return (
     <div className="max-w-3xl mx-auto py-8">
       <h1 className="text-2xl font-bold mb-2">Verwaltung</h1>
       <p className="text-zinc-600 mb-6">Reduzierte Startseite für den neuen Adminbereich. Fokus auf aktuelle Kernaufgaben.</p>
 
-      {error && (
+      {errorMessage && (
         <div className="bg-red-100 text-red-700 px-4 py-2 rounded mb-4">
-          Fehler beim Laden der Kennzahlen.
-          {typeof error === "object" && error && "message" in error && typeof error.message === "string"
-            ? ` (${error.message})`
-            : " (Unbekannter Fehler)"}
+          Fehler beim Laden der Kennzahlen: {errorMessage}
         </div>
       )}
 
