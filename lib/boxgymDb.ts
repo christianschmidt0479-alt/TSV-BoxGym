@@ -196,7 +196,18 @@ export async function findMemberByEmail(email: string) {
 // Dubletten-Prioritätsregel: 1. verifiziert, 2. jüngster nicht-verifizierter, nicht-freigegebener, 3. jüngster
 export async function findMemberByEmailAndPin(email: string, pin: string): Promise<MemberAuthResult | null> {
   const normalizedEmail = email.trim().toLowerCase()
-  const normalizedPin = pin.trim()
+  console.log("LOGIN_EMAIL_NORMALIZED", { email: normalizedEmail })
+  const pinType = typeof pin
+  const pinOriginalLength = pin ? String(pin).length : 0
+  const pinTrimmed = pin ? pin.trim() : ""
+  const pinTrimmedLength = pinTrimmed.length
+  console.log("LOGIN_PIN_PRESENT", {
+    present: !!pin,
+    typeof: pinType,
+    original_length: pinOriginalLength,
+    trimmed_length: pinTrimmedLength
+  })
+  const normalizedPin = pinTrimmed
 
 
   const { data, error } = await supabase
@@ -207,12 +218,30 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
     .limit(10)
 
   if (error) throw error
+  const candidateCount = data ? data.length : 0
+  const candidateIds = data ? data.map(m => m.id) : []
+  const candidateEmails = data ? data.map(m => m.email) : []
+  console.log("LOGIN_MEMBER_CANDIDATES_FOUND", {
+    count: candidateCount,
+    ids: candidateIds,
+    emails: candidateEmails
+  })
   if (!data || data.length === 0) return null
 
   // 1. Alle verifizierten Datensätze mit passendem Pin, nach created_at absteigend
   const verified = data.filter((m) => m.email_verified)
   for (const member of verified) {
-    if (await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))) {
+    console.log("LOGIN_MEMBER_SELECTED", {
+      id: member.id,
+      email: member.email,
+      email_verified: member.email_verified,
+      is_approved: member.is_approved,
+      member_pin_present: !!member.member_pin
+    })
+    console.log("LOGIN_COMPARE_START", { id: member.id })
+    const passwordOk = await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))
+    console.log("LOGIN_COMPARE_RESULT", { id: member.id, passwordOk })
+    if (passwordOk) {
       if (!isBcryptHash(String(member.member_pin ?? ""))) {
         await setStoredMemberPin(member.id, normalizedPin)
         member.member_pin = await hashMemberPinValue(normalizedPin)
@@ -224,7 +253,17 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
   // 2. Jüngster nicht-verifizierter, nicht-freigegebener mit passendem Pin
   const notVerifiedNotApproved = data.filter((m) => !m.email_verified && !m.is_approved)
   for (const member of notVerifiedNotApproved) {
-    if (await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))) {
+    console.log("LOGIN_MEMBER_SELECTED", {
+      id: member.id,
+      email: member.email,
+      email_verified: member.email_verified,
+      is_approved: member.is_approved,
+      member_pin_present: !!member.member_pin
+    })
+    console.log("LOGIN_COMPARE_START", { id: member.id })
+    const passwordOk = await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))
+    console.log("LOGIN_COMPARE_RESULT", { id: member.id, passwordOk })
+    if (passwordOk) {
       if (!isBcryptHash(String(member.member_pin ?? ""))) {
         await setStoredMemberPin(member.id, normalizedPin)
         member.member_pin = await hashMemberPinValue(normalizedPin)
@@ -235,7 +274,17 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
 
   // 3. Jüngster Datensatz mit passendem Pin
   for (const member of data) {
-    if (await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))) {
+    console.log("LOGIN_MEMBER_SELECTED", {
+      id: member.id,
+      email: member.email,
+      email_verified: member.email_verified,
+      is_approved: member.is_approved,
+      member_pin_present: !!member.member_pin
+    })
+    console.log("LOGIN_COMPARE_START", { id: member.id })
+    const passwordOk = await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))
+    console.log("LOGIN_COMPARE_RESULT", { id: member.id, passwordOk })
+    if (passwordOk) {
       if (!isBcryptHash(String(member.member_pin ?? ""))) {
         await setStoredMemberPin(member.id, normalizedPin)
         member.member_pin = await hashMemberPinValue(normalizedPin)
