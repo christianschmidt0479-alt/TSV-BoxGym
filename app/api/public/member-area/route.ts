@@ -428,8 +428,7 @@ async function resolveEditableMember(request: Request, body: { memberId?: string
   if (memberSession && body.memberId) {
     const sessionMember = (await findMemberById(memberSession.memberId)) as MemberRecord | null
     if (sessionMember && sessionMember.id === body.memberId) {
-      // Härtung: Nur freigegebene Mitglieder dürfen sensible Aktionen ausführen
-      if (!sessionMember.is_approved) return null
+      // Härtung: Freigabe-Prüfung erfolgt in den jeweiligen Aktionen, nicht hier
       return sessionMember
     }
   }
