@@ -313,13 +313,20 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
     }
   }, [redirectToLoginAfterSave, router])
 
-  const competitionWeightRows = memberAttendanceRows.filter((row) => typeof row.weight === "number")
 
-  const latestCompetitionWeight = competitionWeightRows[0] ?? null
-  const firstCompetitionWeight = competitionWeightRows[competitionWeightRows.length - 1] ?? null
+  // Defensive Guard: memberAttendanceRows darf nie ungeprüft mit .filter/.map/.length verwendet werden
+  const safeMemberAttendanceRows = Array.isArray(memberAttendanceRows) ? memberAttendanceRows : []
+
+  // competitionWeightRows basiert jetzt auf safeMemberAttendanceRows
+  const competitionWeightRows = safeMemberAttendanceRows.filter((row) => row && typeof row.weight === "number")
+
+  // Indexzugriffe absichern
+  const latestCompetitionWeight = competitionWeightRows.length > 0 ? competitionWeightRows[0] : null
+  const firstCompetitionWeight = competitionWeightRows.length > 0 ? competitionWeightRows[competitionWeightRows.length - 1] : null
+  // Optionale Felder absichern
   const weightChange =
-    latestCompetitionWeight && firstCompetitionWeight
-      ? latestCompetitionWeight.weight! - firstCompetitionWeight.weight!
+    latestCompetitionWeight && firstCompetitionWeight && typeof latestCompetitionWeight.weight === "number" && typeof firstCompetitionWeight.weight === "number"
+      ? latestCompetitionWeight.weight - firstCompetitionWeight.weight
       : null
 
   if (loading) {

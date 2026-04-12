@@ -201,6 +201,23 @@ export async function POST(request: Request) {
       month_key: currentMonthKey,
     })
 
+    // Gewichtspflicht-Logik nach erfolgreichem Check-in
+    let requires_weight_entry_today = false
+    let weight_already_recorded_today = false
+    if (resolvedMember.is_competition_member || checkinAssignment.groupName === "L-Gruppe") {
+      requires_weight_entry_today = true
+      // Prüfe, ob heute ein Check-in mit Gewicht existiert
+      const { data: todayWeightRows, error: todayWeightError } = await supabase
+        .from("checkins")
+        .select("id, weight")
+        .eq("member_id", resolvedMember.id)
+        .eq("date", liveDate)
+        .not("weight", "is", null)
+        .limit(1)
+      if (todayWeightError) throw todayWeightError
+      weight_already_recorded_today = Array.isArray(todayWeightRows) && todayWeightRows.length > 0
+    }
+
     const shouldRememberDevice = Boolean(body.rememberDevice)
     const rememberToken = shouldRememberDevice
       ? await createMemberDeviceToken({
@@ -224,6 +241,8 @@ export async function POST(request: Request) {
             isCompetitionMember: Boolean(resolvedMember.is_competition_member),
           }
         : null,
+      requires_weight_entry_today,
+      weight_already_recorded_today,
     })
 
     console.info('[member-flow][checkin][success] id=' + resolvedMember.id)

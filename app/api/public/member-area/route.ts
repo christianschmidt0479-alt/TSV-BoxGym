@@ -63,6 +63,15 @@ type MemberRecord = {
   base_group?: string | null
   member_qr_token?: string | null
   member_qr_active?: boolean | null
+  // Ergänzung für Wettkampf- und Gewichtsfelder
+  is_competition_member: boolean
+  has_competition_pass?: boolean
+  competition_license_number?: string
+  competition_fights?: number
+  competition_wins?: number
+  competition_losses?: number
+  competition_draws?: number
+  weight?: number
 }
 
 type CheckinRow = {
@@ -252,10 +261,20 @@ function sanitizeToken(value: unknown) {
 
 
 async function buildMemberSnapshot(member: MemberRecord) {
+  const rawMember = sanitizeMemberForClient(member as MemberRecord & Record<string, unknown>);
   const normalizedMember = {
-    ...sanitizeMemberForClient(member as MemberRecord & Record<string, unknown>),
-    base_group: normalizeTrainingGroup(member.base_group) || member.base_group,
-  }
+    ...rawMember,
+    base_group: normalizeTrainingGroup(rawMember.base_group) || rawMember.base_group,
+    // Normierung der Kernfelder (keine null/undefined-Werte)
+    is_competition_member: typeof rawMember.is_competition_member === "boolean" ? rawMember.is_competition_member : false,
+    has_competition_pass: typeof rawMember.has_competition_pass === "boolean" ? rawMember.has_competition_pass : false,
+    competition_license_number: typeof rawMember.competition_license_number === "string" ? rawMember.competition_license_number : "",
+    competition_fights: typeof rawMember.competition_fights === "number" && !isNaN(rawMember.competition_fights) ? rawMember.competition_fights : 0,
+    competition_wins: typeof rawMember.competition_wins === "number" && !isNaN(rawMember.competition_wins) ? rawMember.competition_wins : 0,
+    competition_losses: typeof rawMember.competition_losses === "number" && !isNaN(rawMember.competition_losses) ? rawMember.competition_losses : 0,
+    competition_draws: typeof rawMember.competition_draws === "number" && !isNaN(rawMember.competition_draws) ? rawMember.competition_draws : 0,
+    weight: typeof rawMember.weight === "number" && !isNaN(rawMember.weight) ? rawMember.weight : 0,
+  };
   const liveDate = new Date().toISOString().slice(0, 10)
   const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
   const currentMonthKey = getMonthKey(liveDate)
@@ -481,6 +500,8 @@ export async function POST(request: Request) {
       // Nur Member-Session-Logik verwenden
       const email = sanitizeMemberAreaEmail(body.email)
       const password = sanitizeMemberAreaPassword(body.password ?? body.pin)
+      // Logging: Login-Flow (jetzt nach Deklaration)
+      console.log("member_login: email", email)
       const requestIp = getRequestIp(request)
       const rateLimit = await checkRateLimitAsync(`member-login:${requestIp}`, 5, 15 * 60 * 1000)
       if (!rateLimit.ok) {
@@ -505,6 +526,7 @@ export async function POST(request: Request) {
 
       const memberMatch = await findMemberByEmailAndPin(email, password)
       if (memberMatch?.status === "missing_email") {
+          console.log("member_login: password ok", false)
         await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
         await delayFailedLogin()
         return NextResponse.json({ ok: false, code: "not_found", message: MEMBER_LOGIN_ERROR_MESSAGE }, { status: 401 })
@@ -512,18 +534,25 @@ export async function POST(request: Request) {
 
       const member = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
       if (!member) {
+          console.log("member_login: password ok", false)
         await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
         await delayFailedLogin()
         return NextResponse.json({ ok: false, code: "not_found", message: MEMBER_LOGIN_ERROR_MESSAGE }, { status: 401 })
       }
 
       await clearLoginFailuresAsync(loginKey)
+      if (member) {
+        console.log("member_login: password ok", true)
+        console.log("member_login: email_verified", member.email_verified)
+      }
 
       if (!hasAcceptedPrivacy(member)) {
+          console.log("member_login: privacy_consent_required")
         return NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
       }
 
       const memberData = await buildMemberSnapshot(member)
+        console.log("member_login: final response", "login_success")
       return await applyMemberAreaSessionCookie(
         NextResponse.json({ ok: true, code: "login_success", message: "Login erfolgreich.", member: memberData }),
         { memberId: member.id, email }
@@ -565,9 +594,12 @@ export async function POST(request: Request) {
 
 
     if (body.action === "verify_email") {
+        // Logging: Verifizierungsflow
       const token = sanitizeToken(body.token);
+        console.log("verify_email: token received", token)
       console.log("VERIFY_START", { token });
       if (!token) {
+          console.log("verify_email: token missing")
         console.warn("VERIFY_TOKEN_MISSING");
         return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 400 });
       }
@@ -586,20 +618,27 @@ export async function POST(request: Request) {
           .maybeSingle();
 
         if (error) {
+                    console.log("verify_email: update failed", error)
           console.error("VERIFY_FAILED", { error });
           return new NextResponse("Technischer Fehler bei der Bestätigung.", { status: 500 });
         }
         if (!data) {
+                    console.log("verify_email: member not found for token", token)
           console.warn("VERIFY_TOKEN_NOT_FOUND", { token });
           return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 });
         }
         member = data;
       } catch (updateError) {
+          console.log("verify_email: update exception", updateError)
         console.error("VERIFY_FAILED", { error: updateError });
         return new NextResponse("Technischer Fehler bei der Bestätigung.", { status: 500 });
       }
 
       if (member && member.id) {
+                console.log("verify_email: member found", member.id)
+                if (member.email_verified) {
+                  console.log("verify_email: email_verified set to true", member.id)
+                }
         console.log("VERIFY_TOKEN_FOUND", { id: member.id });
         if (member.email_verified) {
           console.log("VERIFY_ALREADY_VERIFIED", { id: member.id });
