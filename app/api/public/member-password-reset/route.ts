@@ -223,18 +223,18 @@ export async function POST(request: Request) {
 
       console.log("PASSWORD_RESET_MAIL_START", { id: member.id, email: member.email })
       try {
-        // Exakt wie Registrierung: sendMail direkt nutzen
-        const subject = "TSV BoxGym: Passwort neu setzen"
-        const html = `
-          <p>Hallo ${getMemberDisplayName(member)},</p>
-          <p>für dein Mitgliedskonto wurde ein Link zum Zurücksetzen des Passworts angefordert.</p>
-          <p><b>Wichtig:</b> Der Link funktioniert nur für dieses Mitgliedskonto und nur solange die hinterlegte E-Mail-Adresse bereits bestätigt wurde.</p>
-          <p><a href=\"${resetLink}\">Passwort jetzt neu setzen</a></p>
-          <p>Der Link ist 30 Minuten gültig.</p>
-          <p>Falls du diese Anfrage nicht selbst gestellt hast, kannst du diese E-Mail ignorieren.</p>
-          <p>TSV BoxGym</p>
-        `
-        const text = `Hallo ${getMemberDisplayName(member)},\n\nfür dein Mitgliedskonto wurde ein Link zum Zurücksetzen des Passworts angefordert.\n\nWichtig: Der Link funktioniert nur für dieses Mitgliedskonto und nur solange die hinterlegte E-Mail-Adresse bereits bestätigt wurde.\n\nLink: ${resetLink}\n\nDer Link ist 30 Minuten gültig.\n\nFalls du diese Anfrage nicht selbst gestellt hast, kannst du diese E-Mail ignorieren.\n\nTSV BoxGym`
+        // Zentrales, professionelles Template nutzen
+        const { buildMemberMail } = await import("@/lib/mail/renderMailTemplate")
+        const subject = "Passwort neu setzen – TSV BoxGym"
+        const name = getMemberDisplayName(member)
+        const html = buildMemberMail({
+          title: "Passwort neu setzen",
+          intro: `Hallo ${name}, du hast eine Anfrage zum Zurücksetzen deines Passworts gestellt.`,
+          ctaLabel: "Passwort jetzt neu setzen",
+          ctaUrl: resetLink,
+          securityNotice: "Link 30 Minuten gültig. Falls nicht von dir, ignorieren."
+        })
+        const text = `Hallo ${getMemberDisplayName(member)},\n\nDu hast eine Anfrage zum Zurücksetzen deines Passworts gestellt. Nutze diesen Link, um ein neues Passwort zu vergeben: ${resetLink}\n\nDer Link ist 30 Minuten gültig.\n\nFalls du diese Anfrage nicht selbst gestellt hast, kannst du diese E-Mail ignorieren.`
         const { sendMail } = await import("@/lib/mail/mailService")
         await sendMail({
           to: member.email,
