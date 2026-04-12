@@ -109,18 +109,22 @@ export async function registerOrRefreshMember(input: {
 export async function verifyMemberEmail(token: string): Promise<MemberIdentity | null> {
   const { data, error } = await supabase
     .from("members")
-    .select("id, email, email_verified, email_verified_at, email_verification_token, is_approved, is_trial, member_pin, created_at")
+    .select("id, email, email_verified, email_verified_at, email_verification_token, email_verification_expires_at, is_approved, is_trial, member_pin, created_at")
     .eq("email_verification_token", token)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
   if (error) throw error
   if (!data) return null
+  // Ablaufzeit prüfen
+  if (data.email_verification_expires_at && new Date(data.email_verification_expires_at) < new Date()) {
+    return null
+  }
   // Update
   const now = new Date().toISOString()
   const { error: updateError } = await supabase
     .from("members")
-    .update({ email_verified: true, email_verified_at: now, email_verification_token: null })
+    .update({ email_verified: true, email_verified_at: now, email_verification_token: null, email_verification_expires_at: null })
     .eq("id", data.id)
   if (updateError) throw updateError
   // Finalen Datensatz nachlesen

@@ -72,6 +72,8 @@ type MemberRecord = {
   competition_losses?: number
   competition_draws?: number
   weight?: number
+  // Härtung: Freigabestatus
+  is_approved?: boolean
 }
 
 type CheckinRow = {
@@ -426,6 +428,8 @@ async function resolveEditableMember(request: Request, body: { memberId?: string
   if (memberSession && body.memberId) {
     const sessionMember = (await findMemberById(memberSession.memberId)) as MemberRecord | null
     if (sessionMember && sessionMember.id === body.memberId) {
+      // Härtung: Nur freigegebene Mitglieder dürfen sensible Aktionen ausführen
+      if (!sessionMember.is_approved) return null
       return sessionMember
     }
   }
@@ -571,6 +575,13 @@ export async function POST(request: Request) {
         )
       }
 
+      // Härtung: Nur freigegebene Mitglieder dürfen den vollen Member-Bereich nutzen
+      if (!member.is_approved) {
+        return clearMemberAreaSessionCookie(
+          NextResponse.json({ ok: false, code: "not_approved", message: "Mitglied noch nicht freigegeben." }, { status: 403 })
+        )
+      }
+
       if (!hasAcceptedPrivacy(member)) {
         return clearMemberAreaSessionCookie(
           NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
@@ -592,10 +603,9 @@ export async function POST(request: Request) {
 
 
     if (body.action === "verify_email") {
-        //
+      // Ablaufzeit-Prüfung für Verifizierungs-Token
       const token = sanitizeToken(body.token);
       if (!token) {
-          //
         if (process.env.NODE_ENV === "development") {
           // eslint-disable-next-line no-console
           console.warn("VERIFY_TOKEN_MISSING");
@@ -603,6 +613,20 @@ export async function POST(request: Request) {
         return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 400 });
       }
 
+      // Token-Record mit Ablaufzeit laden
+      const { data: memberData, error: memberError } = await supabase
+        .from("members")
+        .select("id, email_verification_expires_at")
+        .eq("email_verification_token", token)
+        .maybeSingle();
+      if (memberError || !memberData) {
+        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 });
+      }
+      if (memberData.email_verification_expires_at && new Date(memberData.email_verification_expires_at) < new Date()) {
+        return new NextResponse("Bestätigungslink abgelaufen. Bitte fordere einen neuen Link an.", { status: 410 });
+      }
+
+      // Token gültig, Verifizierung durchführen
       let member = null;
       try {
         const { data, error } = await supabase
@@ -611,13 +635,12 @@ export async function POST(request: Request) {
             email_verified: true,
             email_verified_at: new Date().toISOString(),
             email_verification_token: null,
+            email_verification_expires_at: null,
           })
           .eq("email_verification_token", token)
           .select("id, email_verified")
           .maybeSingle();
-
         if (error) {
-                    //
           if (process.env.NODE_ENV === "development") {
             // eslint-disable-next-line no-console
             console.error("VERIFY_FAILED", { error });
@@ -625,7 +648,6 @@ export async function POST(request: Request) {
           return new NextResponse("Technischer Fehler bei der Bestätigung.", { status: 500 });
         }
         if (!data) {
-                    //
           if (process.env.NODE_ENV === "development") {
             // eslint-disable-next-line no-console
             console.warn("VERIFY_TOKEN_NOT_FOUND", { token });
@@ -634,7 +656,6 @@ export async function POST(request: Request) {
         }
         member = data;
       } catch (updateError) {
-          //
         if (process.env.NODE_ENV === "development") {
           // eslint-disable-next-line no-console
           console.error("VERIFY_FAILED", { error: updateError });
@@ -643,7 +664,7 @@ export async function POST(request: Request) {
       }
 
       if (member && member.id) {
-                //
+        //
       }
       return NextResponse.json({ ok: true });
     }
