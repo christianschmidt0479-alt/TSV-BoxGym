@@ -187,6 +187,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as MemberPasswordResetBody
 
     if (body.action === "request") {
+      console.log("PASSWORD_RESET_START")
       const email = sanitizeTextInput(body.email, { lowercase: true, maxLength: 254 })
       if (!email) {
         return new NextResponse("Bitte eine E-Mail-Adresse angeben.", { status: 400 })
@@ -198,6 +199,7 @@ export async function POST(request: Request) {
       }
 
       const member = (await findMemberByEmail(email)) as MemberPasswordResetRow | null
+      console.log("PASSWORD_RESET_MEMBER_FOUND", { found: !!(member?.id && member.email && member.email_verified === true) ? "yes" : "no", id: member?.id || null, email: member?.email || null })
       if (!member?.id || !member.email || member.email_verified !== true) {
         return NextResponse.json({
           ok: true,
@@ -212,23 +214,31 @@ export async function POST(request: Request) {
       const baseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
       const resetLink = `${baseUrl}/mein-bereich/passwort-zuruecksetzen?token=${encodeURIComponent(token)}`
 
-      await sendCustomEmail({
-        to: member.email,
-        subject: "TSV BoxGym: Passwort neu setzen",
-        text: `Hallo ${getMemberDisplayName(member)},
-
-für dein Mitgliedskonto wurde ein Link zum Zurücksetzen des Passworts angefordert.
-
-Wichtig: Der Link funktioniert nur für dieses Mitgliedskonto und nur solange die hinterlegte E-Mail-Adresse bereits bestätigt wurde.
-
-Link: ${resetLink}
-
-Der Link ist 30 Minuten gültig.
-
-Falls du diese Anfrage nicht selbst gestellt hast, kannst du diese E-Mail ignorieren.
-
-TSV BoxGym`,
-      })
+      console.log("PASSWORD_RESET_MAIL_START", { id: member.id, email: member.email })
+      try {
+        // Exakt wie Registrierung: sendMail direkt nutzen
+        const subject = "TSV BoxGym: Passwort neu setzen"
+        const html = `
+          <p>Hallo ${getMemberDisplayName(member)},</p>
+          <p>für dein Mitgliedskonto wurde ein Link zum Zurücksetzen des Passworts angefordert.</p>
+          <p><b>Wichtig:</b> Der Link funktioniert nur für dieses Mitgliedskonto und nur solange die hinterlegte E-Mail-Adresse bereits bestätigt wurde.</p>
+          <p><a href=\"${resetLink}\">Passwort jetzt neu setzen</a></p>
+          <p>Der Link ist 30 Minuten gültig.</p>
+          <p>Falls du diese Anfrage nicht selbst gestellt hast, kannst du diese E-Mail ignorieren.</p>
+          <p>TSV BoxGym</p>
+        `
+        const text = `Hallo ${getMemberDisplayName(member)},\n\nfür dein Mitgliedskonto wurde ein Link zum Zurücksetzen des Passworts angefordert.\n\nWichtig: Der Link funktioniert nur für dieses Mitgliedskonto und nur solange die hinterlegte E-Mail-Adresse bereits bestätigt wurde.\n\nLink: ${resetLink}\n\nDer Link ist 30 Minuten gültig.\n\nFalls du diese Anfrage nicht selbst gestellt hast, kannst du diese E-Mail ignorieren.\n\nTSV BoxGym`
+        const { sendMail } = await import("@/lib/mail/mailService")
+        await sendMail({
+          to: member.email,
+          subject,
+          html,
+          text,
+        })
+        // MAIL_SERVICE_SEND_START und MAIL_SEND_SUCCESS werden im Service geloggt
+      } catch (err) {
+        console.error("MAIL_SEND_ERROR", { id: member.id, email: member.email, error: err && err.message ? err.message : String(err) })
+      }
 
       return NextResponse.json({
         ok: true,
