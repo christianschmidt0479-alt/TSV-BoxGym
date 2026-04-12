@@ -45,6 +45,11 @@ export function buildMemberMail({
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;margin:32px auto 0 auto;background:#fff;border-radius:10px;box-shadow:0 2px 8px #0001;padding:0 0 32px 0;">
           <tr>
             <td style="padding:32px 24px 0 24px;text-align:center;">
+              <img 
+                src="https://www.tsvboxgym.de/assets/logos/boxgym-kompakt.png" 
+                alt="TSV BoxGym"
+                style="display:block;margin:0 auto 20px auto;max-width:140px;height:auto;"
+              />
               <div style="font-size:22px;font-weight:700;color:#154c83;letter-spacing:0.5px;margin-bottom:8px;">TSV Falkensee</div>
               <div style="font-size:15px;font-weight:500;color:#154c83;opacity:0.7;margin-bottom:24px;">TSV BoxGym</div>
               <h1 style="font-size:22px;font-weight:700;color:#222;margin:0 0 16px 0;line-height:1.2;">${title}</h1>

@@ -235,6 +235,11 @@ export default function Home() {
                 </div>
                 <div className="flex items-center gap-4 sm:gap-5">
                   <div className="space-y-2">
+                    <img 
+                      src="/assets/logos/boxgym-claim.png"
+                      alt="TSV Falkensee BoxGym"
+                      className="mx-auto mb-4 max-w-[260px] w-full h-auto"
+                    />
                     <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Willkommen im TSV BoxGym</h1>
                     <p className="max-w-2xl text-sm leading-6 text-blue-50/85 sm:text-base">
                       Check-in, Registrierung und wichtige Zugänge schnell und übersichtlich.
