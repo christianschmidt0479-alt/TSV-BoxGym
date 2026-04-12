@@ -214,15 +214,6 @@ function getMedicalExamStatus(dateString: string | null | undefined) {
 
 export default function MemberAreaPage() {
   const router = useRouter()
-  // Sichtbarer Build-Marker für Production-Abgleich
-  // Entfernen nach Abschluss der Analyse!
-  // BUILD: v1.0.0 - member-area-check
-  // eslint-disable-next-line react/jsx-no-undef
-  const buildMarker = (
-    <div style={{position:'fixed',top:0,left:0,zIndex:9999,background:'#ffc',padding:'2px 8px',fontWeight:'bold',fontSize:'14px'}}>
-      BUILD: v1.0.0 - member-area-check
-    </div>
-  );
   const [isClient, setIsClient] = useState(false)
   const [portalView, setPortalView] = useState<"member" | "parent">("member")
 

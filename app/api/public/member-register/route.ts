@@ -5,20 +5,14 @@ import { parseTrainingGroup } from "@/lib/trainingGroups"
 import { registerMemberService } from "@/lib/memberRegisterService"
 
 export async function POST(request: Request) {
-    // Build-/Trace-Marker für Production-Log
-    console.log("MEMBER_REGISTER_TRACE 2026-04-12-A")
+    //
   try {
     if (!isAllowedOrigin(request)) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
     const body = await request.json()
-    // Logging: Request-Email, Passwort vorhanden, Länge
-    console.log("MEMBER_REGISTER_ROUTE_PASSWORD_PRESENT", {
-      email: body.email,
-      password_present: !!body.password,
-      password_length: body.password ? String(body.password).length : 0
-    })
+    //
     // Nur relevante Felder für den Service normalisieren
     const parsedGroup = parseTrainingGroup(body.baseGroup)
     const input = {
@@ -33,8 +27,7 @@ export async function POST(request: Request) {
       consent: body.consent === true,
     }
 
-    // Debug-Log: Start der Route
-    console.log("MEMBER_REGISTER_ROUTE_START", { email: input.email })
+    //
     const result = await registerMemberService(input)
 
     switch (result.status) {
@@ -51,7 +44,11 @@ export async function POST(request: Request) {
         return new NextResponse(result.error || "Interner Fehler", { status: 500 })
     }
   } catch (error) {
-    console.error("[member-register] failed", error)
+    // Fehler-Log nur in dev
+    if (process.env.NODE_ENV === "development") {
+      // eslint-disable-next-line no-console
+      console.error("[member-register] failed", error)
+    }
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }
