@@ -1,5 +1,6 @@
 "use client"
 
+import { ResendVerificationButton } from "../mitglieder/page"
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -830,15 +831,20 @@ export default function FreigabenPage() {
                         {isEditing ? "Änderung schließen" : "Daten ändern"}
                       </Button>
 
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
-                        onClick={() => openMemberCommunication(member)}
-                        disabled={!member.email?.trim() || deletingMemberId === member.id}
-                      >
-                        Bestätigungs-Mail / Nachricht
-                      </Button>
+                      {/* Nur für unbestätigte Mitglieder mit E-Mail: Echter Resend-Flow */}
+                      {!member.email_verified && member.email ? (
+                        <ResendVerificationButton memberId={member.id} email={member.email} />
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
+                          onClick={() => openMemberCommunication(member)}
+                          disabled={!member.email?.trim() || deletingMemberId === member.id}
+                        >
+                          Nachricht senden
+                        </Button>
+                      )}
 
                       {!member.email_verified && (
                         <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">

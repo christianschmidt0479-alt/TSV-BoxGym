@@ -1,6 +1,7 @@
 // Fachlicher Mailbaustein für Mitglieder-Verifizierung
 import { sendMail } from "./mailService"
 import { buildMemberMail } from "./renderMailTemplate"
+import { getAppBaseUrl, DEFAULT_APP_BASE_URL } from "../mailConfig"
 
 export type MemberVerificationMailInput = {
   email: string
@@ -11,8 +12,9 @@ export async function sendMemberVerificationMail(input: MemberVerificationMailIn
   // Debug-Log: Einstieg Mailbaustein
   console.log("MEMBER_VERIFICATION_MAIL_START", { email: input.email })
   const { email, token } = input
-  // Verify-Link bauen
-  const verificationLink = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/mein-bereich?verify=${token}`
+  // Verify-Link bauen (robust wie Reset-Flow)
+  const baseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
+  const verificationLink = `${baseUrl}/mein-bereich?verify=${token}`
 
   // Mailinhalt bauen (zentral, professionell, mobilfreundlich)
   const subject = "E-Mail-Adresse bestätigen – TSV BoxGym"

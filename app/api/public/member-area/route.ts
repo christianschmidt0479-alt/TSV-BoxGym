@@ -574,12 +574,6 @@ export async function POST(request: Request) {
         )
       }
 
-      // Härtung: Nur freigegebene Mitglieder dürfen den vollen Member-Bereich nutzen
-      if (!member.is_approved) {
-        return clearMemberAreaSessionCookie(
-          NextResponse.json({ ok: false, code: "not_approved", message: "Mitglied noch nicht freigegeben." }, { status: 403 })
-        )
-      }
 
       if (!hasAcceptedPrivacy(member)) {
         return clearMemberAreaSessionCookie(
@@ -588,7 +582,16 @@ export async function POST(request: Request) {
       }
 
       const memberData = await buildMemberSnapshot(member)
-      return NextResponse.json({ ok: true, code: "session_valid", message: "Session gültig.", member: memberData })
+      // email_verified explizit mitgeben
+      return NextResponse.json({
+        ok: true,
+        code: "session_valid",
+        message: "Session gültig.",
+        member: {
+          ...memberData,
+          email_verified: member.email_verified ?? false,
+        },
+      })
     }
 
     if (body.action === "logout_member_session") {

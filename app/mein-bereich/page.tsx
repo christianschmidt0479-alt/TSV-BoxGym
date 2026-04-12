@@ -819,7 +819,13 @@ export default function MemberAreaPage() {
             </Card>
 
             {memberAreaUnlocked && memberAreaData && (
-              <Card className="rounded-[24px] border-0 shadow-sm">
+              <>
+                {!memberAreaData.email_verified && (
+                  <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-center text-base font-medium text-amber-900">
+                    Deine E-Mail-Adresse ist noch nicht bestätigt. Bitte prüfe dein Postfach und folge dem Bestätigungslink. Ohne Bestätigung ist keine Freigabe durch den Admin möglich.
+                  </div>
+                )}
+                <Card className="rounded-[24px] border-0 shadow-sm">
                               {/* Gewichtseingabe-Karte für Pflichtfälle */}
                               {requiresWeightEntryToday && !weightAlreadyRecordedToday && (
                                 <Card className="mb-6 border-2 border-blue-400 bg-blue-50">
@@ -1255,6 +1261,7 @@ export default function MemberAreaPage() {
                   ) : null}
                 </CardContent>
               </Card>
+              </>
             )}
           </TabsContent>
 

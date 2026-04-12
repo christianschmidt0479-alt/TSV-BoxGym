@@ -1,4 +1,49 @@
 "use client";
+// Minimaler Button für Admin-Resend
+export function ResendVerificationButton({ memberId, email }: { memberId: string, email: string }) {
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState("")
+
+  async function handleResend() {
+    setLoading(true)
+    setSuccess(false)
+    setError("")
+    try {
+      const response = await fetch("/api/admin/member-resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ member_id: memberId }),
+      })
+      if (!response.ok) {
+        const text = await response.text()
+        setError(text || "Fehler beim Senden der Mail.")
+        return
+      }
+      setSuccess(true)
+    } catch (err) {
+      setError("Fehler beim Senden der Mail.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Button
+        type="button"
+        variant="outline"
+        className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
+        disabled={loading}
+        onClick={handleResend}
+      >
+        {loading ? "Sendet..." : "Bestätigungs-Mail erneut senden"}
+      </Button>
+      {success && <div className="text-xs text-green-700">Mail wurde versendet.</div>}
+      {error && <div className="text-xs text-red-700">{error}</div>}
+    </div>
+  )
+}
 // Lokale Hilfsfunktion für Check-in/Log-in Status
 function getMemberCheckStatus(member: any) {
   if (!member) {
@@ -1292,18 +1337,9 @@ export default function MitgliederverwaltungPage() {
                                       Mail senden
                                     </Button>
                                   ) : null}
-                                  {!editingMember.email_verified && (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      className="rounded-2xl border-[#c8d8ea] text-[#154c83]"
-                                      disabled={resendingVerificationMemberId === editingMember.id}
-                                      onClick={async () => {
-                                        await resendVerificationEmail(editingMember)
-                                      }}
-                                    >
-                                      {resendingVerificationMemberId === editingMember.id ? "Sendet..." : "Bestätigungs-Mail erneut senden"}
-                                    </Button>
+                                  {/* Neuer Admin-Button für Bestätigungs-Mail */}
+                                  {!editingMember.email_verified && editingMember.email && (
+                                    <ResendVerificationButton memberId={editingMember.id} email={editingMember.email} />
                                   )}
                                   {editingMemberIsBoxzwerge && editingParentLink ? (
                                     <Button
