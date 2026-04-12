@@ -284,6 +284,21 @@ export async function findMemberByFirstLastName(firstName: string, lastName: str
 
 export async function createMember(input: MemberInput) {
   const fullName = `${input.first_name.trim()} ${input.last_name.trim()}`.trim()
+  const memberPinPresent = !!input.member_pin
+  console.log("CREATE_MEMBER_ENTRY_MEMBER_PIN_PRESENT", {
+    email: input.email,
+    member_pin_present: memberPinPresent
+  })
+  let hashCreated = false
+  let memberPinHash: string | null = null
+  if (input.member_pin) {
+    memberPinHash = await hashMemberPinValue(input.member_pin)
+    hashCreated = true
+  }
+  console.log("CREATE_MEMBER_HASH_CREATED", {
+    email: input.email,
+    hash_created: hashCreated
+  })
   const payload = {
     name: fullName,
     first_name: input.first_name.trim(),
@@ -296,13 +311,16 @@ export async function createMember(input: MemberInput) {
     privacy_accepted_at: new Date().toISOString(),
     is_trial: input.is_trial,
     trial_count: input.is_trial ? 1 : 0,
-    member_pin: input.member_pin ? await hashMemberPinValue(input.member_pin) : null,
+    member_pin: memberPinHash,
     is_approved: input.is_approved ?? false,
     base_group: normalizeTrainingGroup(input.base_group) || null,
     member_qr_token: generateMemberQrToken(),
     member_qr_active: true,
   }
-
+  console.log("CREATE_MEMBER_PRIMARY_INSERT_START", {
+    email: payload.email,
+    member_pin_present: !!payload.member_pin
+  })
   const primary = await supabase
     .from("members")
     .insert([payload])
@@ -310,6 +328,22 @@ export async function createMember(input: MemberInput) {
     .single()
 
   if (!primary.error) {
+    console.log("CREATE_MEMBER_PRIMARY_INSERT_DONE", { email: payload.email })
+    // Nach Insert: Rücklesen und Log
+    const { data: inserted, error: readError } = await supabase
+      .from("members")
+      .select("id, email, member_pin")
+      .eq("email", payload.email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (inserted && inserted.member_pin == null) {
+      console.log("CREATE_MEMBER_POSTREAD_MEMBER_PIN_NULL", {
+        id: inserted.id,
+        email: inserted.email,
+        insert_path: "primary"
+      })
+    }
     return primary.data
   }
 
@@ -317,16 +351,40 @@ export async function createMember(input: MemberInput) {
     throw primary.error
   }
 
-  console.warn("[createMember] primary insert failed (missing column); retrying without optional fields", primary.error?.message)
-
+  console.warn("[createMember] primary insert failed (missing column); retrying ohne optionale Felder", primary.error?.message)
+  console.log("CREATE_MEMBER_FALLBACK_INSERT_START", {
+    email: payload.email,
+    member_pin_present: !!payload.member_pin
+  })
+  // Fallback: Prüfen, ob member_pin entfernt würde
+  const fallbackPayload = withoutOptionalMemberFields(payload)
+  if (!('member_pin' in fallbackPayload) || fallbackPayload.member_pin == null) {
+    console.error("CREATE_MEMBER_FALLBACK_ABORT", { email: payload.email, reason: "member_pin würde entfernt" })
+    throw new Error("[createMember] Fallback-Insert ohne member_pin nicht erlaubt. Registrierung abgebrochen.")
+  }
   const fallback = await supabase
     .from("members")
-    .insert([withoutOptionalMemberFields(payload)])
+    .insert([fallbackPayload])
     .select()
     .single()
 
   if (!fallback.error) {
-    console.warn("[createMember] fallback path used (optional fields stripped); privacy+QR preserved")
+    console.log("CREATE_MEMBER_FALLBACK_INSERT_DONE", { email: fallbackPayload.email })
+    // Nach Insert: Rücklesen und Log
+    const { data: inserted, error: readError } = await supabase
+      .from("members")
+      .select("id, email, member_pin")
+      .eq("email", fallbackPayload.email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (inserted && inserted.member_pin == null) {
+      console.log("CREATE_MEMBER_POSTREAD_MEMBER_PIN_NULL", {
+        id: inserted.id,
+        email: inserted.email,
+        insert_path: "fallback"
+      })
+    }
     return fallback.data
   }
 
@@ -335,15 +393,39 @@ export async function createMember(input: MemberInput) {
   }
 
   console.warn("[createMember] fallback also failed; using last-resort legacy path (privacy+QR stripped)", fallback.error?.message)
-
+  console.log("CREATE_MEMBER_LEGACY_FALLBACK_START", {
+    email: fallbackPayload.email,
+    member_pin_present: !!fallbackPayload.member_pin
+  })
+  // Legacy-Fallback: member_pin darf nicht entfernt werden
+  const legacyPayload = withoutLegacyMemberFallbackFields(fallbackPayload)
+  if (!('member_pin' in legacyPayload) || legacyPayload.member_pin == null) {
+    console.error("CREATE_MEMBER_LEGACY_FALLBACK_ABORT", { email: fallbackPayload.email, reason: "member_pin würde entfernt" })
+    throw new Error("[createMember] Legacy-Fallback-Insert ohne member_pin nicht erlaubt. Registrierung abgebrochen.")
+  }
   const legacyFallback = await supabase
     .from("members")
-    .insert([withoutLegacyMemberFallbackFields(withoutOptionalMemberFields(payload))])
+    .insert([legacyPayload])
     .select()
     .single()
 
   if (legacyFallback.error) throw legacyFallback.error
-  console.warn("[createMember] last-resort legacy path used; privacy_accepted_at and QR fields were NOT written")
+  console.log("CREATE_MEMBER_LEGACY_FALLBACK_DONE", { email: legacyPayload.email })
+  // Nach Insert: Rücklesen und Log
+  const { data: inserted, error: readError } = await supabase
+    .from("members")
+    .select("id, email, member_pin")
+    .eq("email", legacyPayload.email)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (inserted && inserted.member_pin == null) {
+    console.log("CREATE_MEMBER_POSTREAD_MEMBER_PIN_NULL", {
+      id: inserted.id,
+      email: inserted.email,
+      insert_path: "legacy-fallback"
+    })
+  }
   return legacyFallback.data
 }
 

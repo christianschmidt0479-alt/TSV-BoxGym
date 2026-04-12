@@ -28,7 +28,11 @@ import { sendMemberVerificationMail } from "./mail/memberVerificationMail"
 
 export async function registerMemberService(input: RegisterMemberInput): Promise<RegisterMemberResult> {
   // Debug-Log: Einstieg Service
-  console.log("MEMBER_REGISTER_SERVICE_START", { email: input.email })
+  console.log("MEMBER_REGISTER_SERVICE_PASSWORD_PRESENT", {
+    email: input.email,
+    password_present: !!input.password,
+    password_length: input.password ? String(input.password).length : 0
+  })
 
   // 1. Eingaben validieren (nur Kernfelder, keine Altlogik)
   const firstNameResult = validateName(input.firstName, "Vorname")
@@ -87,7 +91,7 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
 
   // 3. Neues Mitglied anlegen (nur Kernfelder, keine Altlogik)
   try {
-    const created = await createMember({
+    const payload = {
       first_name: input.firstName.trim(),
       last_name: input.lastName.trim(),
       birthdate: input.birthDate,
@@ -96,8 +100,14 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
       phone: input.phone?.trim() || undefined,
       is_trial: false,
       base_group: input.baseGroup,
-      // Keine guardian_name, kein member_pin, keine Alt-/Sonderfelder
+      member_pin: input.password, // Minimaler Fix: Passwort als member_pin übergeben
+      // Keine guardian_name, keine Alt-/Sonderfelder
+    }
+    console.log("MEMBER_REGISTER_SERVICE_MEMBER_PIN_PRESENT", {
+      email: payload.email,
+      member_pin_present: !!payload.member_pin
     })
+    const created = await createMember(payload)
     if (!created || !created.id) {
       return { status: "error", error: "Mitglied konnte nicht angelegt werden." }
     }

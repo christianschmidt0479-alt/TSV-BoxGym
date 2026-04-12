@@ -5,12 +5,20 @@ import { parseTrainingGroup } from "@/lib/trainingGroups"
 import { registerMemberService } from "@/lib/memberRegisterService"
 
 export async function POST(request: Request) {
+    // Build-/Trace-Marker für Production-Log
+    console.log("MEMBER_REGISTER_TRACE 2026-04-12-A")
   try {
     if (!isAllowedOrigin(request)) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
     const body = await request.json()
+    // Logging: Request-Email, Passwort vorhanden, Länge
+    console.log("MEMBER_REGISTER_ROUTE_PASSWORD_PRESENT", {
+      email: body.email,
+      password_present: !!body.password,
+      password_length: body.password ? String(body.password).length : 0
+    })
     // Nur relevante Felder für den Service normalisieren
     const parsedGroup = parseTrainingGroup(body.baseGroup)
     const input = {
