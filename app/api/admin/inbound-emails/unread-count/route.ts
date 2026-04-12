@@ -30,29 +30,45 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const since = searchParams.get("since")
 
-    const supabase = createServerSupabaseServiceClient()
+    let supabase = null;
+    try {
+      supabase = createServerSupabaseServiceClient();
+    } catch (e) {
+      console.error("[admin/inbound-emails/unread-count] Supabase client error", e);
+      // Service unavailable, aber kein 500 für UI
+      return NextResponse.json({ ok: false, count: 0, error: "Service unavailable" }, { status: 200 });
+    }
 
     let query = supabase
       .from("inbound_emails")
-      .select("id", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true });
 
     if (since) {
-      const sinceDate = new Date(since)
+      const sinceDate = new Date(since);
       if (!isNaN(sinceDate.getTime())) {
-        query = query.gt("received_at", sinceDate.toISOString())
+        query = query.gt("received_at", sinceDate.toISOString());
+      } else {
+        // Ungültiges Datum: defensiv ignorieren
+        console.warn("[admin/inbound-emails/unread-count] Invalid since param", since);
       }
     }
 
-    const { count, error } = await query
-
-    if (error) {
-      console.error("[admin/inbound-emails/unread-count] DB query failed", error)
-      return jsonError("Konnte nicht geladen werden.", 500)
+    let count = 0;
+    try {
+      const result = await query;
+      if (result.error) {
+        console.error("[admin/inbound-emails/unread-count] DB query failed", result.error);
+        return NextResponse.json({ ok: false, count: 0, error: "DB error" }, { status: 200 });
+      }
+      count = result.count ?? 0;
+    } catch (e) {
+      console.error("[admin/inbound-emails/unread-count] Query exception", e);
+      return NextResponse.json({ ok: false, count: 0, error: "Query exception" }, { status: 200 });
     }
 
-    return NextResponse.json({ ok: true, count: count ?? 0 })
+    return NextResponse.json({ ok: true, count });
   } catch (error) {
-    console.error("[admin/inbound-emails/unread-count] Unexpected error", error)
-    return jsonError("Internal server error", 500)
+    console.error("[admin/inbound-emails/unread-count] Unexpected error", error);
+    return NextResponse.json({ ok: false, count: 0, error: "Unexpected error" }, { status: 200 });
   }
 }

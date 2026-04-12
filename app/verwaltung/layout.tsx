@@ -8,6 +8,7 @@ import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { AdminMobileNav } from "@/components/admin-mobile-nav"
 import { AdminTopNav } from "@/components/admin-top-nav"
 import { TrainerLogoutButton } from "@/components/trainer-logout-button"
+import { AdminSwitch } from "@/components/admin-switch"
 
 export default async function VerwaltungLayout({ children }: { children: ReactNode }) {
   const cookieStore = await cookies()
@@ -23,44 +24,51 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
       ],
     },
     {
-      title: "Mitglieder",
+      title: "Freigaben",
       items: [
         { href: "/verwaltung/freigaben", label: "Freigaben" },
+      ],
+    },
+    {
+      title: "Mitglieder",
+      items: [
         { href: "/verwaltung/mitglieder", label: "Mitglieder" },
+        ...(isAdmin ? [{ href: "/verwaltung/trainer", label: "Trainer" }] : []),
+        ...(isAdmin ? [{ href: "/verwaltung/personen", label: "Rollen" }] : []),
         ...(isAdmin ? [{ href: "/verwaltung/geburtstage", label: "Geburtstage" }] : []),
-        ...(isAdmin ? [{ href: "/verwaltung/personen", label: "Rollen" }, { href: "/verwaltung/trainer", label: "Trainer" }] : []),
       ],
     },
     {
       title: "Training",
       items: [
         { href: "/verwaltung/checkins", label: "Check-ins" },
-        { href: "/verwaltung/excel-abgleich", label: "Excel-Abgleich" },
         { href: "/verwaltung/gruppen", label: "Gruppen" },
         { href: "/verwaltung/wettkampf", label: "Wettkampf" },
         { href: "/verwaltung/qr-codes", label: "QR-Codes" },
       ],
     },
-    ...(isAdmin
-      ? [
-          {
-            title: "KI Trainingstool",
-            items: [
-              { href: "/verwaltung/trainingsplanung", label: "Trainingsplanung" },
-              { href: "/verwaltung/trainingsplanung/vorlagen", label: "Vorlagenbibliothek" },
-              { href: "/verwaltung/trainingsplanung/ki-basisprofil", label: "KI-Basisprofil" },
-            ],
-          },
-        ]
-      : []),
+    {
+      title: "Kommunikation",
+      items: [
+        { href: "/verwaltung/postfach", label: "Postfach" },
+      ],
+    },
+    {
+      title: "Tools",
+      items: [
+        { href: "/verwaltung/excel-abgleich", label: "Excel-Abgleich" },
+        ...(isAdmin ? [{ href: "/verwaltung/trainingsplanung", label: "Trainingsplanung" }] : []),
+        ...(isAdmin ? [{ href: "/verwaltung/trainingsplanung/vorlagen", label: "Vorlagenbibliothek" }] : []),
+        ...(isAdmin ? [{ href: "/verwaltung/trainingsplanung/ki-basisprofil", label: "KI-Basisprofil" }] : []),
+      ],
+    },
     {
       title: "System",
       items: [
-        { href: "/verwaltung/postfach", label: "Postfach" },
         ...(isAdmin ? [{ href: "/verwaltung/sicherheit", label: "Sicherheit" }] : []),
         ...(isAdmin ? [{ href: "/verwaltung/einstellungen", label: "Einstellungen" }] : []),
-      ...(isAdmin ? [{ href: '/verwaltung/ki', label: 'KI' }] : []),
-        ...(isAdmin ? [{ href: '/verwaltung/fehler', label: 'Fehler' }] : []),
+        ...(isAdmin ? [{ href: "/verwaltung/ki", label: "KI" }] : []),
+        ...(isAdmin ? [{ href: "/verwaltung/fehler", label: "Fehler" }] : []),
       ],
     },
   ]
@@ -113,6 +121,13 @@ export default async function VerwaltungLayout({ children }: { children: ReactNo
         </div>
       </header>
 
+      {/* Admin-Umschalter: nur im Adminbereich sichtbar, temporär */}
+      <div className="mx-auto max-w-7xl px-4 md:px-6">
+        {/** Umschalter: aktiv 'alt' */}
+        <div className="pt-2 pb-1">
+          <AdminSwitch current="alt" />
+        </div>
+      </div>
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 md:px-6 md:py-8">
         {children}
       </main>

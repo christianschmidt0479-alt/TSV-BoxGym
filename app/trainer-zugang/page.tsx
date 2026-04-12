@@ -176,6 +176,19 @@ export default function TrainerZugangPage() {
     setActiveRole(payload.role)
     if (payload.mustChangePassword) {
       window.location.assign("/trainer/passwort-aendern")
+      return
+    }
+    // next-Parameter aus der URL holen
+    let next = null
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const n = params.get("next")
+      if (n && n.startsWith("/")) {
+        next = n
+      }
+    } catch {}
+    if (next) {
+      window.location.assign(next)
     } else {
       window.location.assign(payload.role === "admin" ? "/verwaltung" : "/trainer")
     }

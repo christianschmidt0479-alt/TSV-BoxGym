@@ -28,8 +28,15 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
       id: "uebersicht",
       label: "Übersicht",
       items: [
-        { label: "Heute", href: "/verwaltung/heute" },
         { label: "Start", href: "/verwaltung" },
+        { label: "Heute", href: "/verwaltung/heute" },
+      ],
+    },
+    {
+      id: "freigaben",
+      label: "Freigaben",
+      items: [
+        { label: "Freigaben", href: "/verwaltung/freigaben", badgeKey: "freigaben" },
       ],
     },
     {
@@ -37,11 +44,10 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
       label: "Mitglieder",
       badgeSectionKey: "mitglieder",
       items: [
-        { label: "Freigaben", href: "/verwaltung/freigaben", badgeKey: "freigaben" },
         { label: "Mitglieder", href: "/verwaltung/mitglieder" },
-        { label: "QR-Codes", href: "/verwaltung/qr-codes" },
-        ...(isAdmin ? [{ label: "Geburtstage", href: "/verwaltung/geburtstage" }] : []),
+        ...(isAdmin ? [{ label: "Trainer", href: "/verwaltung/trainer" }] : []),
         ...(isAdmin ? [{ label: "Rollen", href: "/verwaltung/personen" }] : []),
+        ...(isAdmin ? [{ label: "Geburtstage", href: "/verwaltung/geburtstage" }] : []),
       ],
     },
     {
@@ -51,41 +57,37 @@ function buildMenu(isAdmin: boolean): MenuSection[] {
         { label: "Check-ins", href: "/verwaltung/checkins" },
         { label: "Gruppen", href: "/verwaltung/gruppen" },
         { label: "Wettkampf", href: "/verwaltung/wettkampf" },
+        { label: "QR-Codes", href: "/verwaltung/qr-codes" },
       ],
     },
     {
-      id: "verwaltung",
-      label: "Verwaltung",
-      badgeSectionKey: "verwaltung",
+      id: "kommunikation",
+      label: "Kommunikation",
       items: [
         { label: "Postfach", href: "/verwaltung/postfach", badgeKey: "postfach" },
-        ...(isAdmin ? [{ label: "Trainer", href: "/verwaltung/trainer" }] : []),
-        ...(isAdmin ? [{ label: "Einstellungen", href: "/verwaltung/einstellungen" }] : []),
       ],
     },
-    ...(isAdmin
-      ? [
-          {
-            id: "system",
-            label: "System",
-            badgeSectionKey: "system",
-            items: [
-              { label: "Sicherheit", href: "/verwaltung/sicherheit", badgeKey: "sicherheit" },
-              { label: "KI", href: "/verwaltung/ki" },
-              { label: "Fehler", href: "/verwaltung/fehler", badgeKey: "fehler" },
-            ],
-          },
-          {
-            id: "ki-trainingstool",
-            label: "KI Trainingstool",
-            items: [
-              { label: "Trainingsplanung", href: "/verwaltung/trainingsplanung" },
-              { label: "Vorlagenbibliothek", href: "/verwaltung/trainingsplanung/vorlagen" },
-              { label: "KI-Basisprofil", href: "/verwaltung/trainingsplanung/ki-basisprofil" },
-            ],
-          },
-        ]
-      : []),
+    {
+      id: "tools",
+      label: "Tools",
+      items: [
+        { label: "Excel-Abgleich", href: "/verwaltung/excel-abgleich" },
+        ...(isAdmin ? [{ label: "Trainingsplanung", href: "/verwaltung/trainingsplanung" }] : []),
+        ...(isAdmin ? [{ label: "Vorlagenbibliothek", href: "/verwaltung/trainingsplanung/vorlagen" }] : []),
+        ...(isAdmin ? [{ label: "KI-Basisprofil", href: "/verwaltung/trainingsplanung/ki-basisprofil" }] : []),
+      ],
+    },
+    {
+      id: "system",
+      label: "System",
+      badgeSectionKey: "system",
+      items: [
+        ...(isAdmin ? [{ label: "Sicherheit", href: "/verwaltung/sicherheit", badgeKey: "sicherheit" }] : []),
+        ...(isAdmin ? [{ label: "Einstellungen", href: "/verwaltung/einstellungen" }] : []),
+        ...(isAdmin ? [{ label: "KI", href: "/verwaltung/ki" }] : []),
+        ...(isAdmin ? [{ label: "Fehler", href: "/verwaltung/fehler", badgeKey: "fehler" }] : []),
+      ],
+    },
   ]
 }
 
