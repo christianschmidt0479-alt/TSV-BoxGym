@@ -213,43 +213,24 @@ export default function Home() {
   return (
     <div className={`min-h-screen ${brand.light} text-zinc-900`}>
 
-      <header className="mx-auto flex max-w-5xl flex-col gap-2 p-4 md:p-8">
-        <div className="flex w-full items-center justify-between rounded-[24px] bg-white p-3 shadow-sm">
-          <img
-            src="/assets/logos/boxgym-claim.png"
-            alt="TSV Falkensee BoxGym"
-            className="h-8 w-auto max-w-[180px] sm:h-10"
-          />
-          <div className="flex items-center gap-2 text-sm text-zinc-600">
-            <span className="capitalize">{now ? formatDisplayWeekday(now) : "—"}</span>
-            <span>·</span>
-            <span>{liveDateString(now)}</span>
-            <span>·</span>
-            <span>{liveTimeString(now)}</span>
-          </div>
-        </div>
-      </header>
+
 
       <main className="mx-auto flex max-w-5xl flex-col gap-5 p-4 pt-0 md:p-8 md:pt-0">
         <section className="overflow-hidden rounded-[28px] shadow-xl">
           <div className={`${brand.dark} relative px-5 py-6 text-white sm:px-6 sm:py-8 md:px-8`}>
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(230,51,42,0.25),transparent_35%)]" />
-            <div className="relative">
-              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Willkommen im TSV BoxGym</h1>
-              <p className="max-w-2xl text-sm leading-6 text-blue-50/85 sm:text-base mt-2">
+            <div className="relative flex flex-col items-center">
+              <img
+                src="/assets/logos/boxgym-kompakt.png"
+                alt="TSV BoxGym Kompakt Logo"
+                className="mx-auto mb-4 w-[72px] sm:w-[90px] md:w-[100px] h-auto"
+                style={{ display: 'block' }}
+              />
+              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl text-center">Willkommen im TSV BoxGym</h1>
+              <p className="max-w-2xl text-sm leading-6 text-blue-50/85 sm:text-base mt-2 text-center">
                 Check-in, Registrierung und wichtige Zugänge – alles an einem Ort.
               </p>
             </div>
-            <Card className="mt-6 rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
-              <CardContent className="grid gap-2.5 p-3 sm:grid-cols-2 sm:p-3.5">
-                {heroCards.map((card) => (
-                  <div key={card.id} className="min-h-[64px] rounded-2xl bg-white/10 p-2">
-                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">{card.label}</div>
-                    <div className="mt-1 text-sm font-semibold leading-tight">{card.value}</div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
           </div>
         </section>
         <section className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
