@@ -221,8 +221,8 @@ export default function Home() {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(230,51,42,0.25),transparent_35%)]" />
             <div className="relative flex flex-col items-center">
               <img
-                src="/assets/logos/boxgym-claim.png"
-                alt="TSV BoxGym Claim Logo"
+                src="/boxgym-headline-old.png"
+                alt="TSV BoxGym Headline Old Logo"
                 className="mx-auto mb-4 max-w-[220px] w-full h-auto"
                 style={{ display: 'block' }}
               />
