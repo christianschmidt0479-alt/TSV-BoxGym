@@ -212,9 +212,14 @@ export default function Home() {
 
   return (
     <div className={`min-h-screen ${brand.light} text-zinc-900`}>
-      <div className="mx-auto flex max-w-5xl flex-col gap-5 p-4 md:p-8">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] bg-white p-3 shadow-sm">
-          <div className="rounded-2xl bg-[#154c83] px-4 py-2 text-sm font-semibold text-white">Startseite</div>
+
+      <header className="mx-auto flex max-w-5xl flex-col gap-2 p-4 md:p-8">
+        <div className="flex w-full items-center justify-between rounded-[24px] bg-white p-3 shadow-sm">
+          <img
+            src="/assets/logos/boxgym-claim.png"
+            alt="TSV Falkensee BoxGym"
+            className="h-8 w-auto max-w-[180px] sm:h-10"
+          />
           <div className="flex items-center gap-2 text-sm text-zinc-600">
             <span className="capitalize">{now ? formatDisplayWeekday(now) : "—"}</span>
             <span>·</span>
@@ -223,49 +228,31 @@ export default function Home() {
             <span>{liveTimeString(now)}</span>
           </div>
         </div>
+      </header>
 
-        <div className="overflow-hidden rounded-[28px] shadow-xl">
+      <main className="mx-auto flex max-w-5xl flex-col gap-5 p-4 pt-0 md:p-8 md:pt-0">
+        <section className="overflow-hidden rounded-[28px] shadow-xl">
           <div className={`${brand.dark} relative px-5 py-6 text-white sm:px-6 sm:py-8 md:px-8`}>
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(230,51,42,0.25),transparent_35%)]" />
-            <div className="relative grid gap-4 lg:grid-cols-[1.35fr_0.9fr] lg:items-center">
-              <div className="space-y-4">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-sm">
-                  <ShieldCheck className="h-4 w-4" />
-                  <span>TSV Falkensee · BoxGym</span>
-                </div>
-                <div className="flex items-center gap-4 sm:gap-5">
-                  <div className="space-y-2">
-                    <img 
-                      src="/assets/logos/boxgym-claim.png"
-                      alt="TSV Falkensee BoxGym"
-                      className="mx-auto mb-4 max-w-[260px] w-full h-auto"
-                    />
-                    <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Willkommen im TSV BoxGym</h1>
-                    <p className="max-w-2xl text-sm leading-6 text-blue-50/85 sm:text-base">
-                      Check-in, Registrierung und wichtige Zugänge schnell und übersichtlich.
-                    </p>
-                    <p className="mt-1 max-w-2xl truncate text-xs text-white/70 sm:text-sm">
-                      Check-in im Gym ausschließlich per QR-Code
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
-                <CardContent className="grid gap-2.5 p-3 sm:grid-cols-2 sm:p-3.5">
-                  {heroCards.map((card) => (
-                    <div key={card.id} className="min-h-[64px] rounded-2xl bg-white/10 p-2">
-                      <div className="text-[10px] uppercase tracking-wide text-zinc-300">{card.label}</div>
-                      <div className="mt-1 text-sm font-semibold leading-tight">{card.value}</div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
+            <div className="relative">
+              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Willkommen im TSV BoxGym</h1>
+              <p className="max-w-2xl text-sm leading-6 text-blue-50/85 sm:text-base mt-2">
+                Check-in, Registrierung und wichtige Zugänge – alles an einem Ort.
+              </p>
             </div>
+            <Card className="mt-6 rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
+              <CardContent className="grid gap-2.5 p-3 sm:grid-cols-2 sm:p-3.5">
+                {heroCards.map((card) => (
+                  <div key={card.id} className="min-h-[64px] rounded-2xl bg-white/10 p-2">
+                    <div className="text-[10px] uppercase tracking-wide text-zinc-300">{card.label}</div>
+                    <div className="mt-1 text-sm font-semibold leading-tight">{card.value}</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </div>
-        </div>
-
-        <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
+        </section>
+        <section className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
           {navigationCards.map((card) => {
             const Icon = card.icon
             return (
@@ -292,8 +279,10 @@ export default function Home() {
               </Button>
             )
           })}
-        </div>
-      </div>
+        </section>
+      </main>
+
+      {/* entfernt: doppelter Navigations-Block */}
     </div>
   )
 }

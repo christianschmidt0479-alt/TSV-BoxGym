@@ -46,12 +46,12 @@ export function buildMemberMail({
           <tr>
             <td style="padding:32px 24px 0 24px;text-align:center;">
               <img 
-                src="https://www.tsvboxgym.de/assets/logos/boxgym-kompakt.png" 
-                alt="TSV BoxGym"
-                style="display:block;margin:0 auto 20px auto;max-width:140px;height:auto;"
+                src="https://www.tsvboxgym.de/assets/logos/boxgym-kompakt.png"
+                alt="TSV BoxGym Kompakt Logo"
+                style="display:block;margin:0 auto 16px auto;width:100%;max-width:110px;height:auto;"
               />
-              <div style="font-size:22px;font-weight:700;color:#154c83;letter-spacing:0.5px;margin-bottom:8px;">TSV Falkensee</div>
-              <div style="font-size:15px;font-weight:500;color:#154c83;opacity:0.7;margin-bottom:24px;">TSV BoxGym</div>
+              <div style="font-size:22px;font-weight:700;color:#154c83;letter-spacing:0.5px;margin-bottom:4px;">TSV Falkensee</div>
+              <div style="font-size:16px;font-weight:500;color:#154c83;opacity:0.8;margin-bottom:24px;">TSV BoxGym</div>
               <h1 style="font-size:22px;font-weight:700;color:#222;margin:0 0 16px 0;line-height:1.2;">${title}</h1>
               <p style="font-size:16px;line-height:1.5;margin:0 0 24px 0;color:#222;">${intro}</p>
               ${hint ? `<div style="font-size:15px;color:#154c83;margin-bottom:18px;">${hint}</div>` : ""}
