@@ -223,7 +223,7 @@ export default function Home() {
               <img
                 src="/boxgym-headline-old.png"
                 alt="TSV BoxGym Headline Old Logo"
-                className="mx-auto mb-4 max-w-[220px] w-full h-auto"
+                className="mx-auto mb-4 max-w-[88px] w-full h-auto"
                 style={{ display: 'block' }}
               />
               <h1 className="text-3xl font-bold tracking-tight sm:text-4xl text-center">Willkommen im TSV BoxGym</h1>
