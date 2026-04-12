@@ -199,7 +199,12 @@ export async function POST(request: Request) {
       }
 
       const member = (await findMemberByEmail(email)) as MemberPasswordResetRow | null
-      console.log("PASSWORD_RESET_MEMBER_FOUND", { found: !!(member?.id && member.email && member.email_verified === true) ? "yes" : "no", id: member?.id || null, email: member?.email || null })
+      console.log("PASSWORD_RESET_MEMBER_FOUND", {
+        found: !!(member?.id && member.email) ? "yes" : "no",
+        id: member?.id || null,
+        email: member?.email || null,
+        email_verified: member?.email_verified === true ? "yes" : "no"
+      })
       if (!member?.id || !member.email || member.email_verified !== true) {
         return NextResponse.json({
           ok: true,
@@ -237,7 +242,13 @@ export async function POST(request: Request) {
         })
         // MAIL_SERVICE_SEND_START und MAIL_SEND_SUCCESS werden im Service geloggt
       } catch (err) {
-        console.error("MAIL_SEND_ERROR", { id: member.id, email: member.email, error: err && err.message ? err.message : String(err) })
+        let errorMsg = "";
+        if (err && typeof err === "object" && "message" in err && typeof (err as any).message === "string") {
+          errorMsg = (err as any).message;
+        } else {
+          errorMsg = String(err);
+        }
+        console.error("MAIL_SEND_ERROR", { id: member.id, email: member.email, error: errorMsg })
       }
 
       return NextResponse.json({
