@@ -205,12 +205,14 @@ export async function POST(request: Request) {
         email: member?.email || null,
         email_verified: member?.email_verified === true ? "yes" : "no"
       })
-      if (!member?.id || !member.email || member.email_verified !== true) {
+
+      if (!member?.id || !member.email) {
         return NextResponse.json({
           ok: true,
-          message: "Wenn ein passendes Mitglied mit bestätigter E-Mail existiert, wurde ein Reset-Link versendet.",
+          message: "Wenn ein passendes Mitglied existiert, wurde ein Reset-Link versendet.",
         })
       }
+      console.log("PASSWORD_RESET_ALLOW_UNVERIFIED", { id: member.id, email: member.email, email_verified: member.email_verified === true ? "yes" : "no" })
 
       const token = randomBytes(32).toString("hex")
       const expiresAt = new Date(Date.now() + MEMBER_PASSWORD_RESET_WINDOW_MS).toISOString()
