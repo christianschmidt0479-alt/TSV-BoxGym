@@ -72,71 +72,14 @@ export default function MitgliederFilterClientWrapper({ members }: Props) {
                   <td className="px-3 py-2 whitespace-nowrap">{m.email || <span className="text-zinc-400">–</span>}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{m.base_group || <span className="text-zinc-400">–</span>}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    return (
-                      <>
-                        <MitgliederFilterBar members={members} onFilter={handleFilter} />
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full bg-white rounded shadow-sm border border-zinc-200">
-                            <thead>
-                              <tr className="bg-zinc-50 text-zinc-700 text-sm">
-                                <th className="px-3 py-2 text-left font-semibold">Name</th>
-                                <th className="px-3 py-2 text-left font-semibold">E-Mail</th>
-                                <th className="px-3 py-2 text-left font-semibold">Gruppe</th>
-                                <th className="px-3 py-2 text-left font-semibold">Status</th>
-                                <th className="px-3 py-2 text-left font-semibold">Registriert am</th>
-                                <th className="px-3 py-2 text-left font-semibold"></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {filtered.length === 0 ? (
-                                <tr>
-                                  <td colSpan={6} className="text-zinc-400 text-center py-8">Keine Mitglieder gefunden</td>
-                                </tr>
-                              ) : (
-                                filtered
-                                  .filter(Boolean)
-                                  .filter((m) => m && typeof m === "object" && m.id)
-                                  .map((m) => {
-                                    const id = m.id;
-                                    const name = m.name || `${m.first_name || ""} ${m.last_name || ""}`.trim() || "–";
-                                    const email = m.email || <span className="text-zinc-400">–</span>;
-                                    const group = m.base_group || <span className="text-zinc-400">–</span>;
-                                    const status = m.is_approved ? (
-                                      <StatusBadge color="green">Freigegeben</StatusBadge>
-                                    ) : (
-                                      <StatusBadge color="yellow">Offen</StatusBadge>
-                                    );
-                                    const emailStatus = m.email_verified ? (
-                                      <StatusBadge color="green" className="ml-2">E-Mail bestätigt</StatusBadge>
-                                    ) : (
-                                      <StatusBadge color="yellow" className="ml-2">E-Mail offen</StatusBadge>
-                                    );
-                                    return (
-                                      <tr key={id} className="border-t border-zinc-100 hover:bg-zinc-50">
-                                        <td className="px-3 py-2 whitespace-nowrap font-medium">{name}</td>
-                                        <td className="px-3 py-2 whitespace-nowrap">{email}</td>
-                                        <td className="px-3 py-2 whitespace-nowrap">{group}</td>
-                                        <td className="px-3 py-2 whitespace-nowrap">
-                                          {status}
-                                          {emailStatus}
-                                        </td>
-                                        <td className="px-3 py-2 whitespace-nowrap">{formatDate(m.birthdate)}</td>
-                                        <td className="px-3 py-2 whitespace-nowrap">
-                                          {id ? (
-                                            <Link href={`/verwaltung-neu/mitglieder/${id}`} className="inline-block px-3 py-1 rounded bg-zinc-700 text-white text-xs font-medium hover:bg-zinc-900">Öffnen</Link>
-                                          ) : (
-                                            <span className="text-zinc-400">–</span>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    );
+                    <StatusBadge color={m.is_approved ? "green" : "yellow"}>
+                      {m.is_approved ? "Freigegeben" : "Offen"}
+                    </StatusBadge>
+                    {m.email_verified ? (
+                      <StatusBadge color="green" className="ml-2">E-Mail bestätigt</StatusBadge>
+                    ) : (
+                      <StatusBadge color="yellow" className="ml-2">E-Mail offen</StatusBadge>
+                    )}
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap">{formatDate(m.birthdate)}</td>
                           <td className="px-3 py-2 whitespace-nowrap">
