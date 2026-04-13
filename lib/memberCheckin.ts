@@ -1,3 +1,11 @@
+// Ferienmodus: Erlaubte Gruppen (ohne Boxzwerge)
+export const FERIEN_CHECKIN_GROUPS = [
+  "Basic 10 - 14 Jahre",
+  "Basic 15 - 18 Jahre",
+  "Basic Ü18",
+  "L-Gruppe",
+] as const
+
 // --- Zentrale Eligibility-Funktion für Member-Check-in ---
 
 export type CheckinEligibilityReason =

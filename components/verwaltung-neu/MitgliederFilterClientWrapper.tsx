@@ -13,6 +13,7 @@ function formatDate(dateString: string | null | undefined) {
 import { useState } from "react";
 import { MitgliederFilterBar, FilterValues, Member } from "./MitgliederFilterBar";
 import Link from "next/link";
+import { StatusBadge } from "./StatusBadge";
 
 type Props = {
   members: Member[];
@@ -101,14 +102,14 @@ export default function MitgliederFilterClientWrapper({ members }: Props) {
                                     const email = m.email || <span className="text-zinc-400">–</span>;
                                     const group = m.base_group || <span className="text-zinc-400">–</span>;
                                     const status = m.is_approved ? (
-                                      <span className="text-green-700">Freigegeben</span>
+                                      <StatusBadge color="green">Freigegeben</StatusBadge>
                                     ) : (
-                                      <span className="text-orange-700">Offen</span>
+                                      <StatusBadge color="yellow">Offen</StatusBadge>
                                     );
                                     const emailStatus = m.email_verified ? (
-                                      <span className="ml-2 text-green-600 text-xs">E-Mail bestätigt</span>
+                                      <StatusBadge color="green" className="ml-2">E-Mail bestätigt</StatusBadge>
                                     ) : (
-                                      <span className="ml-2 text-orange-600 text-xs">E-Mail offen</span>
+                                      <StatusBadge color="yellow" className="ml-2">E-Mail offen</StatusBadge>
                                     );
                                     return (
                                       <tr key={id} className="border-t border-zinc-100 hover:bg-zinc-50">

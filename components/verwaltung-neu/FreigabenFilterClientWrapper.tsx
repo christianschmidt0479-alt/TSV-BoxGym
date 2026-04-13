@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import FreigabenFilterBar, { FreigabenFilterValues } from "./FreigabenFilterBar";
 import FreigabenActions from "./FreigabenActions";
+import { StatusBadge } from "./StatusBadge";
 
 type Member = {
   id: string | number;
@@ -63,10 +64,12 @@ export default function FreigabenFilterClientWrapper({ members, handleApproveSer
                   )}
                 </div>
                 <div className="text-xs mt-1 flex gap-2">
-                  <span className={m.email_verified ? "text-green-700 font-medium" : "text-orange-700 font-medium"}>
-                    {m.email_verified ? "E-Mail bestätigt" : "E-Mail offen"}
-                  </span>
-                  <span className="text-zinc-700 font-medium">/ Freigabe offen</span>
+                  {m.email_verified ? (
+                    <StatusBadge color="green">E-Mail bestätigt</StatusBadge>
+                  ) : (
+                    <StatusBadge color="yellow">E-Mail offen</StatusBadge>
+                  )}
+                  <StatusBadge color="yellow">Freigabe offen</StatusBadge>
                 </div>
               </div>
               <FreigabenActions member={m} handleApproveServer={handleApproveServer} />
