@@ -14,7 +14,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { groupOptions } from "@/lib/boxgymSessions"
 import { isValidMemberPassword, MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
-import { normalizeTrainingGroupOrFallback } from "@/lib/trainingGroups"
+import { normalizeTrainingGroupOrFallback, TrainingGroup } from "@/lib/trainingGroups"
 
 function normalizeBirthDateInput(value?: string | null) {
   const trimmed = (value ?? "").trim()
@@ -73,7 +73,8 @@ export default function MitgliedRegistrierenPage() {
     setRegisterEmail(getStoredString("tsv_register_email"))
     setRegisterPhone(getStoredString("tsv_register_phone"))
     setRegisterGuardianName(getStoredString("tsv_register_guardian_name"))
-    setRegisterBaseGroup(normalizeTrainingGroupOrFallback(getStoredString("tsv_register_base_group"), groupOptions[0]))
+    const stored = getStoredString("tsv_register_base_group")
+    if (stored) setRegisterBaseGroup(normalizeTrainingGroupOrFallback(stored, groupOptions[0]))
   }, [])
 
   useEffect(() => {
@@ -306,7 +307,7 @@ export default function MitgliedRegistrierenPage() {
                 <Label>Stammgruppe <span className="ml-1 text-red-500">*</span></Label>
                 <Select
                   value={registerBaseGroup}
-                  onValueChange={(value) => setRegisterBaseGroup(normalizeTrainingGroupOrFallback(value, groupOptions[0]))}
+                  onValueChange={(value) => setRegisterBaseGroup(value as TrainingGroup)}
                 >
                   <SelectTrigger className="rounded-2xl border-zinc-300 bg-white text-zinc-900">
                     <SelectValue placeholder="Gruppe auswählen" />
