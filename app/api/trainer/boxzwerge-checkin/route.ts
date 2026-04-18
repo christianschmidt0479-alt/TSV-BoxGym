@@ -18,7 +18,7 @@ function getServerSupabase() {
   return createServerSupabaseServiceClient()
 }
 
-const BOXZWERGE_GROUP = "Boxzwerge"
+const BOXZWERGE_GROUP = "Boxzwerge" // legacy, wird soft-disabled
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const MONTH_KEY_PATTERN = /^\d{4}-\d{2}$/
 const TIME_PATTERN = /^\d{2}:\d{2}(:\d{2})?$/
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     if (
       !memberId ||
       !groupName ||
-      normalizedGroup !== BOXZWERGE_GROUP ||
+      false ||
       !date ||
       !isValidCheckinDate(date) ||
       !time ||
@@ -161,7 +161,7 @@ export async function DELETE(request: Request) {
       .maybeSingle()
 
     if (checkinError) throw checkinError
-    if (!checkin || normalizeTrainingGroup(checkin.group_name) !== BOXZWERGE_GROUP) {
+    if (!checkin) {
       return new NextResponse("Checkin not found", { status: 404 })
     }
 

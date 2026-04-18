@@ -43,7 +43,7 @@ export default async function MitgliedDetailPage({ params }: { params: { id: str
         </div>
         <div>
           <div className="text-xs text-zinc-500 mb-1">Registriert am</div>
-          <div className="text-base text-zinc-800">{formatDate(member.created_at)}</div>
+          <div className="text-base text-zinc-800">{formatDate(member.created_at ?? null)}</div>
         </div>
       </div>
     </div>

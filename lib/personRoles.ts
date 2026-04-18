@@ -40,7 +40,7 @@ function getDisplayName(input?: {
 }
 
 function isCompetitionMember(member?: RoleMemberRecord | null) {
-  return !!member?.is_competition_member && normalizeTrainingGroup(member.base_group) !== "Boxzwerge"
+  return !!member?.is_competition_member
 }
 
 export function buildPersonRoleProfiles(

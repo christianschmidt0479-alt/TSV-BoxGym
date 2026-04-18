@@ -76,7 +76,7 @@ async function readResponseError(response: Response, fallback: string) {
 }
 
 function isBoxzwergeMember(member?: Pick<MemberRecord, "base_group"> | null) {
-  return normalizeTrainingGroup(member?.base_group) === "Boxzwerge"
+  return false
 }
 
 function getMedicalExamStatus(dateString: string | null | undefined) {
@@ -264,7 +264,7 @@ export default function WettkampfPage() {
   }, [authResolved, trainerRole])
 
   const eligibleMembers = useMemo(
-    () => members.filter((member) => !member.is_trial).filter((member) => !isBoxzwergeMember(member)),
+    () => members.filter((member) => !member.is_trial),
     [members]
   )
 

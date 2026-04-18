@@ -3,7 +3,6 @@ export const TRAINING_GROUPS = [
   "Basic 15 - 18 Jahre",
   "Basic Ü18",
   "L-Gruppe",
-  "Boxzwerge",
 ] as const
 
 export type TrainingGroup = (typeof TRAINING_GROUPS)[number]
@@ -38,9 +37,12 @@ export function parseTrainingGroup(value?: string | null): TrainingGroup | null 
 }
 
 export function normalizeTrainingGroup(value?: string | null): TrainingGroup | "" {
-  // Boxzwerge-Logik stillgelegt
-  return ""
+  const sanitized = sanitizeTrainingGroup(value)
+  if (sanitized === "Boxzwerge") return ""
+  return (TRAINING_GROUPS.find((group) => group === sanitized) ?? "") as TrainingGroup | ""
 }
+
+
 
 export function areEquivalentTrainingGroups(left?: string | null, right?: string | null) {
   const normalizedLeft = normalizeTrainingGroup(left)

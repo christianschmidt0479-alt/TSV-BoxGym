@@ -281,7 +281,7 @@ async function readResponseError(response: Response, fallback: string) {
 }
 
 function isBoxzwergeMember(member?: Pick<MemberRecord, "base_group"> | null) {
-  return normalizeTrainingGroup(member?.base_group) === "Boxzwerge"
+  return false
 }
 
 function compareMemberGroupNames(left: string, right: string) {

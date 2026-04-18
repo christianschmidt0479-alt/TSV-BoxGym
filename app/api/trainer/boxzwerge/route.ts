@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
@@ -10,6 +11,12 @@ function getServerSupabase() {
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 export async function GET(request: Request) {
+    // Soft-Disable: Boxzwerge
+    const { searchParams } = new URL(request.url)
+    const group = searchParams.get("group") || searchParams.get("base_group")
+    if (group === "Boxzwerge") {
+      return NextResponse.json({ data: [] })
+    }
   try {
     if (!isAllowedOrigin(request)) {
       return new NextResponse("Forbidden", { status: 403 })

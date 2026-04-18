@@ -368,7 +368,7 @@ export async function POST(request: Request) {
       }
 
       const nextIsCompetitionMember =
-        normalizeTrainingGroup(currentMember.base_group) === "Boxzwerge" ? false : body.isCompetitionMember
+        body.isCompetitionMember
 
       const updatePayload: Record<string, unknown> = {
         is_competition_member: nextIsCompetitionMember,

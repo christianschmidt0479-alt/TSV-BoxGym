@@ -292,7 +292,7 @@ export default function TrainerDashboardPage() {
 
   const trainerAssistMembers = useMemo(() => {
     return memberRows.filter(
-      (member) => (normalizeTrainingGroup(member.base_group) || member.base_group) !== "Boxzwerge" && member.needs_trainer_assist_checkin
+      (member) => member.needs_trainer_assist_checkin
     ).length
   }, [memberRows])
 
@@ -344,11 +344,7 @@ export default function TrainerDashboardPage() {
         title: "Wettkampf",
         description: "Aktive und inaktive Wettkämpfer aufrufen.",
       },
-      {
-        href: "/trainer/boxzwerge",
-        title: "Boxzwerge",
-        description: "Kinder einchecken und Kontakte prüfen.",
-      },
+      // Boxzwerge-Link entfernt
     ]
   }, [])
 
