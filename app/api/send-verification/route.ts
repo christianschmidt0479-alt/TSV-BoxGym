@@ -105,7 +105,7 @@ export async function POST(request: Request) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
-    const { purpose = "verification", email, name, link, kind, group } = (await request.json()) as SendVerificationBody
+    const { purpose = "verification", email, name, link, kind, group, token } = (await request.json()) as SendVerificationBody & { token?: string }
     const normalizedEmail = email?.trim().toLowerCase() ?? ""
     const normalizedName = name?.trim() ?? ""
     const normalizedKind = normalizeMailKind(kind)
@@ -258,6 +258,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, queued: true })
     }
 
+    // Neuer Flow: Wenn token vorhanden, nutze neues Template
+    if (purpose === "verification" && token) {
+      const emailValidation = validateEmail(normalizedEmail)
+      if (!emailValidation.valid) {
+        return new NextResponse(emailValidation.error || "Invalid email", { status: 400 })
+      }
+      await sendVerificationEmail({ email: normalizedEmail, token })
+      return NextResponse.json({ ok: true })
+    }
+
+    // Alter Fallback: Link-basiert
     if (!normalizedEmail || !link) {
       return new NextResponse("Missing email or link", { status: 400 })
     }

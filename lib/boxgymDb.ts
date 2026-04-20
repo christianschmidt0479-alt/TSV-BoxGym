@@ -530,10 +530,17 @@ export async function updateMemberContactData(
   memberId: string,
   input: { email?: string; phone?: string; guardian_name?: string }
 ) {
-  const payload = {
-    email: input.email || null,
-    phone: input.phone || null,
-    guardian_name: input.guardian_name || null,
+
+  // Defensive: Nur Felder schreiben, die wirklich gesetzt und nicht leer sind
+  const payload: Record<string, unknown> = {}
+  if (typeof input.email === "string" && input.email.trim()) {
+    payload.email = input.email.trim()
+  }
+  if (typeof input.phone === "string" && input.phone.trim()) {
+    payload.phone = input.phone.trim()
+  }
+  if (typeof input.guardian_name === "string" && input.guardian_name.trim()) {
+    payload.guardian_name = input.guardian_name.trim()
   }
 
   const primary = await supabase
@@ -566,9 +573,20 @@ export async function updateMemberRegistrationData(
   memberId: string,
   input: Record<string, unknown> & { guardian_name?: string | null }
 ) {
-  const normalizedInput = { ...input }
-  if (typeof normalizedInput.member_pin === "string" && normalizedInput.member_pin.trim()) {
-    normalizedInput.member_pin = await hashMemberPinValue(normalizedInput.member_pin)
+
+  // Defensive: Nur Felder schreiben, die wirklich gesetzt und nicht leer sind
+  const normalizedInput: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (key === "email" || key === "base_group") {
+      if (typeof value === "string" && value.trim()) {
+        normalizedInput[key] = value.trim()
+      }
+      // Sonst: Feld nicht setzen
+    } else if (key === "member_pin" && typeof value === "string" && value.trim()) {
+      normalizedInput.member_pin = await hashMemberPinValue(value)
+    } else if (value !== undefined && value !== null && !(typeof value === "string" && value.trim() === "")) {
+      normalizedInput[key] = value
+    }
   }
 
   const primary = await supabase
