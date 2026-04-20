@@ -630,6 +630,7 @@ export async function POST(request: Request) {
 
       // Token gültig, Verifizierung durchführen
       let member = null;
+
       try {
         const { data, error } = await supabase
           .from("members")
@@ -643,26 +644,22 @@ export async function POST(request: Request) {
           .select("id, email_verified")
           .maybeSingle();
         if (error) {
-          if (process.env.NODE_ENV === "development") {
-            // eslint-disable-next-line no-console
-            console.error("VERIFY_FAILED", { error });
-          }
-          return new NextResponse("Technischer Fehler bei der Bestätigung.", { status: 500 });
+          // TEMP: Fehler im Response-Body zurückgeben (Debug)
+          return new NextResponse(
+            `VERIFY_EMAIL_UPDATE_FAILED: ${error.message || error.toString()}`,
+            { status: 500 }
+          );
         }
         if (!data) {
-          if (process.env.NODE_ENV === "development") {
-            // eslint-disable-next-line no-console
-            console.warn("VERIFY_TOKEN_NOT_FOUND", { token });
-          }
           return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 });
         }
         member = data;
       } catch (updateError) {
-        if (process.env.NODE_ENV === "development") {
-          // eslint-disable-next-line no-console
-          console.error("VERIFY_FAILED", { error: updateError });
-        }
-        return new NextResponse("Technischer Fehler bei der Bestätigung.", { status: 500 });
+        // TEMP: Fehler im Response-Body zurückgeben (Debug)
+        return new NextResponse(
+          `VERIFY_EMAIL_UPDATE_FAILED: ${typeof updateError === "object" && updateError && "message" in updateError ? (updateError as any).message : String(updateError)}`,
+          { status: 500 }
+        );
       }
 
       if (member && member.id) {

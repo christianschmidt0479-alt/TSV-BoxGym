@@ -42,7 +42,9 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Keine inaktiven Bereiche, keine Platzhalter */}
+      <div className="mt-8">
+        <Link href="/verwaltung-neu/loeschantraege" className="text-sm text-[#154c83] underline font-medium">Offene Mitglieder-Löschanträge anzeigen</Link>
+      </div>
     </div>
   );
 }

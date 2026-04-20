@@ -10,6 +10,7 @@ const navItems = [
   { href: "/verwaltung-neu", label: "Dashboard" },
   { href: "/verwaltung-neu/freigaben", label: "Freigaben" },
   { href: "/verwaltung-neu/mitglieder", label: "Mitglieder" },
+  { href: "/verwaltung-neu/system", label: "System" },
 ];
 
 export default async function VerwaltungNeuLayout({ children }: { children: React.ReactNode }) {
