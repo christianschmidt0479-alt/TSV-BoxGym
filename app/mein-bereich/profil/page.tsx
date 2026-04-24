@@ -615,11 +615,16 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
                               }),
                             })
 
-                            if (!response.ok) {
-                              throw new Error(await response.text())
+                            const result = (await response.json()) as {
+                              ok?: boolean
+                              error?: string
+                              member?: MemberRecord
                             }
 
-                            const result = (await response.json()) as { member: MemberRecord }
+                            if (!response.ok || !result.ok || !result.member) {
+                              throw new Error(result.error || "Fehler beim Speichern der Kontaktdaten.")
+                            }
+
                             setMemberAreaData(result.member)
                             const nextLoginEmail = result.member.email?.trim().toLowerCase() || memberAreaEmail.trim().toLowerCase()
                             setMemberAreaEmail(nextLoginEmail)

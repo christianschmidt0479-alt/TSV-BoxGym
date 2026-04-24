@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, findMemberById } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
+import { handleCheckin } from "@/lib/checkinCore"
 import {
   applyMemberDeviceCookie,
   clearMemberDeviceCookie,
@@ -132,11 +133,13 @@ export async function POST(request: Request) {
     })
     if (!eligibility.eligible) {
       // Minimal Logging
-      console.warn("[checkin] rejected", {
-        route: "/api/public/member-fast-checkin",
-        member_id: member?.id,
-        reason: eligibility.reason,
-      })
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[checkin] rejected", {
+          route: "/api/public/member-fast-checkin",
+          member_id: member?.id,
+          reason: eligibility.reason,
+        })
+      }
       return NextResponse.json({
         ok: false,
         reason: eligibility.reason,
@@ -151,25 +154,63 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!member.email_verified) {
-      return new NextResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink öffnen.", { status: 400 })
-    }
-
     const { data: existingMemberCheckins, error: existingMemberCheckinsError } = await supabase
       .from("checkins")
-      .select("id")
+      .select("id, date, created_at")
       .eq("member_id", member.id)
 
     if (existingMemberCheckinsError) throw existingMemberCheckinsError
 
     const existingCheckinCount = existingMemberCheckins?.length ?? 0
+    const hasCheckedInToday = (existingMemberCheckins ?? []).some((checkin) => {
+      const checkinDate = checkin.date
+      if (typeof checkinDate === "string" && checkinDate === liveDate) {
+        return true
+      }
 
-    if (member.is_trial && existingCheckinCount >= 3) {
-      return new NextResponse("Probemitglieder können maximal 3 Trainingseinheiten absolvieren.", { status: 400 })
+      if (typeof checkin.created_at === "string") {
+        return todayString(new Date(checkin.created_at)) === liveDate
+      }
+
+      return false
+    })
+
+    const checkinResult = await handleCheckin(
+      {
+        id: member.id,
+        is_trial: Boolean(member.is_trial),
+        is_approved: Boolean(member.is_approved),
+        email_verified: Boolean(member.email_verified),
+        base_group: member.base_group ?? null,
+      },
+      {
+        source: "fast",
+        mode: checkinMode,
+      },
+      existingCheckinCount,
+      hasCheckedInToday
+    )
+
+    if (!checkinResult.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: checkinResult.error || "Check-in fehlgeschlagen",
+          reason: checkinResult.reason,
+        },
+        { status: 400 }
+      )
     }
 
-    if (!member.is_trial && !member.is_approved && existingCheckinCount >= 6) {
-      return new NextResponse("Ohne Admin-Freigabe sind maximal 6 Trainingseinheiten möglich. Bitte Trainer oder Admin ansprechen.", { status: 400 })
+    if (hasCheckedInToday) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Heute bereits eingecheckt",
+          reason: "DUPLICATE",
+        },
+        { status: 400 }
+      )
     }
 
     await createCheckin({

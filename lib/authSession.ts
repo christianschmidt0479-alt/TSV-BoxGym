@@ -1,6 +1,6 @@
 import type { NextRequest, NextResponse } from "next/server"
 
-export const TRAINER_SESSION_COOKIE = "tsv_trainer_session"
+export const TRAINER_SESSION_COOKIE = "trainer_session"
 const SESSION_MAX_AGE_SECONDS = 10 * 60
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -11,6 +11,8 @@ export type TrainerSessionPayload = {
   role: ServerTrainerRole
   accountRole: ServerTrainerRole
   linkedMemberId: string | null
+  memberId?: string | null
+  isMember?: boolean
   accountEmail: string
   accountFirstName: string
   accountLastName: string

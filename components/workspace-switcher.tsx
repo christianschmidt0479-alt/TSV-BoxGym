@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { LogOut, ShieldCheck, UserCircle2, Users } from "lucide-react"
+import { ShieldCheck, UserCircle2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { clearTrainerAccessSession, persistTrainerAccess, readTrainerAccess } from "@/lib/trainerAccess"
 import { useTrainerAccess } from "@/lib/useTrainerAccess"
@@ -17,9 +17,7 @@ function getWorkspace(pathname: string) {
 
 export function WorkspaceSwitcher() {
   const pathname = usePathname()
-  const router = useRouter()
   const { resolved, role, accountRole, linkedMemberId } = useTrainerAccess()
-  const [logoutPending, setLogoutPending] = useState(false)
   const [hasMemberSession, setHasMemberSession] = useState(false)
   const [hasParentSession, setHasParentSession] = useState(false)
   const [unreadEmailCount, setUnreadEmailCount] = useState(0)
@@ -28,7 +26,6 @@ export function WorkspaceSwitcher() {
   const hasTrainerAccess = Boolean(role)
   const hasAdminAccess = accountRole === "admin"
   const sportlerHref = linkedMemberId ? "/mein-bereich?trainer_access=1" : "/mein-bereich"
-  const showLogoutButton = hasTrainerAccess || hasMemberSession || hasParentSession
 
   useEffect(() => {
     let cancelled = false
@@ -112,38 +109,6 @@ export function WorkspaceSwitcher() {
     )
   }
 
-  async function handleLogout() {
-    try {
-      setLogoutPending(true)
-
-      await Promise.allSettled([
-        clearTrainerAccessSession({ logErrors: false }),
-        fetch("/api/public/member-area", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "logout_member_session" }),
-        }),
-        fetch("/api/public/member-area", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "logout_parent_session" }),
-        }),
-      ])
-
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("tsv_member_area_email")
-        window.localStorage.removeItem("tsv_parent_area_email")
-        window.localStorage.removeItem("tsv_parent_area_first_name")
-        window.localStorage.removeItem("tsv_parent_area_last_name")
-      }
-
-      router.replace("/")
-      router.refresh()
-    } finally {
-      setLogoutPending(false)
-    }
-  }
-
   return (
     <div className="sticky top-0 z-50 border-b border-zinc-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 md:px-6">
@@ -194,19 +159,6 @@ export function WorkspaceSwitcher() {
             </Link>
           </Button>
 
-          {showLogoutButton ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="rounded-xl"
-              disabled={logoutPending}
-              onClick={() => void handleLogout()}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              {logoutPending ? "Loggt aus..." : "Ausloggen"}
-            </Button>
-          ) : null}
         </div>
       </div>
     </div>

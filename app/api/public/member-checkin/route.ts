@@ -13,6 +13,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, findMemberByEmailAndPin } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
+import { handleCheckin } from "@/lib/checkinCore"
 import { applyMemberDeviceCookie, clearMemberDeviceCookie, createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
 import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility } from "@/lib/memberCheckin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
@@ -88,7 +89,9 @@ function parseWeightInput(value: string) {
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
-      console.warn('[member-flow][checkin][error] reason=forbidden')
+      if (process.env.NODE_ENV !== "production") {
+        console.warn('[member-flow][checkin][error] reason=forbidden')
+      }
       return new NextResponse("Forbidden", { status: 403 })
     }
 
@@ -113,19 +116,25 @@ export async function POST(request: Request) {
     const currentMonthKey = getMonthKey(liveDate)
     const todaysSessions = getSessionsForDate(liveDate)
     if (!email || !password) {
-      console.warn('[member-flow][checkin][error] reason=missing_credentials email=' + maskEmail(email))
+      if (process.env.NODE_ENV !== "production") {
+        console.warn('[member-flow][checkin][error] reason=missing_credentials email=' + maskEmail(email))
+      }
       return new NextResponse("Bitte E-Mail und Passwort eingeben.", { status: 400 })
     }
 
     const memberMatch = await findMemberByEmailAndPin(email, password)
     if (memberMatch?.status === "missing_email") {
-      console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
+      if (process.env.NODE_ENV !== "production") {
+        console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
+      }
       return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
     }
     const resolvedMember = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
 
     if (!resolvedMember) {
-      console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
+      if (process.env.NODE_ENV !== "production") {
+        console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
+      }
       return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
     }
 
@@ -145,7 +154,9 @@ export async function POST(request: Request) {
     })
 
     if (!eligibility.eligible) {
-      console.warn('[member-flow][checkin][error] reason=' + eligibility.reason + ' id=' + resolvedMember.id)
+      if (process.env.NODE_ENV !== "production") {
+        console.warn('[member-flow][checkin][error] reason=' + eligibility.reason + ' id=' + resolvedMember.id)
+      }
       // Minimalfix C: Fehlertext für fehlende Verifizierung explizit
       if (eligibility.reason === "email_not_verified") {
         return new NextResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink aus der E-Mail öffnen.", { status: 400 })
@@ -161,33 +172,70 @@ export async function POST(request: Request) {
     if (requiresWeight) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
-        console.warn('[member-flow][checkin][error] reason=invalid_weight id=' + resolvedMember.id)
+        if (process.env.NODE_ENV !== "production") {
+          console.warn('[member-flow][checkin][error] reason=invalid_weight id=' + resolvedMember.id)
+        }
         return new NextResponse("Bitte für die L-Gruppe ein aktuelles Gewicht über 30 kg angeben.", { status: 400 })
       }
     }
 
-    if (!resolvedMember.email_verified) {
-      console.warn('[member-flow][checkin][error] reason=not_verified id=' + resolvedMember.id)
-      return new NextResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink öffnen.", { status: 400 })
-    }
-
     const { data: existingMemberCheckins, error: existingMemberCheckinsError } = await supabase
       .from("checkins")
-      .select("id")
+      .select("id, date, created_at")
       .eq("member_id", resolvedMember.id)
 
     if (existingMemberCheckinsError) throw existingMemberCheckinsError
 
     const existingCheckinCount = existingMemberCheckins?.length ?? 0
+    const hasCheckedInToday = (existingMemberCheckins ?? []).some((checkin) => {
+      const checkinDate = checkin.date
+      if (typeof checkinDate === "string" && checkinDate === liveDate) {
+        return true
+      }
 
-    if (resolvedMember.is_trial && existingCheckinCount >= 3) {
-      console.warn('[member-flow][checkin][error] reason=trial_limit id=' + resolvedMember.id)
-      return new NextResponse("Probemitglieder können maximal 3 Trainingseinheiten absolvieren.", { status: 400 })
+      if (typeof checkin.created_at === "string") {
+        return todayString(new Date(checkin.created_at)) === liveDate
+      }
+
+      return false
+    })
+
+    const checkinResult = await handleCheckin(
+      {
+        id: resolvedMember.id,
+        is_trial: Boolean(resolvedMember.is_trial),
+        is_approved: Boolean(resolvedMember.is_approved),
+        email_verified: Boolean(resolvedMember.email_verified),
+        base_group: resolvedMember.base_group ?? null,
+      },
+      {
+        source: "form",
+        mode: checkinMode,
+      },
+      existingCheckinCount,
+      hasCheckedInToday
+    )
+
+    if (!checkinResult.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: checkinResult.error || "Check-in fehlgeschlagen",
+          reason: checkinResult.reason,
+        },
+        { status: 400 }
+      )
     }
 
-    if (!resolvedMember.is_trial && !resolvedMember.is_approved && existingCheckinCount >= 6) {
-      console.warn('[member-flow][checkin][error] reason=approval_limit id=' + resolvedMember.id)
-      return new NextResponse("Ohne Admin-Freigabe sind maximal 6 Trainingseinheiten möglich. Bitte Trainer oder Admin ansprechen.", { status: 400 })
+    if (hasCheckedInToday) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Heute bereits eingecheckt",
+          reason: "DUPLICATE",
+        },
+        { status: 400 }
+      )
     }
 
     await createCheckin({

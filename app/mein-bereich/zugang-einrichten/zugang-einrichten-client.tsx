@@ -61,8 +61,10 @@ export function ZugangEinrichtenClient() {
         }),
       })
 
-      if (!response.ok) {
-        throw new Error(await response.text())
+      const result = (await response.json()) as { ok?: boolean; error?: string }
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Passwort konnte nicht gesetzt werden.")
       }
 
       setDone(true)

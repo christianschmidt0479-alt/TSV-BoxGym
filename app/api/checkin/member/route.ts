@@ -1,18 +1,61 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility, FERIEN_CHECKIN_GROUPS } from "@/lib/memberCheckin"
-import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
+import { handleCheckin } from "@/lib/checkinCore"
+import { signDeviceToken, verifyDeviceToken } from "@/lib/deviceToken"
+import { verifyTrainerSessionToken } from "@/lib/authSession"
+import { findMemberByEmailAndPin } from "@/lib/boxgymDb"
+
+function getBerlinDateParts(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]))
+  return {
+    year: parts.year ?? "",
+    month: parts.month ?? "",
+    day: parts.day ?? "",
+    hour: parts.hour ?? "00",
+    minute: parts.minute ?? "00",
+  }
+}
+
+function todayString(date = new Date()) {
+  const { year, month, day } = getBerlinDateParts(date)
+  return `${year}-${month}-${day}`
+}
+
+function timeString(date = new Date()) {
+  const { hour, minute } = getBerlinDateParts(date)
+  return `${hour}:${minute}`
+}
+
+function getMonthKey(dateString: string) {
+  return dateString.slice(0, 7)
+}
 
 /**
  * POST /api/checkin/member
- * Neuer, isolierter Mitglieder-Check-in-Endpoint
+ * Member Check-in mit zentraler Core-Logik und Sicherheitsüberprüfungen
  *
- * Body: { email: string, pin: string }
+ * Body: { email?: string, pin?: string, source?: string, entry?: string, deviceToken?: string }
  *
- * Erfolgreich: 200 { ok: true }
- * Fehler: 400/401/409 mit klarer Fehlermeldung
+ * Security:
+ * - source: validated server-side against allowlist (not trusted from client)
+ * - entry: optional, validated server-side (future: QR token hardening)
+ * - context (source, mode): built entirely server-side
+ *
+ * Erfolgreich: 200 { ok: true, checkinId: string }
+ * Fehler: 400/401/429/403 mit Fehlermeldung
  */
 export async function POST(request: Request) {
   try {
@@ -20,122 +63,256 @@ export async function POST(request: Request) {
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    const body = (await request.json()) as { email?: string; pin?: string; ferienGroup?: string }
-    const email = body.email?.trim().toLowerCase() ?? ""
+    const body = (await request.json()) as {
+      email?: string
+      pin?: string
+      source?: string
+      entry?: string
+      deviceToken?: string
+      memberId?: string
+    }
+    const normalizedEmail = body.email?.trim().toLowerCase() ?? ""
     const pin = body.pin?.trim() ?? ""
-    const ferienGroup = body.ferienGroup?.trim() ?? ""
-    if (!email || !pin) {
-      return new NextResponse("Bitte E-Mail und PIN eingeben.", { status: 400 })
+    const deviceToken = body.deviceToken?.trim() ?? ""
+    const memberId = body.memberId?.trim() ?? ""
+
+    // ========================================================================
+    // SECURITY: VALIDATE SOURCE (allowlist, not trusted from client)
+    // ========================================================================
+    let source = (body.source ?? "").trim().toLowerCase()
+    if (source !== "qr" && source !== "nfc" && source !== "form" && source !== "trainer") {
+      source = "qr"
     }
 
-    const rateLimit = await checkRateLimitAsync(
-      `new-member-checkin:${getRequestIp(request)}:${email}`,
-      20,
-      10 * 60 * 1000
-    )
-    if (!rateLimit.ok) {
-      return new NextResponse("Zu viele Versuche. Bitte warte kurz.", { status: 429 })
-    }
+    // ========================================================================
+    // SECURITY: VALIDATE ENTRY (optional, hardening for QR integration)
+    // ========================================================================
+    const ALLOWED_ENTRIES = ["gym"] as const
+    const entry = body.entry && ALLOWED_ENTRIES.includes(body.entry as any) ? body.entry : null
+    // Future: validate entry token against QR token store
 
+    // ========================================================================
+    // LOAD MEMBER
+    // ========================================================================
     const supabase = createServerSupabaseServiceClient()
-    // Mitglied suchen
-    const { data: member, error: memberError } = await supabase
-      .from("members")
-      .select("id, email_verified, is_approved, base_group, member_pin")
-      .eq("email", email)
-      .maybeSingle()
-    if (memberError) throw memberError
-    if (!member) {
-      return new NextResponse("Mitglied nicht gefunden oder PIN falsch.", { status: 401 })
-    }
-    if (member.member_pin !== pin) {
-      return new NextResponse("Mitglied nicht gefunden oder PIN falsch.", { status: 401 })
-    }
-    if (!member.email_verified) {
-      return new NextResponse("E-Mail noch nicht bestätigt.", { status: 400 })
-    }
-    if (!member.is_approved) {
-      return new NextResponse("Mitglied ist noch nicht freigegeben.", { status: 400 })
-    }
-    if (!member.base_group) {
-      return new NextResponse("Keine Trainingsgruppe hinterlegt.", { status: 400 })
+    let member:
+      | {
+          id: string
+          email_verified: boolean | null
+          is_approved: boolean | null
+          is_trial: boolean | null
+          base_group: string | null
+          member_pin: string | null
+        }
+      | null = null
+
+    if (source === "trainer") {
+      const session = (await cookies()).get("trainer_session")
+
+      if (!session) {
+        return NextResponse.json(
+          { ok: false, error: "Nicht autorisiert" },
+          { status: 401 }
+        )
+      }
+
+      const trainer = await verifyTrainerSessionToken(session.value)
+
+      if (!trainer) {
+        return NextResponse.json(
+          { ok: false, error: "Session ungültig" },
+          { status: 401 }
+        )
+      }
     }
 
-    // Settings/Modus bestimmen
-    const settings = await readCheckinSettings()
-    const checkinMode = getMemberCheckinMode(settings.disableCheckinTimeWindow)
-    const now = new Date()
-    const liveDate = now.toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" })
-
-    if (checkinMode === "ferien") {
-      // Ferienmodus: Gruppe ist Pflicht
-      if (!ferienGroup) {
-        return new NextResponse("Bitte eine Gruppe auswählen.", { status: 400 })
-      }
-      if (!FERIEN_CHECKIN_GROUPS.includes(ferienGroup as any)) {
-        return new NextResponse("Ungültige Gruppe.", { status: 400 })
-      }
-      // Tages-Dublettenprüfung
-      const { data: existing, error: existingError } = await supabase
-        .from("checkins")
-        .select("id")
-        .eq("member_id", member.id)
-        .eq("date", liveDate)
-        .eq("checkin_mode", "ferien")
+    // Trainer flow: direct member lookup by memberId (still validated by core).
+    if (source === "trainer" && memberId) {
+      const { data: trainerMember, error: trainerMemberError } = await supabase
+        .from("members")
+        .select("id, email_verified, is_approved, is_trial, base_group, member_pin")
+        .eq("id", memberId)
         .maybeSingle()
-      if (existingError) throw existingError
-      if (existing) {
-        return new NextResponse("Du bist heute bereits eingecheckt.", { status: 409 })
+
+      if (trainerMemberError) throw trainerMemberError
+      member = trainerMember
+
+      if (!member) {
+        return NextResponse.json(
+          { ok: false, error: "Mitglied nicht gefunden." },
+          { status: 404 }
+        )
       }
-      // Check-in schreiben
-      const { error: insertError } = await supabase.from("checkins").insert({
-        member_id: member.id,
-        group_name: ferienGroup,
-        session_id: null,
-        date: liveDate,
-        time: now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }),
-        checkin_mode: "ferien",
-      })
-      if (insertError) throw insertError
-      return NextResponse.json({ ok: true })
     }
 
-    // Normalmodus wie bisher
-    const todaysSessions = getSessionsForDate(liveDate)
-    const assignment = resolveMemberCheckinAssignment({
-      dailySessions: todaysSessions,
-      now,
-      baseGroup: member.base_group,
-      mode: checkinMode,
-    })
-    if (!assignment.allowed || !assignment.session) {
-      return new NextResponse("Kein passendes Zeitfenster für Check-in.", { status: 400 })
+    // Fast device-token flow.
+    if (!member && deviceToken) {
+      const tokenCheck = verifyDeviceToken(deviceToken)
+      if (tokenCheck.valid && tokenCheck.memberId) {
+        const { data: tokenMember, error: tokenMemberError } = await supabase
+          .from("members")
+          .select("id, email_verified, is_approved, is_trial, base_group, member_pin")
+          .eq("id", tokenCheck.memberId)
+          .maybeSingle()
+
+        if (tokenMemberError) throw tokenMemberError
+        member = tokenMember
+      }
     }
-    // Doppel-Check-in prüfen (Session)
-    const { data: existing, error: existingError } = await supabase
+
+    // Fallback to standard email + pin login.
+    if (!member) {
+      if (!normalizedEmail || !pin) {
+        return NextResponse.json(
+          { ok: false, error: "Bitte E-Mail und PIN eingeben." },
+          { status: 400 }
+        )
+      }
+
+      const rateLimit = await checkRateLimitAsync(
+        `member-checkin:${getRequestIp(request)}:${normalizedEmail}`,
+        20,
+        10 * 60 * 1000
+      )
+      if (!rateLimit.ok) {
+        return NextResponse.json(
+          { ok: false, error: "Zu viele Versuche. Bitte warte kurz." },
+          { status: 429 }
+        )
+      }
+
+      const loginMatch = await findMemberByEmailAndPin(normalizedEmail, pin)
+
+      if (!loginMatch || loginMatch.status !== "success") {
+        return NextResponse.json(
+          { ok: false, error: "Mitglied nicht gefunden oder PIN falsch." },
+          { status: 401 }
+        )
+      }
+
+      member = loginMatch.member
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      console.log("CHECKIN MEMBER:", member.id)
+    }
+
+    // ========================================================================
+    // CALCULATE CHECK-IN COUNT & DUPLICATE CHECK
+    // ========================================================================
+    const { data: allCheckins, error: checkinsError } = await supabase
       .from("checkins")
-      .select("id")
+      .select("id, created_at")
       .eq("member_id", member.id)
-      .eq("session_id", assignment.session.id)
-      .eq("date", liveDate)
-      .maybeSingle()
-    if (existingError) throw existingError
-    if (existing) {
-      return new NextResponse("Du bist für diese Einheit bereits eingecheckt.", { status: 409 })
-    }
-    // Check-in schreiben
-    const { error: insertError } = await supabase.from("checkins").insert({
-      member_id: member.id,
-      group_name: assignment.groupName,
-      session_id: assignment.session.id,
-      date: liveDate,
-      time: now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }),
-      checkin_mode: checkinMode,
+
+    if (checkinsError) throw checkinsError
+
+    const memberCheckinCount = allCheckins?.length ?? 0
+
+    // Check if already checked in today
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const hasCheckedInToday = (allCheckins ?? []).some((checkin) => {
+      const checkinDate = new Date(checkin.created_at)
+      checkinDate.setHours(0, 0, 0, 0)
+      return checkinDate.getTime() === today.getTime()
     })
+
+    // ========================================================================
+    // SECURITY: DETERMINE MODE (server-side only, not from client)
+    // ========================================================================
+    // Mode is always determined server-side from Settings
+    // This prevents client-side tampering with ferienmodus flag
+    const settings = await readCheckinSettings()
+    const mode = settings.disableCheckinTimeWindow ? "ferien" : "normal"
+
+    // ========================================================================
+    // BUILD CONTEXT (server-side only, all values validated/computed here)
+    // ========================================================================
+    // CONTEXT IS NEVER TRUSTED FROM CLIENT
+    // - source: from allowlist (validated above)
+    // - mode: from Settings (computed above)
+    // - entry: optional, validated above
+    // All core decision logic uses this server-built context
+    const context = {
+      source,
+      mode,
+    }
+
+    // ========================================================================
+    // CORE DECISION LOGIC
+    // ========================================================================
+    const result = await handleCheckin(
+      {
+        id: member.id,
+        is_trial: member.is_trial ?? false,
+        is_approved: member.is_approved ?? false,
+        email_verified: member.email_verified ?? false,
+        base_group: member.base_group,
+      },
+      context,
+      memberCheckinCount,
+      hasCheckedInToday
+    )
+
+    // ========================================================================
+    // HANDLE CORE ERRORS
+    // ========================================================================
+    if (!result.ok) {
+      return NextResponse.json(
+        { ok: false, error: result.error, reason: result.reason },
+        { status: 400 }
+      )
+    }
+
+    if (hasCheckedInToday) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Heute bereits eingecheckt",
+          reason: "DUPLICATE",
+        },
+        { status: 400 }
+      )
+    }
+
+    // ========================================================================
+    // INSERT CHECK-IN (only if core approved)
+    // ========================================================================
+    const now = new Date()
+    const liveDate = todayString(now)
+    const { data: checkinRecord, error: insertError } = await supabase
+      .from("checkins")
+      .insert({
+        member_id: member.id,
+        group_name: member.base_group,
+        checkin_mode: mode,
+        date: liveDate,
+        time: timeString(now),
+        year: Number(liveDate.slice(0, 4)),
+        month_key: getMonthKey(liveDate),
+        created_at: now.toISOString(),
+      })
+      .select("id")
+      .single()
+
     if (insertError) throw insertError
-    return NextResponse.json({ ok: true })
+
+    // ========================================================================
+    // SUCCESS RESPONSE
+    // ========================================================================
+    return NextResponse.json({
+      ok: true,
+      checkinId: checkinRecord.id,
+      deviceToken: signDeviceToken(member.id),
+    })
   } catch (error) {
-    console.error("[new-checkin] error", error)
-    return new NextResponse("Interner Fehler", { status: 500 })
+    if (process.env.NODE_ENV !== "production") {
+      console.error("Member check-in error:", error)
+    }
+    return NextResponse.json(
+      { ok: false, error: "Fehler beim Check-in" },
+      { status: 500 }
+    )
   }
 }

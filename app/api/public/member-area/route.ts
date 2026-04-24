@@ -30,7 +30,6 @@ import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import {
-  applyMemberAreaSessionCookie,
   clearMemberAreaSessionCookie,
   readMemberAreaSessionFromHeaders
 } from "@/lib/publicAreaSession"
@@ -553,11 +552,15 @@ export async function POST(request: Request) {
       }
 
       const memberData = await buildMemberSnapshot(member)
-        //
-      return await applyMemberAreaSessionCookie(
-        NextResponse.json({ ok: true, code: "login_success", message: "Login erfolgreich.", member: memberData }),
-        { memberId: member.id, email }
-      )
+      const res = NextResponse.json({ ok: true, code: "login_success", message: "Login erfolgreich.", member: memberData })
+      res.cookies.set("tsv_member_area_session", JSON.stringify({
+        memberId: member.id,
+        email: member.email,
+      }), {
+        httpOnly: true,
+        path: "/",
+      })
+      return res
     }
 
     if (body.action === "member_session") {
@@ -608,11 +611,11 @@ export async function POST(request: Request) {
       // Ablaufzeit-Prüfung für Verifizierungs-Token
       const token = sanitizeToken(body.token);
       if (!token) {
-        if (process.env.NODE_ENV === "development") {
+        if (process.env.NODE_ENV !== "production") {
           // eslint-disable-next-line no-console
           console.warn("VERIFY_TOKEN_MISSING");
         }
-        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 400 });
+        return NextResponse.json({ ok: false, error: "Bestätigungslink ungültig oder bereits verwendet." }, { status: 400 });
       }
 
       // Token-Record mit Ablaufzeit laden
@@ -622,10 +625,10 @@ export async function POST(request: Request) {
         .eq("email_verification_token", token)
         .maybeSingle();
       if (memberError || !memberData) {
-        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 });
+        return NextResponse.json({ ok: false, error: "Bestätigungslink ungültig oder bereits verwendet." }, { status: 404 });
       }
       if (memberData.email_verification_expires_at && new Date(memberData.email_verification_expires_at) < new Date()) {
-        return new NextResponse("Bestätigungslink abgelaufen. Bitte fordere einen neuen Link an.", { status: 410 });
+        return NextResponse.json({ ok: false, error: "Bestätigungslink abgelaufen. Bitte fordere einen neuen Link an." }, { status: 410 });
       }
 
       // Token gültig, Verifizierung durchführen
@@ -644,20 +647,18 @@ export async function POST(request: Request) {
           .select("id, email_verified")
           .maybeSingle();
         if (error) {
-          // TEMP: Fehler im Response-Body zurückgeben (Debug)
-          return new NextResponse(
-            `VERIFY_EMAIL_UPDATE_FAILED: ${error.message || error.toString()}`,
+          return NextResponse.json(
+            { ok: false, error: "Verifizierung fehlgeschlagen" },
             { status: 500 }
           );
         }
         if (!data) {
-          return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 });
+          return NextResponse.json({ ok: false, error: "Bestätigungslink ungültig oder bereits verwendet." }, { status: 404 });
         }
         member = data;
       } catch (updateError) {
-        // TEMP: Fehler im Response-Body zurückgeben (Debug)
-        return new NextResponse(
-          `VERIFY_EMAIL_UPDATE_FAILED: ${typeof updateError === "object" && updateError && "message" in updateError ? (updateError as any).message : String(updateError)}`,
+        return NextResponse.json(
+          { ok: false, error: "Verifizierung fehlgeschlagen" },
           { status: 500 }
         );
       }
@@ -671,15 +672,15 @@ export async function POST(request: Request) {
     if (body.action === "verify_and_set_password") {
       const token = sanitizeToken(body.token)
       if (!token) {
-        return new NextResponse("Bestätigungslink ungültig.", { status: 400 })
+        return NextResponse.json({ ok: false, error: "Bestätigungslink ungültig." }, { status: 400 })
       }
 
       const password = sanitizeMemberAreaPassword(body.password)
       if (!password) {
-        return new NextResponse("Bitte ein Passwort eingeben.", { status: 400 })
+        return NextResponse.json({ ok: false, error: "Bitte ein Passwort eingeben." }, { status: 400 })
       }
       if (!isValidMemberPassword(password)) {
-        return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
+        return NextResponse.json({ ok: false, error: MEMBER_PASSWORD_REQUIREMENTS_MESSAGE }, { status: 400 })
       }
 
       const { data, error } = await supabase
@@ -695,7 +696,7 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!data) {
-        return new NextResponse("Bestätigungslink ungültig oder bereits verwendet.", { status: 404 })
+        return NextResponse.json({ ok: false, error: "Bestätigungslink ungültig oder bereits verwendet." }, { status: 404 })
       }
 
       await setMemberPinOnly(data.id, password)
@@ -713,21 +714,21 @@ export async function POST(request: Request) {
     if (body.action === "update_profile") {
       const member = await resolveEditableMember(request, body)
       if (!member) {
-        return new NextResponse("Unauthorized", { status: 401 })
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
       }
 
       const email = sanitizeTextInput(body.email, { maxLength: 254 })
       if (!email) {
-        return new NextResponse("Bitte eine E-Mail-Adresse angeben.", { status: 400 })
+        return NextResponse.json({ ok: false, error: "Bitte eine E-Mail-Adresse angeben." }, { status: 400 })
       }
 
       if (!isWithinMaxLength(email, 254)) {
-        return new NextResponse("E-Mail-Adresse ist zu lang.", { status: 400 })
+        return NextResponse.json({ ok: false, error: "E-Mail-Adresse ist zu lang." }, { status: 400 })
       }
 
       const newPassword = sanitizeMemberAreaPassword(body.newPassword ?? body.newPin)
       if (newPassword && !isValidMemberPassword(newPassword)) {
-        return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })
+        return NextResponse.json({ ok: false, error: MEMBER_PASSWORD_REQUIREMENTS_MESSAGE }, { status: 400 })
       }
 
       const updated = await updateMemberProfile(member.id, {
@@ -751,12 +752,12 @@ export async function POST(request: Request) {
     if (body.action === "resend_verification") {
       const member = await resolveEditableMember(request, body)
       if (!member) {
-        return new NextResponse("Unauthorized", { status: 401 })
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
       }
 
       const targetEmail = sanitizeTextInput(body.email, { maxLength: 254 }) || member.email || ""
       if (!targetEmail) {
-        return new NextResponse("Bitte eine E-Mail-Adresse angeben.", { status: 400 })
+        return NextResponse.json({ ok: false, error: "Bitte eine E-Mail-Adresse angeben." }, { status: 400 })
       }
 
       const verificationToken = member.email_verification_token || generateEmailVerificationToken()
@@ -791,11 +792,11 @@ export async function POST(request: Request) {
       const requestIp = getRequestIp(request)
       const rateLimit = await checkRateLimitAsync(`member-login:${requestIp}`, 5, 15 * 60 * 1000)
       if (!rateLimit.ok) {
-        return new NextResponse("Too many requests", { status: 429 })
+        return NextResponse.json({ ok: false, error: "Zu viele Anfragen" }, { status: 429 })
       }
 
       if (body.consent !== true) {
-        return new NextResponse("Bitte Datenschutz akzeptieren", { status: 400 })
+        return NextResponse.json({ ok: false, error: "Bitte Datenschutz akzeptieren" }, { status: 400 })
       }
 
       const loginKey = `member:${sanitizeMemberAreaEmail(body.email) || "__email__"}`
@@ -803,14 +804,14 @@ export async function POST(request: Request) {
       if (lockState.blocked) {
         await delayFailedLogin()
         const minutes = Math.max(1, Math.ceil((lockState.retryAfterMs ?? 0) / 60000))
-        return new NextResponse(`Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.`, { status: 429 })
+        return NextResponse.json({ ok: false, error: `Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.` }, { status: 429 })
       }
 
       const member = await resolveMemberFromSessionOrCredentials(request, body)
       if (!member) {
         await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
         await delayFailedLogin()
-        return new NextResponse(MEMBER_LOGIN_ERROR_MESSAGE, { status: 401 })
+        return NextResponse.json({ ok: false, error: MEMBER_LOGIN_ERROR_MESSAGE }, { status: 401 })
       }
 
       await clearLoginFailuresAsync(loginKey)
@@ -824,7 +825,7 @@ export async function POST(request: Request) {
 
       if (error) throw error
       if (!data) {
-        return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
+        return NextResponse.json({ ok: false, error: "Mitglied nicht gefunden oder Passwort nicht korrekt." }, { status: 401 })
       }
 
       const acceptedMember = data as MemberRecord
@@ -835,9 +836,9 @@ export async function POST(request: Request) {
       })
     }
 
-    return new NextResponse("Invalid action", { status: 400 })
+    return NextResponse.json({ ok: false, error: "Invalid action" }, { status: 400 })
   } catch (error) {
     console.error("public member area failed", error)
-    return new NextResponse("Interner Fehler", { status: 500 })
+    return NextResponse.json({ ok: false, error: "Interner Fehler" }, { status: 500 })
   }
 }

@@ -99,11 +99,12 @@ export function PasswordResetClient() {
         }),
       })
 
-      if (!response.ok) {
-        throw new Error(await response.text())
+      const result = (await response.json()) as { ok?: boolean; error?: string; message?: string }
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Reset-Link konnte nicht angefordert werden.")
       }
 
-      const result = (await response.json()) as { message?: string }
       setMessage(result.message || "Wenn ein passendes Mitglied existiert, wurde ein Reset-Link versendet.")
     } catch (nextError) {
       console.error(nextError)
@@ -143,8 +144,10 @@ export function PasswordResetClient() {
         }),
       })
 
-      if (!response.ok) {
-        throw new Error(await response.text())
+      const result = (await response.json()) as { ok?: boolean; error?: string }
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Passwort konnte nicht gesetzt werden.")
       }
 
       setMessage("Dein Passwort wurde aktualisiert. Du wirst gleich zum Mitglieder-Login weitergeleitet.")

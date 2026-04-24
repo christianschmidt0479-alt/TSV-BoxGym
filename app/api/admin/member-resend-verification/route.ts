@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { randomUUID } from "crypto"
 import { findMemberById, updateMemberRegistrationData } from "@/lib/boxgymDb"
+import { verifyTrainerSessionToken } from "@/lib/authSession"
 import { sendMemberVerificationMail } from "@/lib/mail/memberVerificationMail"
 
-// Nur POST erlaubt, nur Admin (Auth-Check ggf. nachrüsten)
 export async function POST(req: NextRequest) {
+  const session = (await cookies()).get("trainer_session")
+
+  if (!session) {
+    return NextResponse.json({ ok: false, error: "Nicht autorisiert" }, { status: 401 })
+  }
+
+  const valid = await verifyTrainerSessionToken(session.value)
+
+  if (!valid || valid.role !== "admin") {
+    return NextResponse.json({ ok: false, error: "Keine Berechtigung" }, { status: 403 })
+  }
+
   const { member_id } = await req.json()
   if (!member_id || typeof member_id !== "string") {
     return NextResponse.json({ ok: false, error: "member_id fehlt" }, { status: 400 })

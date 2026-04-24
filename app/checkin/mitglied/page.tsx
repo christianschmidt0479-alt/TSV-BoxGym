@@ -59,7 +59,9 @@ export default function MemberCheckinPage() {
           if (!response.ok) {
             clearStoredQrAccess("member")
             setQrAccessToken("")
-            console.error("member qr access validation failed", response.status)
+            if (process.env.NODE_ENV !== "production") {
+              console.error("member qr access validation failed", response.status)
+            }
             return
           }
 
@@ -76,7 +78,9 @@ export default function MemberCheckinPage() {
         } catch (error) {
           clearStoredQrAccess("member")
           setQrAccessToken("")
-          console.error("member qr access validation failed", error)
+          if (process.env.NODE_ENV !== "production") {
+            console.error("member qr access validation failed", error)
+          }
         }
       })()
     }
@@ -89,7 +93,9 @@ export default function MemberCheckinPage() {
           setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
         }
       } catch (error) {
-        console.error("member checkin settings loading failed", error)
+        if (process.env.NODE_ENV !== "production") {
+          console.error("member checkin settings loading failed", error)
+        }
       }
     })()
 
@@ -143,7 +149,8 @@ export default function MemberCheckinPage() {
 
   function showCheckinSuccess(name?: string) {
     setCheckinDone(name ? `Geschafft! ${name} ist eingecheckt.` : "Geschafft! Check-in eingetragen.")
-    window.setTimeout(() => setCheckinDone(""), 4000)
+    // Erfolgsmeldung bleibt 6 Sekunden sichtbar
+    window.setTimeout(() => setCheckinDone(""), 6000)
   }
 
   function updateRememberedDevice(payload: {
@@ -178,6 +185,17 @@ export default function MemberCheckinPage() {
 
     if (!email || !pin) {
       setCheckinError("Bitte E-Mail und Passwort eingeben.")
+      window.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
+    // Einfache E-Mail Plausibilität
+    if (!email.includes("@")) {
+      setCheckinError("Bitte gültige E-Mail eingeben")
+      return
+    }
+    // Gewicht nur prüfen, wenn relevant
+    if ((rememberedCompetitionMember || rememberedAssignment?.groupName === "L-Gruppe") && memberWeight && isNaN(Number(memberWeight))) {
+      setCheckinError("Gewicht muss eine Zahl sein")
       return
     }
     setCheckinError("")
@@ -199,43 +217,10 @@ export default function MemberCheckinPage() {
         }),
       })
 
-
-      if (!response.ok) {
-        let errorMessage = "Fehler beim Speichern des Check-ins."
-        try {
-          const result = await response.json()
-          if (result && typeof result.reason === "string") {
-            switch (result.reason) {
-              case "email_not_verified":
-                errorMessage = "Deine E-Mail-Adresse ist noch nicht bestätigt. Bitte bestätige zuerst den Link aus der E-Mail."
-                break
-              case "member_not_found":
-                errorMessage = "Dein Mitgliedskonto wurde nicht gefunden. Bitte melde dich beim Trainer oder im Verein."
-                break
-              case "group_not_allowed":
-                errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
-                break
-              case "outside_time_window":
-                errorMessage = "Check-in ist nur im freigegebenen Zeitfenster möglich."
-                break
-              default:
-                errorMessage = "Fehler beim Speichern des Check-ins."
-            }
-          }
-        } catch (e) {
-          // Fallback: Textantwort oder Standard
-          const message = await response.text()
-          if (message) errorMessage = message
-        }
-        if (response.status === 403) {
-          clearStoredQrAccess("member")
-          setQrAccessToken("")
-        }
-        setCheckinError(errorMessage)
-        return
-      }
-
       const result = (await response.json()) as {
+        ok?: boolean
+        error?: string
+        reason?: string
         rememberUntil?: number | null
         member?: {
           id: string
@@ -244,6 +229,41 @@ export default function MemberCheckinPage() {
           baseGroup?: string
           isCompetitionMember: boolean
         } | null
+      }
+
+      if (!response.ok || !result.ok) {
+        let errorMessage = "Fehler beim Speichern des Check-ins."
+        if (typeof result.reason === "string") {
+          switch (result.reason) {
+            case "email_not_verified":
+              errorMessage = "Deine E-Mail-Adresse ist noch nicht bestätigt. Bitte bestätige zuerst den Link aus der E-Mail."
+              break
+            case "member_not_found":
+              errorMessage = "Dein Mitgliedskonto wurde nicht gefunden. Bitte melde dich beim Trainer oder im Verein."
+              break
+            case "group_not_allowed":
+              errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
+              break
+            case "outside_time_window":
+              errorMessage = "Check-in ist nur im freigegebenen Zeitfenster möglich."
+              break
+            case "LIMIT_TRIAL":
+              errorMessage = "Du hast die maximale Anzahl an Probetrainings erreicht."
+              break
+            default:
+              errorMessage = result.error || "Fehler beim Speichern des Check-ins."
+          }
+        } else if (result.error) {
+          errorMessage = result.error
+        }
+
+        if (response.status === 403) {
+          clearStoredQrAccess("member")
+          setQrAccessToken("")
+        }
+        setCheckinError(errorMessage)
+        window.scrollTo({ top: 0, behavior: "smooth" })
+        return
       }
 
       if (rememberDevice && result.rememberUntil && result.member) {
@@ -277,33 +297,45 @@ export default function MemberCheckinPage() {
         }),
       })
 
-
-      if (!response.ok) {
-        let errorMessage = "Fehler beim Schnell-Check-in."
-        try {
-          const result = await response.json()
-          if (result && typeof result.reason === "string") {
-            switch (result.reason) {
-              case "email_not_verified":
-                errorMessage = "Deine E-Mail-Adresse ist noch nicht bestätigt. Bitte bestätige zuerst den Link aus der E-Mail."
-                break
-              case "member_not_found":
-                errorMessage = "Dein Mitgliedskonto wurde nicht gefunden. Bitte melde dich beim Trainer oder im Verein."
-                break
-              case "group_not_allowed":
-                errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
-                break
-              case "outside_time_window":
-                errorMessage = "Check-in ist nur im freigegebenen Zeitfenster möglich."
-                break
-              default:
-                errorMessage = "Fehler beim Schnell-Check-in."
-            }
-          }
-        } catch (e) {
-          const message = await response.text()
-          if (message) errorMessage = message
+      const result = (await response.json()) as {
+        ok?: boolean
+        error?: string
+        reason?: string
+        rememberUntil?: number
+        member?: {
+          id: string
+          firstName: string
+          lastName: string
+          isCompetitionMember: boolean
         }
+      }
+
+      if (!response.ok || !result.ok) {
+        let errorMessage = "Fehler beim Schnell-Check-in."
+        if (typeof result.reason === "string") {
+          switch (result.reason) {
+            case "email_not_verified":
+              errorMessage = "Deine E-Mail-Adresse ist noch nicht bestätigt. Bitte bestätige zuerst den Link aus der E-Mail."
+              break
+            case "member_not_found":
+              errorMessage = "Dein Mitgliedskonto wurde nicht gefunden. Bitte melde dich beim Trainer oder im Verein."
+              break
+            case "group_not_allowed":
+              errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
+              break
+            case "outside_time_window":
+              errorMessage = "Check-in ist nur im freigegebenen Zeitfenster möglich."
+              break
+            case "LIMIT_TRIAL":
+              errorMessage = "Du hast die maximale Anzahl an Probetrainings erreicht."
+              break
+            default:
+              errorMessage = result.error || "Fehler beim Schnell-Check-in."
+          }
+        } else if (result.error) {
+          errorMessage = result.error
+        }
+
         if (response.status === 401 || response.status === 404) {
           forgetRememberedDevice()
         }
@@ -315,19 +347,11 @@ export default function MemberCheckinPage() {
         return
       }
 
-      const result = (await response.json()) as {
-        rememberUntil: number
-        member: {
-          id: string
-          firstName: string
-          lastName: string
-          isCompetitionMember: boolean
-        }
+      if (result.member) {
+        updateRememberedDevice({ member: result.member })
       }
-
-      updateRememberedDevice({ member: result.member })
       setRememberedWeight("")
-      showCheckinSuccess(result.member.firstName)
+      showCheckinSuccess(result.member?.firstName)
     } catch (error) {
       console.error(error)
       alert("Fehler beim Schnell-Check-in.")
@@ -430,8 +454,14 @@ export default function MemberCheckinPage() {
                       {rememberedBaseGroup ? ` Gruppe: ${rememberedAssignment?.groupName || rememberedBaseGroup}.` : ""}
                     </p>
                   </div>
-                  <Button type="button" variant="outline" className="rounded-2xl" onClick={forgetRememberedDevice}>
-                    Ausloggen
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-2xl"
+                    title="Beendet nur den Geräte-/Check-in-Status, nicht den Login"
+                    onClick={forgetRememberedDevice}
+                  >
+                    Gerät abmelden
                   </Button>
                 </div>
 
@@ -479,19 +509,43 @@ export default function MemberCheckinPage() {
             >
               <div className="space-y-2">
                 <Label>E-Mail</Label>
-                <Input type="email" value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)} placeholder="name@tsv-falkensee.de" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                <Input
+                  type="email"
+                  value={memberEmail}
+                  onChange={(e) => setMemberEmail(e.target.value)}
+                  placeholder="name@tsv-falkensee.de"
+                  className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                  autoFocus
+                  inputMode="email"
+                  autoComplete="email"
+                  enterKeyHint="next"
+                />
               </div>
 
               <div className="space-y-2">
                 <Label>Passwort</Label>
-                <PasswordInput value={memberPin} onChange={(e) => setMemberPin(e.target.value)} placeholder="Passwort" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
+                <PasswordInput
+                  value={memberPin}
+                  onChange={(e) => setMemberPin(e.target.value)}
+                  placeholder="Passwort"
+                  className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                  inputMode="numeric"
+                  enterKeyHint="done"
+                />
               </div>
 
-              <div className="space-y-2">
-                <Label>Gewicht in kg</Label>
-                <Input value={memberWeight} onChange={(e) => setMemberWeight(e.target.value)} placeholder="z. B. 72,4" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                <div className="text-xs text-zinc-500">Pflichtfeld für L-Gruppe und Wettkampfsportler.</div>
-              </div>
+              {(rememberedCompetitionMember || rememberedAssignment?.groupName === "L-Gruppe") && (
+                <div className="space-y-2">
+                  <Label>Gewicht in kg</Label>
+                  <Input
+                    value={memberWeight}
+                    onChange={(e) => setMemberWeight(e.target.value)}
+                    placeholder="z. B. 72,4"
+                    className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                  />
+                  <div className="text-xs text-zinc-500">Pflichtfeld für L-Gruppe und Wettkampfsportler.</div>
+                </div>
+              )}
 
               <label className="flex items-start gap-3 rounded-2xl border border-[#d8e3ee] bg-zinc-50 p-3 text-sm text-zinc-700">
                 <input
@@ -513,7 +567,12 @@ export default function MemberCheckinPage() {
                   </p>
                 ) : null}
                 <Button type="submit" className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading}>
-                  {dbLoading ? "Speichert..." : "Mitglied einchecken"}
+                  {dbLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
+                      Speichert...
+                    </span>
+                  ) : "Mitglied einchecken"}
                 </Button>
               </div>
             </form>

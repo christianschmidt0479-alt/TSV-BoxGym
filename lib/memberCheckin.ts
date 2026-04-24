@@ -6,6 +6,8 @@ export const FERIEN_CHECKIN_GROUPS = [
   "L-Gruppe",
 ] as const
 
+export const MAX_TRAININGS_WITHOUT_APPROVAL = 8
+
 // --- Zentrale Eligibility-Funktion für Member-Check-in ---
 
 export type CheckinEligibilityReason =

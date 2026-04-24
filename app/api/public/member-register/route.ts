@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     //
   try {
     if (!isAllowedOrigin(request)) {
-      return new NextResponse("Forbidden", { status: 403 })
+      return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 })
     }
 
     const body = await request.json()
@@ -27,28 +27,49 @@ export async function POST(request: Request) {
       consent: body.consent === true,
     }
 
+    if (process.env.NODE_ENV !== "production") {
+      console.log("REGISTER INPUT:", input)
+    }
+
     //
     const result = await registerMemberService(input)
-
-    switch (result.status) {
-      case "success":
-        return NextResponse.json({ ok: true, memberId: result.memberId })
-      case "already-exists":
-        return new NextResponse("Zu diesem Mitglied existiert bereits ein Zugang. Bitte Mein Bereich nutzen oder Trainer/Admin ansprechen.", { status: 409 })
-      case "validation-error":
-        return new NextResponse(result.error, { status: 400 })
-      case "mail-failed":
-        return NextResponse.json({ ok: false, error: result.error, memberId: result.memberId })
-      case "error":
-      default:
-        return new NextResponse(result.error || "Interner Fehler", { status: 500 })
+    if (process.env.NODE_ENV !== "production") {
+      console.log("REGISTER RESULT:", result)
     }
+
+    if (result.ok) {
+      const mailResult = { sent: result.mailSent }
+      return NextResponse.json({
+        ok: true,
+        memberId: result.memberId,
+        mailSent: mailResult.sent,
+      })
+    }
+
+    if (result.code === "already-exists") {
+      return NextResponse.json({
+        ok: false,
+        error: result.error,
+      }, { status: 409 })
+    }
+
+    if (result.code === "validation-error") {
+      return NextResponse.json({
+        ok: false,
+        error: result.error,
+      }, { status: 400 })
+    }
+
+    return NextResponse.json({
+      ok: false,
+      error: result.error || "Interner Fehler",
+    }, { status: 500 })
   } catch (error) {
     // Fehler-Log nur in dev
     if (process.env.NODE_ENV === "development") {
       // eslint-disable-next-line no-console
       console.error("[member-register] failed", error)
     }
-    return new NextResponse("Interner Fehler", { status: 500 })
+    return NextResponse.json({ ok: false, error: "Interner Fehler" }, { status: 500 })
   }
 }

@@ -187,7 +187,9 @@ export async function POST(request: Request) {
     const body = (await request.json()) as MemberPasswordResetBody
 
     if (body.action === "request") {
-      console.log("PASSWORD_RESET_START")
+      if (process.env.NODE_ENV !== "production") {
+        console.log("PASSWORD_RESET_START")
+      }
       const email = sanitizeTextInput(body.email, { lowercase: true, maxLength: 254 })
       if (!email) {
         return new NextResponse("Bitte eine E-Mail-Adresse angeben.", { status: 400 })
@@ -199,12 +201,14 @@ export async function POST(request: Request) {
       }
 
       const member = (await findMemberByEmail(email)) as MemberPasswordResetRow | null
-      console.log("PASSWORD_RESET_MEMBER_FOUND", {
-        found: !!(member?.id && member.email) ? "yes" : "no",
-        id: member?.id || null,
-        email: member?.email || null,
-        email_verified: member?.email_verified === true ? "yes" : "no"
-      })
+      if (process.env.NODE_ENV !== "production") {
+        console.log("PASSWORD_RESET_MEMBER_FOUND", {
+          found: !!(member?.id && member.email) ? "yes" : "no",
+          id: member?.id || null,
+          email: member?.email || null,
+          email_verified: member?.email_verified === true ? "yes" : "no"
+        })
+      }
 
       if (!member?.id || !member.email) {
         return NextResponse.json({
@@ -212,7 +216,9 @@ export async function POST(request: Request) {
           message: "Wenn ein passendes Mitglied existiert, wurde ein Reset-Link versendet.",
         })
       }
-      console.log("PASSWORD_RESET_ALLOW_UNVERIFIED", { id: member.id, email: member.email, email_verified: member.email_verified === true ? "yes" : "no" })
+      if (process.env.NODE_ENV !== "production") {
+        console.log("PASSWORD_RESET_ALLOW_UNVERIFIED", { id: member.id, email: member.email, email_verified: member.email_verified === true ? "yes" : "no" })
+      }
 
       const token = randomBytes(32).toString("hex")
       const expiresAt = new Date(Date.now() + MEMBER_PASSWORD_RESET_WINDOW_MS).toISOString()
@@ -221,7 +227,9 @@ export async function POST(request: Request) {
       const baseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
       const resetLink = `${baseUrl}/mein-bereich/passwort-zuruecksetzen?token=${encodeURIComponent(token)}`
 
-      console.log("PASSWORD_RESET_MAIL_START", { id: member.id, email: member.email })
+      if (process.env.NODE_ENV !== "production") {
+        console.log("PASSWORD_RESET_MAIL_START", { id: member.id, email: member.email })
+      }
       try {
         // Zentrales, professionelles Template nutzen
         const { buildMemberMail } = await import("@/lib/mail/renderMailTemplate")
@@ -250,7 +258,9 @@ export async function POST(request: Request) {
         } else {
           errorMsg = String(err);
         }
-        console.error("MAIL_SEND_ERROR", { id: member.id, email: member.email, error: errorMsg })
+        if (process.env.NODE_ENV !== "production") {
+          console.error("MAIL_SEND_ERROR", { id: member.id, email: member.email, error: errorMsg })
+        }
       }
 
       return NextResponse.json({

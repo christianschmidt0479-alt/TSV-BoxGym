@@ -2,7 +2,6 @@ import { createServerSupabaseServiceClient } from "./serverSupabase"
 import { hashAuthSecret, isBcryptHash, verifyAuthSecret } from "./authSecret"
 import type { MemberCheckinMode } from "./memberCheckin"
 import { generateMemberQrToken } from "./memberQrToken"
-import { verifyTrainerPinHash } from "./trainerPin"
 import { normalizeTrainingGroup } from "./trainingGroups"
 
 // boxgymDb wird ausschließlich serverseitig aufgerufen.
@@ -111,7 +110,7 @@ export async function findTrainerByEmailAndPin(email: string, pin: string): Prom
   if (!trainer) return null
   if (!trainer.email_verified || !trainer.is_approved) return null
 
-  if (!(await verifyTrainerPinHash(pin, trainer.password_hash))) return null
+  if (!(await verifyAuthSecret(pin, trainer.password_hash))) return null
   if (!isBcryptHash(trainer.password_hash)) {
     const nextHash = await hashAuthSecret(pin)
     await supabase.from("trainer_accounts").update({ password_hash: nextHash }).eq("id", trainer.id)
@@ -740,8 +739,10 @@ export async function getPendingMembers() {
     .from("members")
     .select(SAFE_MEMBER_LIST_SELECT)
     .eq("is_trial", false)
-    .eq("is_approved", false)
+    .or("is_approved.is.null,is_approved.eq.false")
     .order("created_at", { ascending: false })
+
+  console.log("PENDING MEMBERS:", data);
 
   if (error) throw error
   return (data || []).map((row) => withNormalizedBaseGroup(row))

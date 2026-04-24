@@ -8,6 +8,7 @@ import { ArrowLeft, UserRoundPlus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ErrorBox } from "@/components/ErrorBox"
 import { InfoHint } from "@/components/ui/info-hint"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -40,8 +41,7 @@ export default function CheckinJoinPage() {
   const [registerGuardianName, setRegisterGuardianName] = useState("")
   const [registerBaseGroup, setRegisterBaseGroup] = useState(groupOptions[0] ?? "")
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
-  const [privacyError, setPrivacyError] = useState("")
-
+  const [privacyError, setPrivacyError] = useState("")  const [apiError, setApiError] = useState(\"\")
   useEffect(() => {
     setIsClient(true)
     setRegisterFirstName(getStoredString("tsv_register_first_name"))
@@ -94,34 +94,35 @@ export default function CheckinJoinPage() {
     const pin = registerPin.trim()
 
     setPrivacyError("")
+    setApiError("")
 
     if (!firstName || !lastName) {
-      alert("Bitte Vorname und Nachname eingeben.")
+      setApiError("Bitte Vorname und Nachname eingeben.")
       return
     }
 
     if (!registerBirthDate) {
-      alert("Bitte Geburtsdatum angeben.")
+      setApiError("Bitte Geburtsdatum angeben.")
       return
     }
 
     if (!isValidMemberPassword(pin)) {
-      alert(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE)
+      setApiError(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE)
       return
     }
 
     if (!registerEmail.trim()) {
-      alert("Bitte E-Mail angeben.")
+      setApiError("Bitte E-Mail angeben.")
       return
     }
 
     if (!registerPhone.trim()) {
-      alert("Bitte Telefonnummer eingeben.")
+      setApiError("Bitte Telefonnummer eingeben.")
       return
     }
 
     if (!registerBaseGroup) {
-      alert("Bitte Stammgruppe auswählen.")
+      setApiError("Bitte Stammgruppe auswählen.")
       return
     }
 
@@ -132,39 +133,42 @@ export default function CheckinJoinPage() {
 
     try {
       setDbLoading(true)
+      const body = {
+        firstName,
+        lastName,
+        birthDate: registerBirthDate,
+        password: pin,
+        email: registerEmail.trim(),
+        phone: registerPhone.trim(),
+        baseGroup: registerBaseGroup,
+        consent: true,
+      }
+
       const response = await fetch("/api/public/member-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName,
-          lastName,
-          birthDate: registerBirthDate,
-          password: pin,
-          email: registerEmail.trim(),
-          phone: registerPhone.trim(),
-          baseGroup: registerBaseGroup,
-          consent: true,
-        }),
+        body: JSON.stringify(body),
       })
 
-      if (!response.ok) {
-        const message = await response.text()
-        alert(message || "Fehler beim Anlegen des Mitglieds.")
+      const result = (await response.json()) as { ok?: boolean; mailSent?: boolean; error?: string }
+
+      if (!response.ok || !result.ok) {
+        setApiError(result.error || "Fehler beim Anlegen des Mitglieds.")
         return
       }
 
-      const result = (await response.json()) as { verificationSent?: boolean }
-
-      if (result.verificationSent === false) {
-        alert("Reservierung gespeichert. Die Bestätigungs-E-Mail konnte aber nicht versendet werden.")
+      if (result.mailSent === false) {
+        setApiError("Registrierung gespeichert, aber die E-Mail konnte nicht versendet werden.")
         return
       }
 
-      alert("Reservierung gespeichert. Bitte jetzt zuerst die E-Mail bestätigen.")
+      alert("Registrierung gespeichert. Bitte jetzt zuerst die E-Mail bestätigen.")
       router.push("/checkin")
     } catch (error) {
-      console.error(error)
-      alert("Fehler beim Anlegen des Mitglieds.")
+      if (process.env.NODE_ENV !== "production") {
+        console.error(error)
+      }
+      setApiError("Fehler beim Anlegen des Mitglieds.")
     } finally {
       setDbLoading(false)
     }
@@ -235,6 +239,7 @@ export default function CheckinJoinPage() {
                 void handleMemberRegistration()
               }}
             >
+              <ErrorBox message={apiError} />
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Vorname <span className="ml-1 text-red-500">*</span></Label>

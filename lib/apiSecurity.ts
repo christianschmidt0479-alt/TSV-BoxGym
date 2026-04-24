@@ -64,10 +64,15 @@ function getAllowedOrigins(request: Request) {
   return Array.from(allowedOrigins)
 }
 
-function logOriginFailure(request: Request, allowedOrigins: string[]) {
+function logOriginDecision(
+  request: Request,
+  allowedOrigins: string[],
+  decision: "ALLOW" | "BLOCK",
+  reason: string
+) {
   if (process.env.NODE_ENV === "production") return
 
-  console.warn("[apiSecurity.isAllowedOrigin] blocked request", {
+  const payload = {
     method: request.method,
     url: request.url,
     origin: request.headers.get("origin") || "",
@@ -77,7 +82,22 @@ function logOriginFailure(request: Request, allowedOrigins: string[]) {
     forwardedProto: request.headers.get("x-forwarded-proto") || "",
     secFetchSite: request.headers.get("sec-fetch-site") || "",
     allowedOrigins,
-  })
+    decision,
+    reason,
+  }
+
+  if (decision === "BLOCK") {
+    console.warn("[apiSecurity.isAllowedOrigin] BLOCK", payload)
+    return
+  }
+
+  console.info("[apiSecurity.isAllowedOrigin] ALLOW", payload)
+}
+
+function isDevLocalhost3000Host(request: Request) {
+  if (process.env.NODE_ENV === "production") return false
+  const host = sanitizeTextInput(request.headers.get("host"), { lowercase: true, maxLength: 255 })
+  return host === "localhost:3000"
 }
 
 function getDistributedRateLimitConfig() {
@@ -184,34 +204,42 @@ export function getRequestIp(request: Request) {
 }
 
 export function isAllowedOrigin(request: Request) {
-  const origin = request.headers.get("origin")
+  const origin = sanitizeTextInput(request.headers.get("origin"), { maxLength: 2048 })
+  const referer = sanitizeTextInput(request.headers.get("referer"), { maxLength: 2048 })
   const allowedOrigins = getAllowedOrigins(request)
 
   if (origin) {
     const allowed = allowedOrigins.includes(normalizeOrigin(origin))
-    if (!allowed) logOriginFailure(request, allowedOrigins)
+    if (!allowed) logOriginDecision(request, allowedOrigins, "BLOCK", "origin_not_allowed")
+    else logOriginDecision(request, allowedOrigins, "ALLOW", "origin_match")
     return allowed
   }
 
-  const referer = request.headers.get("referer")
   if (referer) {
-    try {
-      const allowed = allowedOrigins.includes(normalizeOrigin(new URL(referer).origin))
-      if (!allowed) logOriginFailure(request, allowedOrigins)
-      return allowed
-    } catch {
-      logOriginFailure(request, allowedOrigins)
-      return false
+    const normalizedReferer = normalizeOrigin(referer)
+    const allowedByRefererContains = allowedOrigins.some((allowedOrigin) => normalizedReferer.includes(allowedOrigin))
+    if (allowedByRefererContains) {
+      logOriginDecision(request, allowedOrigins, "ALLOW", "referer_contains_allowed_origin")
+      return true
     }
+
+    logOriginDecision(request, allowedOrigins, "BLOCK", "referer_not_allowed")
+    return false
+  }
+
+  if (isDevLocalhost3000Host(request)) {
+    logOriginDecision(request, allowedOrigins, "ALLOW", "dev_missing_origin_referer_localhost_host_fallback")
+    return true
   }
 
   const method = request.method.toUpperCase()
   const secFetchSite = request.headers.get("sec-fetch-site")?.toLowerCase()
   if ((method === "GET" || method === "HEAD") && (!secFetchSite || secFetchSite === "same-origin" || secFetchSite === "same-site" || secFetchSite === "none")) {
+    logOriginDecision(request, allowedOrigins, "ALLOW", "safe_method_without_origin_or_referer")
     return true
   }
 
-  logOriginFailure(request, allowedOrigins)
+  logOriginDecision(request, allowedOrigins, "BLOCK", "missing_origin_and_referer")
   return false
 }
 

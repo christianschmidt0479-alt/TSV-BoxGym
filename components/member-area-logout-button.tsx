@@ -33,13 +33,19 @@ export function MemberAreaLogoutButton({
   async function handleClick() {
     try {
       setPending(true)
-      await fetch("/api/public/member-area", {
+      const res = await fetch("/api/public/member-area", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: sessionType === "member" ? "logout_member_session" : "logout_parent_session",
         }),
       })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        if (process.env.NODE_ENV !== "production") {
+          console.error("Logout failed:", data.error)
+        }
+      }
     } finally {
       if (typeof window !== "undefined") {
         for (const key of clearStorageKeys) {

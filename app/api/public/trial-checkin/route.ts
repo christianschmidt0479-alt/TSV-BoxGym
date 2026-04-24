@@ -2,13 +2,11 @@ import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
-import { createCheckin, createMember, findMemberByFirstLastAndBirthdate, updateMemberProfile, updateMemberRegistrationData, updateTrialMember } from "@/lib/boxgymDb"
+import { createCheckin, createMember, findMemberByFirstLastAndBirthdate, updateMemberProfile, updateMemberRegistrationData } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
-import { isSessionOpenForCheckin } from "@/lib/checkinWindow"
+import { handleCheckin } from "@/lib/checkinCore"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
-import { getMemberCheckinMode, getSessionsForDate } from "@/lib/memberCheckin"
-import { readQrAccessFromHeaders, verifyQrAccessToken } from "@/lib/qrAccess"
-import { getQrAccessToken } from "@/lib/qrAccessServer"
+import { getSessionsForDate } from "@/lib/memberCheckin"
 import { sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
@@ -20,7 +18,7 @@ type TrialCheckinBody = {
   birthDate?: string
   email?: string
   phone?: string
-  qrAccessToken?: string
+  source?: string
   sessionId?: string
 }
 
@@ -62,14 +60,6 @@ function getMonthKey(dateString: string) {
   return dateString.slice(0, 7)
 }
 
-function hasLegacyQrAccessToken(token?: string) {
-  try {
-    return token?.trim() === getQrAccessToken()
-  } catch {
-    return false
-  }
-}
-
 export async function POST(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
@@ -103,31 +93,27 @@ export async function POST(request: Request) {
     const selectedSession = todaysSessions.find((session) => session.id === body.sessionId) ?? null
 
     if (!firstName || !lastName) {
-      return new NextResponse("Bitte Vorname und Nachname eingeben.", { status: 400 })
+      return NextResponse.json({ ok: false, error: "Bitte Vorname und Nachname eingeben." }, { status: 400 })
     }
 
     if (!birthDate) {
-      return new NextResponse("Bitte Geburtsdatum angeben.", { status: 400 })
+      return NextResponse.json({ ok: false, error: "Bitte Geburtsdatum angeben." }, { status: 400 })
     }
 
     if (!email) {
-      return new NextResponse("Bitte E-Mail angeben.", { status: 400 })
+      return NextResponse.json({ ok: false, error: "Bitte E-Mail angeben." }, { status: 400 })
     }
 
     if (!phone) {
-      return new NextResponse("Bitte Telefonnummer angeben.", { status: 400 })
+      return NextResponse.json({ ok: false, error: "Bitte Telefonnummer angeben." }, { status: 400 })
     }
 
     if (!selectedSession) {
-      return new NextResponse("Bitte eine Trainingsgruppe auswählen.", { status: 400 })
+      return NextResponse.json({ ok: false, error: "Bitte eine Trainingsgruppe auswählen." }, { status: 400 })
     }
 
     const checkinSettings = await readCheckinSettings()
-    const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
-
-    if (checkinMode !== "ferien" && !isSessionOpenForCheckin(selectedSession, now)) {
-      return new NextResponse("Check-in aktuell nur 30 Minuten vor bis 30 Minuten nach Trainingsbeginn möglich.", { status: 400 })
-    }
+    const checkinMode = checkinSettings.disableCheckinTimeWindow ? "ferien" : "normal"
 
     let member = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
     let isNewTrialMember = false
@@ -145,34 +131,82 @@ export async function POST(request: Request) {
       })
       isNewTrialMember = true
     } else if (!member.is_trial) {
-      return new NextResponse(
-        "Diese Person ist bereits als Mitglied erfasst. Probetraining darf bestehende Mitgliedsdaten nicht ändern.",
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Diese Person ist bereits als Mitglied erfasst. Probetraining darf bestehende Mitgliedsdaten nicht ändern.",
+        },
         { status: 409 }
       )
     }
 
-    const { data: trialCheckins, error: trialCheckinsError } = await supabase
-      .from("checkins")
-      .select("id")
-      .eq("member_id", member.id)
-
-    if (trialCheckinsError) throw trialCheckinsError
-
-    const trialCheckinCount = trialCheckins?.length ?? 0
-    if (member.is_trial && trialCheckinCount >= 3) {
-      return new NextResponse("Probetraining erschoepft. Diese Person hat bereits 3 Probetrainings absolviert.", { status: 400 })
-    }
-
     if (member.is_trial) {
-      member = await updateTrialMember(member.id, trialCheckinCount + 1, email, phone)
-    } else {
       member = await updateMemberProfile(member.id, {
         email,
         phone,
       })
     }
 
-    await createCheckin({
+    const { data: memberCheckins, error: memberCheckinsError } = await supabase
+      .from("checkins")
+      .select("id, created_at")
+      .eq("member_id", member.id)
+
+    if (memberCheckinsError) throw memberCheckinsError
+
+    const memberCheckinCount = memberCheckins?.length ?? 0
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const hasCheckedInToday = (memberCheckins ?? []).some((checkin) => {
+      const checkinDate = new Date(checkin.created_at)
+      checkinDate.setHours(0, 0, 0, 0)
+      return checkinDate.getTime() === todayStart.getTime()
+    })
+
+    let source = (body.source ?? "").trim().toLowerCase()
+    if (source !== "qr" && source !== "form") {
+      source = "form"
+    }
+
+    const result = await handleCheckin(
+      {
+        id: member.id,
+        is_trial: Boolean(member.is_trial),
+        is_approved: Boolean(member.is_approved),
+        email_verified: Boolean(member.email_verified),
+        base_group: member.base_group,
+      },
+      {
+        source,
+        mode: checkinMode,
+      },
+      memberCheckinCount,
+      hasCheckedInToday
+    )
+
+    if (!result.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: result.error || "Check-in fehlgeschlagen",
+          reason: result.reason,
+        },
+        { status: 400 }
+      )
+    }
+
+    if (hasCheckedInToday) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Heute bereits eingecheckt",
+          reason: "DUPLICATE",
+        },
+        { status: 400 }
+      )
+    }
+
+    const createdCheckin = await createCheckin({
       member_id: member.id,
       group_name: selectedSession.group,
       checkin_mode: checkinMode,
@@ -191,7 +225,9 @@ export async function POST(request: Request) {
           email_verification_token: emailToken,
         })
       } catch (tokenError) {
-        console.error("trial verification token update failed", tokenError)
+        if (process.env.NODE_ENV !== "production") {
+          console.error("trial verification token update failed", tokenError)
+        }
       }
 
       const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
@@ -205,7 +241,9 @@ export async function POST(request: Request) {
           kind: "member",
         })
       } catch (mailError) {
-        console.error("trial verification mail failed", mailError)
+        if (process.env.NODE_ENV !== "production") {
+          console.error("trial verification mail failed", mailError)
+        }
       }
 
       try {
@@ -216,13 +254,20 @@ export async function POST(request: Request) {
           group: selectedSession.group,
         })
       } catch (notifyError) {
-        console.error("trial admin notification failed", notifyError)
+        if (process.env.NODE_ENV !== "production") {
+          console.error("trial admin notification failed", notifyError)
+        }
       }
     }
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({
+      ok: true,
+      checkinId: createdCheckin.id,
+    })
   } catch (error) {
-    console.error("public trial checkin failed", error)
-    return new NextResponse("Interner Fehler", { status: 500 })
+    if (process.env.NODE_ENV !== "production") {
+      console.error("public trial checkin failed", error)
+    }
+    return NextResponse.json({ ok: false, error: "Interner Fehler" }, { status: 500 })
   }
 }

@@ -32,8 +32,8 @@ export default function FreigabenActions({ member, handleApproveServer }: Freiga
         const res = await fetch(`/api/member/${member.id}/create-verification-token`, {
           method: "POST",
         });
-        if (!res.ok) throw new Error("Verifizierungs-Token konnte nicht erzeugt werden.");
         const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data?.error || "Verifizierungs-Token konnte nicht erzeugt werden.");
         token = data.token;
         if (!token) throw new Error("Verifizierungs-Token konnte nicht erzeugt werden.");
       }
@@ -46,7 +46,8 @@ export default function FreigabenActions({ member, handleApproveServer }: Freiga
           token,
         }),
       });
-      if (!res.ok) throw new Error("Fehler beim Senden der Mail");
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data?.error || "Fehler beim Senden der Mail");
       setSuccess("Verifizierungs-Mail gesendet");
     } catch (e: any) {
       setError(e.message || "Fehler");

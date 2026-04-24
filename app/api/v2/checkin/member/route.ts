@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getMemberV2ByEmail } from '@/lib/v2/members/members_v2';
 import { getCheckinsV2ForMember, getCheckinsV2ForMemberOnDay, insertCheckinV2 } from '@/lib/v2/checkins/checkins_v2';
 import { isTrainingGroup } from '@/lib/trainingGroups';
-import { parseTrainingGroup } from '@/lib/trainingGroups';
 import { verifySession } from '@/lib/v2/auth/session';
+import { handleCheckin } from '@/lib/checkinCore';
 
 // Fehlercodes
 const ERR = {
@@ -60,29 +60,49 @@ export async function POST(req: NextRequest) {
     selected_group = body.selected_group;
   }
 
-  // Dublettenlogik & Idempotenz & Race-Condition
+  const coreMode = mode === 'holiday' ? 'ferien' : 'normal';
   const today = getTodayBerlinISO() || '';
-  // Nochmals nach Insert prüfen (Race-Condition-Idempotenz)
   const todaysCheckins = await getCheckinsV2ForMemberOnDay(member.id, today);
-  if (todaysCheckins.length > 0) {
-    return NextResponse.json({ ok: false, code: ERR.DUPLICATE_CHECKIN, message: 'Check-in für heute bereits vorhanden.' }, { status: 409 });
+  const allCheckins = await getCheckinsV2ForMember(member.id);
+  const hasCheckedInToday = todaysCheckins.length > 0;
+
+  const checkinResult = await handleCheckin(
+    {
+      id: member.id,
+      is_trial: member.member_type === 'trial',
+      is_approved: Boolean(member.is_approved),
+      email_verified: Boolean(member.email_verified),
+      base_group: member.base_group,
+    },
+    {
+      source: 'form',
+      mode: coreMode,
+    },
+    allCheckins.length,
+    hasCheckedInToday
+  );
+
+  if (!checkinResult.ok) {
+    if (checkinResult.reason === 'DUPLICATE') {
+      return NextResponse.json({ ok: false, code: ERR.DUPLICATE_CHECKIN, message: checkinResult.error || 'Check-in für heute bereits vorhanden.' }, { status: 400 });
+    }
+    if (checkinResult.reason === 'LIMIT_TRIAL') {
+      return NextResponse.json({ ok: false, code: ERR.TRIAL_LIMIT_REACHED, message: checkinResult.error || 'Trial-Limit erreicht.' }, { status: 400 });
+    }
+    if (checkinResult.reason === 'EMAIL_NOT_VERIFIED') {
+      return NextResponse.json({ ok: false, code: ERR.VERIFICATION_REQUIRED, message: checkinResult.error || 'E-Mail-Verifizierung erforderlich.' }, { status: 400 });
+    }
+    if (checkinResult.reason === 'LIMIT_MEMBER') {
+      return NextResponse.json({ ok: false, code: ERR.APPROVAL_REQUIRED, message: checkinResult.error || 'Freigabe erforderlich.' }, { status: 400 });
+    }
+    if (checkinResult.reason === 'NO_GROUP') {
+      return NextResponse.json({ ok: false, code: ERR.MISSING_BASE_GROUP, message: checkinResult.error || 'Keine Trainingsgruppe zugewiesen.' }, { status: 400 });
+    }
+    return NextResponse.json({ ok: false, code: ERR.MEMBER_NOT_FOUND, message: checkinResult.error || 'Mitglied nicht gefunden.' }, { status: 400 });
   }
 
-  // trial/regular Zähllogik
-  const allCheckins = await getCheckinsV2ForMember(member.id);
-  if (member.member_type === 'trial') {
-    if (allCheckins.length >= 3) {
-      return NextResponse.json({ ok: false, code: ERR.TRIAL_LIMIT_REACHED, message: 'Trial-Limit erreicht.' }, { status: 403 });
-    }
-  } else if (member.member_type === 'regular') {
-    if (allCheckins.length >= 9) {
-      if (!member.email_verified) {
-        return NextResponse.json({ ok: false, code: ERR.VERIFICATION_REQUIRED, message: 'E-Mail-Verifizierung erforderlich.' }, { status: 403 });
-      }
-      if (!member.is_approved) {
-        return NextResponse.json({ ok: false, code: ERR.APPROVAL_REQUIRED, message: 'Freigabe erforderlich.' }, { status: 403 });
-      }
-    }
+  if (hasCheckedInToday) {
+    return NextResponse.json({ ok: false, error: 'Heute bereits eingecheckt', reason: 'DUPLICATE' }, { status: 400 });
   }
 
   // Gewichtspflicht
@@ -95,7 +115,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Check-in speichern (erneute Dublettenprüfung für Race-Condition/Idempotenz)
+  // Check-in speichern
   try {
     const checkin = await insertCheckinV2({
       member_id: member.id,
@@ -104,11 +124,6 @@ export async function POST(req: NextRequest) {
       effective_group,
       selected_group,
     });
-    // Nach dem Insert: Nochmals prüfen, ob jetzt Dubletten existieren (Race-Condition)
-    const postCheckins = await getCheckinsV2ForMemberOnDay(member.id, today);
-    if (postCheckins.length > 1) {
-      return NextResponse.json({ ok: false, code: ERR.DUPLICATE_CHECKIN, message: 'Race-Condition: Doppelter Check-in erkannt.' }, { status: 409 });
-    }
     return NextResponse.json({ ok: true, code: 'SUCCESS', message: 'Check-in erfolgreich.', checkin });
   } catch (e: any) {
     return NextResponse.json({ ok: false, code: 'DB_INSERT_FAILED', message: e?.message || 'Fehler beim Speichern.' }, { status: 500 });

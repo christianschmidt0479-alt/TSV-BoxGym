@@ -82,7 +82,9 @@ export default function TrialCheckinPage() {
             setQrAccessToken("")
             // Fehler NUR setzen, wenn QR-Token explizit per URL-Parameter kam
             setQrAccessError("Dieser QR-Code ist ungültig oder abgelaufen.")
-            console.error("trial qr access validation failed", response.status)
+            if (process.env.NODE_ENV !== "production") {
+              console.error("trial qr access validation failed", response.status)
+            }
             return
           }
 
@@ -118,7 +120,9 @@ export default function TrialCheckinPage() {
         const result = (await response.json()) as { disableCheckinTimeWindow?: boolean }
         setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
       } catch (error) {
-        console.error("trial checkin settings loading failed", error)
+        if (process.env.NODE_ENV !== "production") {
+          console.error("trial checkin settings loading failed", error)
+        }
       }
     })()
   }, [])
@@ -235,13 +239,25 @@ export default function TrialCheckinPage() {
         }),
       })
 
-      if (!response.ok) {
-        const message = await response.text()
+      const data = (await response.json()) as {
+        ok?: boolean
+        error?: string
+        reason?: string
+        checkinId?: string
+      }
+
+      if (!response.ok || !data.ok) {
         if (response.status === 403) {
           clearStoredQrAccess("trial")
           setQrAccessToken("")
         }
-        alert(message || "Fehler beim Speichern des Probetrainings.")
+
+        if (data.reason === "LIMIT_TRIAL") {
+          alert("Du hast die maximale Anzahl an Probetrainings erreicht.")
+          return
+        }
+
+        alert(data.error || "Fehler beim Speichern des Probetrainings.")
         return
       }
 

@@ -1,8 +1,18 @@
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { getPendingMembers, getAllMembers } from "@/lib/boxgymDb";
-import Link from "next/link";
+import Card from "@/components/Card"
+import { container, title, card } from "@/components/ui";
 
 
 export default async function DashboardPage() {
+  const cookieStore = await cookies()
+  const session = cookieStore.get("trainer_session")
+
+  if (!session) {
+    redirect("/trainer-zugang")
+  }
+
   let pending = [];
   let members = [];
   let error: unknown = null;
@@ -13,38 +23,65 @@ export default async function DashboardPage() {
     error = e;
   }
 
-  let errorMessage: string | null = null;
-  if (error instanceof Error) errorMessage = error.message;
-  else if (typeof error === "string") errorMessage = error;
-  else if (error) errorMessage = "Unbekannter Fehler";
+  if (error) {
+    throw new Error(`Fehler beim Laden der Admin-Daten: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const cardStyle = {
+    background: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+    cursor: "pointer",
+    transition: "0.15s ease",
+    marginBottom: 8,
+  }
+
+  const infoTitle = {
+    fontSize: 14,
+    color: "#666",
+  }
+
+  const infoValue = {
+    fontSize: 22,
+    fontWeight: 600,
+    margin: "6px 0",
+  }
 
   return (
-    <div className="max-w-3xl mx-auto py-8">
-      <h1 className="text-2xl font-bold mb-2">Verwaltung</h1>
-      <p className="text-zinc-600 mb-6">Reduzierte Startseite für den neuen Adminbereich. Fokus auf aktuelle Kernaufgaben.</p>
-
-      {errorMessage && (
-        <div className="bg-red-100 text-red-700 px-4 py-2 rounded mb-4">
-          Fehler beim Laden der Kennzahlen: {errorMessage}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <div className="rounded-xl border border-zinc-200 bg-white p-6 flex flex-col items-start">
-          <div className="text-xs text-zinc-500 mb-1">Offene Freigaben</div>
-          <div className="text-3xl font-bold text-[#154c83] mb-2">{pending.length}</div>
-          <Link href="/verwaltung-neu/freigaben" className="text-sm text-[#154c83] hover:underline font-medium">Zu den Freigaben</Link>
-        </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-6 flex flex-col items-start">
-          <div className="text-xs text-zinc-500 mb-1">Mitglieder insgesamt</div>
-          <div className="text-3xl font-bold text-[#154c83] mb-2">{members.length}</div>
-          <Link href="/verwaltung-neu/mitglieder" className="text-sm text-[#154c83] hover:underline font-medium">Zu den Mitgliedern</Link>
-        </div>
+    <div style={container}>
+      {/* Nur Content, keine eigene Navigation oder Header */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+        <Card
+          href="/verwaltung-neu/mitglieder"
+          title="Mitglieder"
+          subtitle="Verwalten & bearbeiten"
+          icon="👥"
+        />
+        <Card
+          href="/verwaltung-neu/freigaben"
+          title="Freigaben"
+          subtitle="Offene Anfragen prüfen"
+          icon="✅"
+        />
+        <Card
+          href="/verwaltung-neu/mail"
+          title="Kommunikation"
+          subtitle="E-Mails & Nachrichten"
+          icon="✉️"
+        />
       </div>
-
-      <div className="mt-8">
-        <Link href="/verwaltung-neu/loeschantraege" className="text-sm text-[#154c83] underline font-medium">Offene Mitglieder-Löschanträge anzeigen</Link>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={card}>
+          <div style={{ fontSize: 14, color: "#666" }}>Offene Freigaben</div>
+          <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0" }}>{pending.length}</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 14, color: "#666" }}>Mitglieder gesamt</div>
+          <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0" }}>{members.length}</div>
+        </div>
       </div>
     </div>
   );
+
 }

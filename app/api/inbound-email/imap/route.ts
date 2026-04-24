@@ -13,13 +13,17 @@ export async function POST(request: Request) {
   // --- Auth-Check ---
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
-    console.error("IMAP ERROR: CRON_SECRET not configured")
+    if (process.env.NODE_ENV !== "production") {
+      console.error("IMAP ERROR: CRON_SECRET not configured")
+    }
     return jsonError("Service not configured", 503)
   }
 
   const auth = request.headers.get("authorization")
   if (!auth || !auth.startsWith("Bearer ") || auth.slice(7) !== cronSecret) {
-    console.warn("IMAP ERROR: Unauthorized request rejected")
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("IMAP ERROR: Unauthorized request rejected")
+    }
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
   }
 
@@ -31,7 +35,9 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ ok: true, processed: result.imported, checked: true })
   } catch (error) {
-    console.error("IMAP ERROR", error)
+    if (process.env.NODE_ENV !== "production") {
+      console.error("IMAP ERROR", error)
+    }
     return NextResponse.json({ ok: false }, { status: 500 })
   }
 }

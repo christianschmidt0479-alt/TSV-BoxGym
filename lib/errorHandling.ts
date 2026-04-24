@@ -125,7 +125,7 @@ export const ErrorMessages = {
   EMAIL_NOT_VERIFIED: "E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungs-Link öffnen.",
   NOT_APPROVED: "Dein Konto wurde noch nicht freigegeben. Bitte Trainer oder Admin fragen.",
   TRIAL_LIMIT_EXCEEDED: "Probetraining abgeschlossen. Du hast bereits 3 Trainingseinheiten besucht.",
-  TEMP_LIMIT_EXCEEDED: "Ohne Admin-Freigabe sind maximal 6 Trainingseinheiten möglich. Bitte Trainer oder Admin ansprechen.",
+  TEMP_LIMIT_EXCEEDED: "Du hast die maximale Anzahl an Trainings ohne Mitgliederprüfung erreicht. Bitte wende dich an einen Trainer.",
   CHECKIN_UNAVAILABLE: "Check-in ist für diese Gruppe aktuell nicht möglich.",
   SERVICE_ERROR: "Fehler beim Speichern. Bitte später versuchen.",
   NETWORK_ERROR: "Verbindungsfehler. Bitte später versuchen.",

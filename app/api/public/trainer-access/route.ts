@@ -121,34 +121,44 @@ export async function POST(request: Request) {
       const pin = body.pin?.trim() ?? ""
 
       if (!firstName || !lastName || !email || !pin) {
-        console.warn("[public trainer access] validation failed", { step: "validation", email })
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[public trainer access] validation failed", { step: "validation", email })
+        }
         return new NextResponse("Bitte alle Felder für die Trainerregistrierung ausfüllen.", { status: 400 })
       }
 
       const emailValidation = validateEmail(email)
       if (!emailValidation.valid) {
-        console.warn("[public trainer access] validation failed", { step: "validation", email })
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[public trainer access] validation failed", { step: "validation", email })
+        }
         return new NextResponse(emailValidation.error || "Bitte gib eine gültige E-Mail-Adresse ein.", { status: 400 })
       }
 
       if (!isTrainerPinCompliant(pin)) {
-        console.warn("[public trainer access] validation failed", { step: "validation", email })
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[public trainer access] validation failed", { step: "validation", email })
+        }
         return new NextResponse(TRAINER_PIN_REQUIREMENTS_MESSAGE, { status: 400 })
       }
 
       if (!phone) {
-        console.warn("[public trainer access] validation failed", { step: "validation", email })
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[public trainer access] validation failed", { step: "validation", email })
+        }
         return new NextResponse("Telefonnummer ist erforderlich.", { status: 400 })
       }
 
       const existingTrainer = await findTrainerByEmail(email)
       if (existingTrainer) {
-        console.warn("[public trainer access] duplicate email", {
-          step: "duplicate email",
-          email,
-          emailVerified: existingTrainer.email_verified,
-          isApproved: existingTrainer.is_approved,
-        })
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[public trainer access] duplicate email", {
+            step: "duplicate email",
+            email,
+            emailVerified: existingTrainer.email_verified,
+            isApproved: existingTrainer.is_approved,
+          })
+        }
         return new NextResponse(EXISTING_TRAINER_ACCOUNT_MESSAGE, { status: 409 })
       }
 
@@ -184,7 +194,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true, email })
       } catch (error) {
         if (isTrainerAccountEmailConflict(error)) {
-          console.warn("[public trainer access] duplicate email", { step: "duplicate email", email })
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[public trainer access] duplicate email", { step: "duplicate email", email })
+          }
           return new NextResponse(EXISTING_TRAINER_ACCOUNT_MESSAGE, { status: 409 })
         }
 
