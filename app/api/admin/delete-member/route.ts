@@ -16,10 +16,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Keine Berechtigung" }, { status: 403 })
   }
 
-  const { id } = await req.json()
+  const body = await req.json()
+  console.log("DELETE BODY:", body)
 
-  if (!id) {
-    return NextResponse.json({ error: "Keine ID" }, { status: 400 })
+  const { memberId } = body
+  console.log("DELETE memberId:", memberId)
+
+  if (!memberId) {
+    console.log("❌ MISSING MEMBER ID")
+    return NextResponse.json({ error: "missing_member_id" }, { status: 400 })
   }
 
   const supabase = createClient(
@@ -30,7 +35,7 @@ export async function POST(req: Request) {
   const { error } = await supabase
     .from("members")
     .delete()
-    .eq("id", id)
+    .eq("id", memberId)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

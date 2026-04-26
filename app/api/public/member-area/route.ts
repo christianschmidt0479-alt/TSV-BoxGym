@@ -15,7 +15,7 @@ import {
   registerLoginFailureAsync,
   sanitizeTextInput,
 } from "@/lib/apiSecurity"
-import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { clearTrainerSessionCookie, readTrainerSessionFromHeaders } from "@/lib/authSession"
 import {
   applyMemberAreaSessionCookie,
   clearMemberAreaSessionCookie,
@@ -23,14 +23,13 @@ import {
   verifyMemberAreaSessionToken,
 } from "@/lib/publicAreaSession"
 
-// Keine Trainer-/Admin-Session-Logik importieren oder verwenden
 import {
   findMemberByEmail,
   findMemberByEmailAndPin,
   findMemberByFirstLastName,
   findMemberById,
   updateMemberProfile,
-  setMemberPinOnly
+  setMemberPinOnly,
 } from "@/lib/boxgymDb"
 import { sessions } from "@/lib/boxgymSessions"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
@@ -483,6 +482,9 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as MemberAreaBody
+    if (process.env.NODE_ENV !== "production") {
+      console.log("ACTION:", body.action)
+    }
     const normalizedIdentifier =
       body.action === "member_login"
         ? sanitizeMemberAreaEmail(body.email)
@@ -533,15 +535,24 @@ export async function POST(request: Request) {
       await clearLoginFailuresAsync(loginKey)
 
       const member = memberMatch.member as MemberRecord
+      const needsPasswordUpdate = password.length < 6
       if (!hasAcceptedPrivacy(member)) {
         return privacyConsentRequiredResponse()
       }
 
       const payload = await buildMemberSnapshot(member)
-      const response = NextResponse.json({ ok: true, ...payload })
+      const response = NextResponse.json({
+        ok: true,
+        role: "member",
+        redirectTo: "/mein-bereich/dashboard",
+        needsPasswordUpdate,
+        ...payload,
+      })
+      clearTrainerSessionCookie(response)
       return applyMemberAreaSessionCookie(response, {
         memberId: member.id,
         email: member.email ?? email,
+        needsPasswordUpdate,
       })
     }
 
@@ -556,8 +567,14 @@ export async function POST(request: Request) {
         .join("=")
 
       const memberSession = await verifyMemberAreaSessionToken(memberSessionToken)
+      if (process.env.NODE_ENV !== "production") {
+        console.log("SESSION MEMBER:", memberSession)
+      }
       if (memberSession?.memberId) {
         const member = (await findMemberById(memberSession.memberId)) as MemberRecord | null
+        if (process.env.NODE_ENV !== "production") {
+          console.log("SESSION MEMBER DB:", member?.id ?? null)
+        }
         if (!member) {
           const response = NextResponse.json({ ok: false, code: "not_found", message: "Mitglied nicht gefunden." }, { status: 401 })
           return clearMemberAreaSessionCookie(response)
@@ -568,15 +585,26 @@ export async function POST(request: Request) {
         }
 
         const memberData = await buildMemberSnapshot(member)
-        return NextResponse.json({
+        const response = NextResponse.json({
           ok: true,
           code: "session_valid",
           message: "Session gültig.",
+          needsPasswordUpdate: memberSession.needsPasswordUpdate === true,
           member: {
             ...memberData,
             email_verified: member.email_verified ?? false,
           },
         })
+        return applyMemberAreaSessionCookie(response, {
+          memberId: memberSession.memberId,
+          email: member.email ?? memberSession.email,
+          needsPasswordUpdate: memberSession.needsPasswordUpdate === true,
+        })
+      }
+
+      if (memberSessionToken) {
+        const response = NextResponse.json({ ok: false, code: "session_expired", message: "Session abgelaufen." }, { status: 401 })
+        return clearMemberAreaSessionCookie(response)
       }
 
       const trainerSession = await readTrainerSessionFromHeaders(request)
@@ -601,6 +629,7 @@ export async function POST(request: Request) {
         ok: true,
         code: "session_valid",
         message: "Session gültig.",
+        needsPasswordUpdate: false,
         member: {
           ...memberData,
           email_verified: member.email_verified ?? false,
@@ -610,6 +639,7 @@ export async function POST(request: Request) {
 
     if (body.action === "logout_member_session") {
       const response = NextResponse.json({ ok: true, code: "logged_out" })
+      clearTrainerSessionCookie(response)
       return clearMemberAreaSessionCookie(response)
     }
 

@@ -75,7 +75,7 @@ export function PasswordResetClient() {
     }
 
     const timeoutId = window.setTimeout(() => {
-      router.push("/mein-bereich")
+      router.push("/mein-bereich/login")
     }, 1800)
 
     return () => {

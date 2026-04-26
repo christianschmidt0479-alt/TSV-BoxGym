@@ -3,13 +3,15 @@ import type { NextResponse } from "next/server"
 export const MEMBER_AREA_SESSION_COOKIE = "tsv_member_area_session"
 export const PARENT_AREA_SESSION_COOKIE = "tsv_parent_area_session"
 
-const SESSION_MAX_AGE_SECONDS = 60 * 60
+const MEMBER_SESSION_MAX_AGE_SECONDS = 60 * 20
+const PARENT_SESSION_MAX_AGE_SECONDS = 60 * 60
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 export type MemberAreaSessionPayload = {
   memberId: string
   email: string
+  needsPasswordUpdate?: boolean
   exp: number
 }
 
@@ -86,10 +88,10 @@ function timingSafeEqualString(left: string, right: string) {
   return result === 0
 }
 
-async function createSignedToken<T extends { exp: number }>(input: Omit<T, "exp">) {
+async function createSignedToken<T extends { exp: number }>(input: Omit<T, "exp">, maxAgeSeconds: number) {
   const payload = {
     ...input,
-    exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
+    exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
   } as T
 
   const encodedPayload = toBase64Url(JSON.stringify(payload))
@@ -134,7 +136,7 @@ function getCookieValueFromHeader(cookieHeader: string | null, name: string) {
   return null
 }
 
-function applyCookie(response: NextResponse, name: string, value: string, maxAge = SESSION_MAX_AGE_SECONDS) {
+function applyCookie(response: NextResponse, name: string, value: string, maxAge: number) {
   response.cookies.set(name, value, {
     httpOnly: true,
     sameSite: "lax",
@@ -146,7 +148,7 @@ function applyCookie(response: NextResponse, name: string, value: string, maxAge
 }
 
 export async function createMemberAreaSessionToken(input: Omit<MemberAreaSessionPayload, "exp">) {
-  return createSignedToken<MemberAreaSessionPayload>(input)
+  return createSignedToken<MemberAreaSessionPayload>(input, MEMBER_SESSION_MAX_AGE_SECONDS)
 }
 
 export async function verifyMemberAreaSessionToken(token: string | undefined | null) {
@@ -166,15 +168,23 @@ export async function readMemberSession(cookieStore: CookieStoreLike) {
 }
 
 export async function applyMemberAreaSessionCookie(response: NextResponse, input: Omit<MemberAreaSessionPayload, "exp">) {
-  return applyCookie(response, MEMBER_AREA_SESSION_COOKIE, await createMemberAreaSessionToken(input))
+  return applyCookie(response, MEMBER_AREA_SESSION_COOKIE, await createMemberAreaSessionToken(input), MEMBER_SESSION_MAX_AGE_SECONDS)
 }
 
 export function clearMemberAreaSessionCookie(response: NextResponse) {
-  return applyCookie(response, MEMBER_AREA_SESSION_COOKIE, "", 0)
+  response.cookies.set(MEMBER_AREA_SESSION_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+  })
+  return response
 }
 
 export async function createParentAreaSessionToken(input: Omit<ParentAreaSessionPayload, "exp">) {
-  return createSignedToken<ParentAreaSessionPayload>(input)
+  return createSignedToken<ParentAreaSessionPayload>(input, PARENT_SESSION_MAX_AGE_SECONDS)
 }
 
 export async function verifyParentAreaSessionToken(token: string | undefined | null) {
@@ -186,7 +196,7 @@ export async function readParentAreaSessionFromHeaders(request: Request) {
 }
 
 export async function applyParentAreaSessionCookie(response: NextResponse, input: Omit<ParentAreaSessionPayload, "exp">) {
-  return applyCookie(response, PARENT_AREA_SESSION_COOKIE, await createParentAreaSessionToken(input))
+  return applyCookie(response, PARENT_AREA_SESSION_COOKIE, await createParentAreaSessionToken(input), PARENT_SESSION_MAX_AGE_SECONDS)
 }
 
 export function clearParentAreaSessionCookie(response: NextResponse) {
@@ -194,5 +204,5 @@ export function clearParentAreaSessionCookie(response: NextResponse) {
 }
 
 export function getPublicAreaSessionMaxAgeMs() {
-  return SESSION_MAX_AGE_SECONDS * 1000
+  return MEMBER_SESSION_MAX_AGE_SECONDS * 1000
 }

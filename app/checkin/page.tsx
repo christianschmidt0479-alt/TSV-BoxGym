@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 
 /**
  * /checkin
@@ -40,7 +39,6 @@ function CheckinPageContent() {
   // ========================================================================
   const entry = searchParams?.get("entry") === "gym" ? "gym" : null
 
-  const [mode, setMode] = useState<"member" | "trainer" | null>(null)
   const [email, setEmail] = useState("")
   const [pin, setPin] = useState("")
   const [error, setError] = useState("")
@@ -131,7 +129,8 @@ function CheckinPageContent() {
           setError("Du hast die maximale Anzahl an Probetrainings erreicht.")
           return
         }
-        setError(data.error || "Fehler beim Check-in")
+        const uiError = (data.error || "Fehler beim Check-in").replaceAll("PIN", "Passwort")
+        setError(uiError)
         return
       }
 
@@ -165,155 +164,93 @@ function CheckinPageContent() {
     }
   }
 
-  const handleTrainerRedirect = () => {
-    // Route to trainer check-in with source parameter
-    router.push("/verwaltung-neu/checkin?source=trainer")
-  }
-
   if (!autoCheckDone) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
-        <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center text-sm text-slate-600 shadow">
-          Bekannte Geraetepruefung laeuft...
+      <div className="min-h-screen pt-8 pb-12 flex items-start justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md mt-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4 text-center text-sm text-gray-600">
+            Bekannte Geräteprüfung läuft...
+          </div>
         </div>
       </div>
     )
   }
 
-  // Mode selection screen
-  if (!mode) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-8">
-        <div className="w-full max-w-sm text-center">
-          <h1 className="mb-2 text-3xl font-bold text-slate-900">Check-in</h1>
-          <p className="text-sm text-slate-600">
-            {source === "nfc" ? "NFC Scan erkannt" : "QR Code erkannt"}
-          </p>
+  return (
+    <div className="min-h-screen pt-8 pb-12 flex items-start justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md mt-4">
+        <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6 text-center">
+          <img src="/logo.png" alt="TSV Falkensee" className="h-16 mx-auto mb-3" />
+          <h1 className="text-lg font-semibold">Check-in</h1>
+          <p className="text-sm text-gray-500">Zugang nur für registrierte Mitglieder</p>
         </div>
 
-        {/* Buttons */}
-        <div className="w-full max-w-sm space-y-3">
-          <button
-            onClick={() => setMode("member")}
-            className="w-full rounded-lg bg-blue-600 px-6 py-4 text-base font-semibold text-white shadow-md transition-all hover:bg-blue-700 active:scale-95"
-          >
-            Ich bin Mitglied
-          </button>
+        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+          
 
-          <button
-            onClick={handleTrainerRedirect}
-            className="w-full rounded-lg bg-slate-700 px-6 py-4 text-base font-semibold text-white shadow-md transition-all hover:bg-slate-800 active:scale-95"
-          >
-            Trainer Check-in
-          </button>
-        </div>
+          {error ? (
+            <div className="text-sm text-red-600 text-center">{error}</div>
+          ) : null}
 
-        {/* Debug Info (production hidden) */}
-        {process.env.NODE_ENV !== "production" && (
-          <div className="mt-8 w-full max-w-sm rounded-lg bg-white p-4 text-xs text-slate-600 font-mono space-y-1">
-            <p>source: {source}</p>
-            {entry && <p>entry: {entry}</p>}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // Member check-in form
-  if (mode === "member") {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-8">
-        <div className="w-full max-w-sm">
-          {/* Header */}
-          <div className="mb-6 text-center">
-            <h1 className="mb-2 text-2xl font-bold text-slate-900">Mitglied Login</h1>
-            <p className="text-sm text-slate-600">E-Mail und PIN eingeben</p>
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          {/* Form */}
           <form onSubmit={handleMemberCheckin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                E-Mail
-              </label>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">E-Mail</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="deine@email.de"
                 disabled={loading}
-                className="w-full rounded-lg border border-slate-300 px-4 py-2 text-base placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100"
+                className="w-full rounded-md border border-gray-300 px-3 py-3 text-sm"
+                required
                 autoFocus
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                PIN
-              </label>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Passwort</label>
               <input
                 type="password"
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
-                placeholder="••••"
                 disabled={loading}
-                className="w-full rounded-lg border border-slate-300 px-4 py-2 text-base placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100"
+                className="w-full rounded-md border border-gray-300 px-3 py-3 text-sm"
+                required
               />
             </div>
 
             <button
               type="submit"
               disabled={loading || !email || !pin}
-              className="w-full rounded-lg bg-blue-600 px-4 py-3 text-base font-semibold text-white shadow-md transition-all hover:bg-blue-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-[#0f2a44] hover:bg-[#13365a] text-white py-3 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "Wird geprüft..." : "Check-in"}
+              {loading ? "Wird geprüft..." : "Einchecken"}
             </button>
           </form>
 
-          {/* Back button */}
-          <button
-            onClick={() => setMode(null)}
-            disabled={loading}
-            className="mt-4 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-50"
-          >
-            Zurück
-          </button>
-
-          {/* Links */}
-          <div className="mt-6 space-y-2 text-center text-xs text-slate-600">
-            <p>
-              <Link href="/login" className="text-blue-600 hover:underline">
-                Zum Login
-              </Link>
-            </p>
-            <p>
-              <Link href="/" className="text-slate-600 hover:underline">
-                Zur Startseite
-              </Link>
-            </p>
+          <div className="text-xs text-gray-500 text-center">
+            Kein Zugang? Bitte zuerst registrieren.
           </div>
+          <a
+            href="/checkin/beitritt"
+            className="text-sm text-blue-700 underline block text-center"
+          >
+            Zur Registrierung
+          </a>
         </div>
       </div>
-    )
-  }
-
-  return null
+    </div>
+  )
 }
 
 export default function CheckinPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
-          <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center text-sm text-slate-600 shadow">
-            Seite wird geladen...
+        <div className="min-h-screen pt-8 pb-12 flex items-start justify-center bg-gray-50 px-4">
+          <div className="w-full max-w-md mt-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4 text-center text-sm text-gray-600">
+              Seite wird geladen...
+            </div>
           </div>
         </div>
       }

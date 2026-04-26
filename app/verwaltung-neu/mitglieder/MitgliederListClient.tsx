@@ -76,12 +76,18 @@ function sortBucket(member: MemberRow) {
 
 export default function MitgliederListClient({ members }: { members: MemberRow[] }) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [approvingById, setApprovingById] = useState<Record<string, boolean>>({})
   const [messageById, setMessageById] = useState<Record<string, { type: "success" | "error"; text: string }>>({})
 
   useEffect(() => {
     setLocalMembers(members)
   }, [members])
+
+  useEffect(() => {
+    const availableIds = new Set(localMembers.map((member) => member.id))
+    setSelectedIds((prev) => prev.filter((id) => availableIds.has(id)))
+  }, [localMembers])
 
   const sortedMembers = useMemo(() => {
     return [...localMembers].sort((a, b) => {
@@ -104,6 +110,27 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
   const totalTodayCount = useMemo(() => localMembers.filter((member) => Boolean(member.checkedInToday)).length, [localMembers])
   const totalCriticalCount = useMemo(() => localMembers.filter((member) => (member.checkinCount ?? 0) >= 7).length, [localMembers])
   const totalOpenCount = useMemo(() => localMembers.filter((member) => !member.is_approved).length, [localMembers])
+
+  async function handleBulkDelete() {
+    if (selectedIds.length < 1) return
+    if (!confirm("Alle ausgewählten löschen?")) return
+
+    const idsToDelete = [...selectedIds]
+
+    setLocalMembers((prev) => prev.filter((member) => !idsToDelete.includes(member.id)))
+    setSelectedIds([])
+
+    await Promise.all(
+      idsToDelete.map((id) =>
+        fetch("/api/admin/delete-member", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ memberId: id }),
+        })
+      )
+    )
+  }
 
   async function handleApprove(member: MemberRow) {
     setApprovingById((prev) => ({ ...prev, [member.id]: true }))
@@ -209,6 +236,14 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
         </div>
       )}
 
+      {selectedIds.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <button style={buttonSecondary} onClick={() => void handleBulkDelete()}>
+            Löschen ({selectedIds.length})
+          </button>
+        </div>
+      )}
+
       <div
         style={{
           marginBottom: 12,
@@ -227,6 +262,19 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
         <div key={m.id} style={{ ...card, marginBottom: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
             <div>
+              <div style={{ marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(m.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedIds((prev) => (prev.includes(m.id) ? prev : [...prev, m.id]))
+                    } else {
+                      setSelectedIds((prev) => prev.filter((id) => id !== m.id))
+                    }
+                  }}
+                />
+              </div>
               <div style={cardTitle}>{memberName(m)}</div>
               <div style={{ fontSize: 14, color: "#666", marginBottom: 6 }}>{m.email || "-"}</div>
               <div style={{ fontSize: 14, color: "#334155" }}>Gruppe: {m.base_group || "-"}</div>
@@ -371,6 +419,19 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
         <div key={m.id} style={{ ...card, marginBottom: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
             <div>
+              <div style={{ marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(m.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedIds((prev) => (prev.includes(m.id) ? prev : [...prev, m.id]))
+                    } else {
+                      setSelectedIds((prev) => prev.filter((id) => id !== m.id))
+                    }
+                  }}
+                />
+              </div>
               <div style={cardTitle}>{memberName(m)}</div>
               <div style={{ fontSize: 14, color: "#666", marginBottom: 6 }}>{m.email || "-"}</div>
               <div style={{ fontSize: 14, color: "#334155" }}>Gruppe: {m.base_group || "-"}</div>

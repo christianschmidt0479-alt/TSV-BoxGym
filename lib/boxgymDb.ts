@@ -54,7 +54,7 @@ type MemberInput = {
   first_name: string
   last_name: string
   birthdate: string
-  gender?: string
+  gender?: string | null
   email?: string
   phone?: string
   guardian_name?: string

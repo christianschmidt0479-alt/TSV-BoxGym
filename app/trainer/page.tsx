@@ -38,7 +38,7 @@ function getBerlinDayKey(date: Date) {
 
 export default async function TrainerPage() {
   const resolvedContext = await resolveUserContext()
-  if (!resolvedContext || resolvedContext.type !== "trainer") {
+  if (!resolvedContext.isTrainer && !resolvedContext.isAdmin) {
     redirect("/trainer-zugang")
   }
 
@@ -179,7 +179,7 @@ export default async function TrainerPage() {
             href="/verwaltung-neu/mitglieder"
             className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
           >
-            <div>Mitglieder pruefen</div>
+            <div>Mitglieder prüfen</div>
             <div className="mt-1 text-sm font-medium text-zinc-600">Stammdaten aufrufen</div>
           </Link>
 
@@ -195,7 +195,7 @@ export default async function TrainerPage() {
         <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-100 px-4 py-3">
             <div className="text-base font-semibold text-zinc-900">Mitgliederliste</div>
-            <div className="text-sm text-zinc-600">Name, Gruppe, Status und Check-in fuer heute</div>
+            <div className="text-sm text-zinc-600">Name, Gruppe, Status und Check-in für heute</div>
           </div>
 
           {rows.length === 0 ? (

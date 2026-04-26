@@ -137,7 +137,7 @@ export function ZugangEinrichtenClient() {
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Passwort wählen <span className="ml-1 text-red-500">*</span></Label>
+                    <Label>Passwort wählen <span className="ml-1 text-gray-800">*</span></Label>
                     <PasswordInput
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -149,7 +149,7 @@ export function ZugangEinrichtenClient() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Passwort bestätigen <span className="ml-1 text-red-500">*</span></Label>
+                    <Label>Passwort bestätigen <span className="ml-1 text-gray-800">*</span></Label>
                     <PasswordInput
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}

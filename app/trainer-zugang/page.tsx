@@ -30,7 +30,23 @@ export default function TrainerLoginPage() {
         return
       }
 
-      router.push(data?.redirectTo || "/trainer")
+      if (data?.role === "admin") {
+        const redirectTo = "/verwaltung-neu"
+        router.replace(redirectTo)
+        router.refresh()
+        return
+      }
+
+      if (data?.role === "trainer") {
+        const redirectTo = "/trainer"
+        router.replace(redirectTo)
+        router.refresh()
+        return
+      }
+
+      const redirectTo = data?.redirectTo || "/trainer"
+      router.replace(redirectTo)
+      router.refresh()
     } catch (err) {
       if (process.env.NODE_ENV !== "production") {
         console.error(err)

@@ -45,17 +45,18 @@ function CheckinSuccessPageContent() {
     if (!isValid) return
 
     const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          router.push("/")
-          return 0
-        }
-        return prev - 1
-      })
+      setCountdown((prev) => (prev > 0 ? prev - 1 : 0))
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [isValid, router])
+  }, [isValid])
+
+  useEffect(() => {
+    if (!isValid) return
+    if (countdown === 0) {
+      router.replace("/checkin")
+    }
+  }, [countdown, isValid, router])
 
   // Only render if id is valid
   if (!isValid) {

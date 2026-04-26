@@ -1,15 +1,19 @@
 import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
 import { findMemberById } from "@/lib/boxgymDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { MAX_TRAININGS_WITHOUT_APPROVAL } from "@/lib/memberCheckin"
 import { getUserContext } from "@/lib/getUserContext"
+import { MEMBER_AREA_SESSION_COOKIE } from "@/lib/publicAreaSession"
 import { resolveUserContext } from "@/lib/resolveUserContext"
 
 export default async function DashboardPage() {
+  const cookieStore = await cookies()
+  const hadMemberSessionCookie = Boolean(cookieStore.get(MEMBER_AREA_SESSION_COOKIE)?.value)
   const resolvedContext = await resolveUserContext()
 
-  if (!resolvedContext) {
-    redirect("/mein-bereich/login")
+  if (!resolvedContext.isLoggedIn) {
+    redirect(hadMemberSessionCookie ? "/mein-bereich/login?reason=session_expired" : "/mein-bereich/login")
   }
 
   const context = await getUserContext()
@@ -31,6 +35,7 @@ export default async function DashboardPage() {
   let member: {
     first_name: string | null
     last_name: string | null
+    email: string | null
     base_group: string | null
     is_approved: boolean | null
     email_verified: boolean | null
@@ -41,6 +46,7 @@ export default async function DashboardPage() {
       .select(`
         first_name,
         last_name,
+        email,
         base_group,
         is_approved,
         email_verified
@@ -82,81 +88,83 @@ export default async function DashboardPage() {
       checkinDate.toDateString() === today.toDateString()
   }
 
+  const memberName = member ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || "Unbekannt" : ""
+  const memberGroup = member?.base_group || "Keine Gruppe zugewiesen"
+  const stats = {
+    monthCount: 0,
+    streak: 0,
+    lastCheckin: "-",
+  }
+
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center space-y-4 w-full max-w-md">
-        <h1 className="text-xl font-semibold">
-          Willkommen im Mitgliederbereich
-        </h1>
+    <div className="min-h-screen bg-gray-50 px-4 pt-8 flex justify-center">
+      <div className="w-full max-w-md space-y-6">
+        {/* HEADER */}
+        <div>
+          <h1 className="text-xl font-semibold">
+            Willkommen zurück 👋
+          </h1>
+          <p className="text-sm text-gray-500">
+            {memberName}
+          </p>
+        </div>
 
-        {member && (
-          <div className="mt-4 text-sm text-gray-700 space-y-3 text-left">
-            <p className="font-medium text-base">
-              {(member.first_name || "")} {(member.last_name || "")}
-            </p>
+        {/* HERO CARD */}
+        <div className="bg-[#0f2a44] text-white rounded-xl p-5">
+          <p className="text-sm opacity-80">
+            Trainings diesen Monat
+          </p>
 
-            <p>
-              <span className="text-gray-500">Gruppe:</span>{" "}
-              {member.base_group || "Keine Gruppe zugewiesen"}
-            </p>
+          <p className="text-3xl font-bold">
+            {stats?.monthCount || 0}
+          </p>
 
-            <p>
-              <span className="text-gray-500">Status:</span>
-              {!member.email_verified ? (
-                <span className="text-red-600 ml-1">Bitte bestätige deine E-Mail</span>
-              ) : member.email_verified && !member.is_approved ? (
-                <span className="text-yellow-600 ml-1">Dein Zugang wird aktuell geprüft</span>
-              ) : (
-                <span className="text-green-600 ml-1">Du bist vollständig freigeschaltet</span>
-              )}
-            </p>
-
-            <div className="mt-4 space-y-2 text-sm">
-              <p>
-                <span className="text-gray-500">Check-in:</span>
-
-                {hasCheckedInToday ? (
-                  <span className="text-green-600 ml-1">Heute eingecheckt</span>
-                ) : (
-                  <span className="text-gray-600 ml-1">Heute noch nicht eingecheckt</span>
-                )}
+          <div className="mt-4 flex justify-between text-sm">
+            <div>
+              <p className="opacity-70">Serie</p>
+              <p className="font-semibold">
+                {stats?.streak || 0}
               </p>
-
-              {lastCheckin?.created_at && (
-                <p className="text-gray-500">
-                  Letzter Check-in:{" "}
-                  {new Date(lastCheckin.created_at).toLocaleString("de-DE")}
-                </p>
-              )}
             </div>
 
-            {!hasCheckedInToday && (
-              <div className="mt-3 p-3 rounded-lg bg-blue-50 text-blue-800 text-sm">
-                Bitte checke dich vor dem Training ein.
-              </div>
-            )}
+            <div>
+              <p className="opacity-70">Letztes Training</p>
+              <p className="font-semibold">
+                {stats?.lastCheckin || "-"}
+              </p>
+            </div>
           </div>
-        )}
+        </div>
 
-        <div className="space-y-2 mt-4">
-          {member && !member.is_approved && (
-            <div className="p-3 rounded-lg bg-yellow-50 text-yellow-800 text-sm">
-              <p>Dein Zugang wird aktuell geprüft.</p>
-              <p className="mt-1">
-                Du hast {trainingsWithoutApprovalUsed} von {MAX_TRAININGS_WITHOUT_APPROVAL} Trainings ohne Mitgliederprüfung genutzt.
-              </p>
-            </div>
-          )}
+        {/* STATUS */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-sm text-gray-600">
+            Gruppe
+          </p>
+          <p className="font-semibold">
+            {memberGroup || "-"}
+          </p>
 
-          {member && !member.email_verified && (
-            <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm">
-              Bitte bestätige deine E-Mail.
-            </div>
-          )}
+          <p className="text-sm text-gray-600 mt-2">
+            Status
+          </p>
+          <p className="font-semibold text-green-600">
+            {member?.is_approved ? "Aktiv" : "Nicht freigegeben"}
+          </p>
+        </div>
+
+        {/* MOTIVATION */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-sm font-semibold mb-1">
+            🔥 Bleib dran!
+          </p>
+          <p className="text-sm text-gray-600">
+            Halte deine Trainingsserie aufrecht.
+          </p>
         </div>
 
         {isAdmin && (
-          <div className="mt-4 p-3 rounded-lg bg-blue-50 text-blue-800 text-sm">
+          <div className="p-3 rounded-lg bg-blue-50 text-blue-800 text-sm">
             Du bist als Admin eingeloggt
           </div>
         )}

@@ -1,6 +1,6 @@
 {
   "name": "tsv-boxgym-app",
-  "version": "10.0.0",
+  "version": "10.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -33,6 +33,7 @@
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-qr-code": "^2.0.18",
     "resend": "^6.10.0",
     "shadcn": "^4.0.8",
     "swr": "^2.4.1",

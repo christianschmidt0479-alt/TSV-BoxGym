@@ -1,3 +1,9 @@
+import MemberPasswordUpdateGuard from "./MemberPasswordUpdateGuard"
+
 export default function MeinBereichLayout({ children }: { children: React.ReactNode }) {
-  return <div>{children}</div>
+  return (
+    <MemberPasswordUpdateGuard>
+      <div>{children}</div>
+    </MemberPasswordUpdateGuard>
+  )
 }

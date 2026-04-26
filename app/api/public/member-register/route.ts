@@ -18,17 +18,22 @@ export async function POST(request: Request) {
     const baseGroupFinal = body.baseGroup || body.base_group
     const normalizedPassword = typeof body.password === "string" ? body.password.trim() : ""
     const normalizedPin = body.pin == null ? "" : String(body.pin).trim()
+    const gender = typeof body.gender === "string" ? body.gender.trim() : ""
     const parsedGroup = parseTrainingGroup(baseGroupFinal)
     const input = {
       firstName: body.firstName?.trim() ?? "",
       lastName: body.lastName?.trim() ?? "",
       birthDate: typeof birthDateFinal === "string" ? birthDateFinal.trim() : "",
-      gender: body.gender?.trim() ?? "",
+      gender,
       password: normalizedPassword || (normalizedPin.length >= 4 ? normalizedPin : ""),
       email: body.email?.trim() ?? "",
       phone: body.phone?.trim() ?? "",
       baseGroup: typeof parsedGroup === "string" ? parsedGroup : "",
       consent: body.consent === true,
+    }
+
+    if (input.password.length < 6) {
+      return NextResponse.json({ ok: false, error: "Passwort muss mindestens 6 Zeichen lang sein" }, { status: 400 })
     }
 
     const result = await registerMemberService(input)

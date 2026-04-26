@@ -22,7 +22,7 @@ type AdminMemberListRow = {
 export default function MitgliederPage() {
   const [members, setMembers] = useState<AdminMemberListRow[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
 
   const PAGE_SIZE = 10
@@ -36,7 +36,7 @@ export default function MitgliederPage() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            page,
+            page: currentPage,
             pageSize: PAGE_SIZE
           })
         })
@@ -60,9 +60,16 @@ export default function MitgliederPage() {
     }
 
     loadMembers()
-  }, [page])
+  }, [currentPage])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const safePage = Math.min(currentPage, totalPages || 1)
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages || 1)
+    }
+  }, [currentPage, totalPages])
 
   return (
     <div style={container}>
@@ -78,17 +85,17 @@ export default function MitgliederPage() {
 
       <div style={{ marginTop: 20, display: "flex", gap: 10, alignItems: "center" }}>
         <button
-          disabled={page === 1}
-          onClick={() => setPage(page - 1)}
+          disabled={currentPage <= 1}
+          onClick={() => setCurrentPage(safePage - 1)}
         >
           Zurück
         </button>
 
-        <span>Seite {page} / {totalPages}</span>
+        <span>Seite {safePage} / {totalPages}</span>
 
         <button
-          disabled={page === totalPages}
-          onClick={() => setPage(page + 1)}
+          disabled={currentPage >= totalPages}
+          onClick={() => setCurrentPage(safePage + 1)}
         >
           Weiter
         </button>

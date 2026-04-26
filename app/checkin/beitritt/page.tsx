@@ -4,19 +4,14 @@ import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, UserRoundPlus } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ErrorBox } from "@/components/ErrorBox"
 import { InfoHint } from "@/components/ui/info-hint"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { groupOptions } from "@/lib/boxgymSessions"
 import { isValidMemberPassword, MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
-import { normalizeTrainingGroupOrFallback } from "@/lib/trainingGroups"
+import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
 function getStoredString(key: string) {
   if (typeof window === "undefined") return ""
@@ -28,6 +23,23 @@ function getStoredString(key: string) {
   }
 }
 
+function getAgeFromBirthdate(dateString: string): number | null {
+  if (!dateString) return null
+
+  const today = new Date()
+  const birthDate = new Date(dateString)
+  if (Number.isNaN(birthDate.getTime())) return null
+
+  let age = today.getFullYear() - birthDate.getFullYear()
+  const monthDiff = today.getMonth() - birthDate.getMonth()
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age -= 1
+  }
+
+  return age
+}
+
 export default function CheckinJoinPage() {
   const router = useRouter()
   const [isClient, setIsClient] = useState(false)
@@ -35,11 +47,12 @@ export default function CheckinJoinPage() {
   const [registerFirstName, setRegisterFirstName] = useState("")
   const [registerLastName, setRegisterLastName] = useState("")
   const [registerBirthDate, setRegisterBirthDate] = useState("")
+  const [registerGender, setRegisterGender] = useState("")
   const [registerPin, setRegisterPin] = useState("")
   const [registerEmail, setRegisterEmail] = useState("")
   const [registerPhone, setRegisterPhone] = useState("")
   const [registerGuardianName, setRegisterGuardianName] = useState("")
-  const [registerBaseGroup, setRegisterBaseGroup] = useState(groupOptions[0] ?? "")
+  const [registerBaseGroup, setRegisterBaseGroup] = useState<string>("")
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [privacyError, setPrivacyError] = useState("")
   const [apiError, setApiError] = useState("")
@@ -49,10 +62,13 @@ export default function CheckinJoinPage() {
     setRegisterFirstName(getStoredString("tsv_register_first_name"))
     setRegisterLastName(getStoredString("tsv_register_last_name"))
     setRegisterBirthDate(getStoredString("tsv_register_birthdate"))
+    const savedGender = getStoredString("tsv_register_gender")
+    if (savedGender) setRegisterGender(savedGender)
     setRegisterEmail(getStoredString("tsv_register_email"))
     setRegisterPhone(getStoredString("tsv_register_phone"))
     setRegisterGuardianName(getStoredString("tsv_register_guardian_name"))
-    setRegisterBaseGroup(normalizeTrainingGroupOrFallback(getStoredString("tsv_register_base_group"), groupOptions[0]))
+    const savedGroup = normalizeTrainingGroup(getStoredString("tsv_register_base_group"))
+    if (savedGroup) setRegisterBaseGroup(savedGroup)
   }, [])
 
   useEffect(() => {
@@ -69,6 +85,11 @@ export default function CheckinJoinPage() {
     if (!isClient) return
     localStorage.setItem("tsv_register_birthdate", JSON.stringify(registerBirthDate))
   }, [isClient, registerBirthDate])
+
+  useEffect(() => {
+    if (!isClient) return
+    localStorage.setItem("tsv_register_gender", JSON.stringify(registerGender))
+  }, [isClient, registerGender])
 
   useEffect(() => {
     if (!isClient) return
@@ -108,6 +129,11 @@ export default function CheckinJoinPage() {
       return
     }
 
+    if (!registerGender) {
+      setApiError("Bitte wähle ein Geschlecht aus")
+      return
+    }
+
     if (!isValidMemberPassword(pin)) {
       setApiError(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE)
       return
@@ -124,7 +150,7 @@ export default function CheckinJoinPage() {
     }
 
     if (!registerBaseGroup) {
-      setApiError("Bitte Stammgruppe auswählen.")
+      setApiError("Bitte wähle eine Stammgruppe aus")
       return
     }
 
@@ -139,6 +165,7 @@ export default function CheckinJoinPage() {
         firstName,
         lastName,
         birthDate: registerBirthDate,
+        gender: registerGender,
         password: pin,
         email: registerEmail.trim(),
         phone: registerPhone.trim(),
@@ -176,182 +203,184 @@ export default function CheckinJoinPage() {
     }
   }
 
+  const age = getAgeFromBirthdate(registerBirthDate)
+
+  const suggestedGroup = (() => {
+    if (age === null) return null
+    if (age <= 14) return "Basic 10 - 14 Jahre"
+    if (age <= 18) return "Basic 15 - 18 Jahre"
+    return "Basic Ü18"
+  })()
+
   return (
-    <div className="min-h-screen bg-zinc-50 px-4 py-4 text-zinc-900 md:px-6 md:py-8">
-      <div className="mx-auto max-w-3xl space-y-4 sm:space-y-6">
-        <div className="mb-1 flex flex-wrap items-center justify-between gap-2 rounded-[24px] bg-white p-3 shadow-sm">
-          <div className="rounded-2xl bg-[#154c83] px-3 py-2 text-sm font-semibold text-white">Boxbereich beitreten</div>
-          <Button asChild variant="outline" className="rounded-2xl">
-            <Link href="/checkin">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Zur Auswahl
-            </Link>
-          </Button>
+    <div className="min-h-screen bg-gray-50 px-4 pt-8 pb-12 text-zinc-900 md:px-6 md:pt-10">
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div className="text-center">
+          <Link href="/checkin" className="text-sm text-blue-700 underline underline-offset-4">
+            Zur Auswahl
+          </Link>
         </div>
 
-        <div className="overflow-hidden rounded-[24px] shadow-xl md:rounded-[28px]">
-          <div className="relative bg-[#0f2740] px-4 py-5 text-white sm:px-6 sm:py-8 md:px-8">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(230,51,42,0.25),transparent_35%)]" />
-            <div className="relative grid gap-6 md:grid-cols-[1.4fr_1fr] md:items-center">
-              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-                <Image
-                  src="/boxgym-headline-old.png"
-                  alt="TSV Falkensee BoxGym"
-                  width={192}
-                  height={128}
-                  className="h-10 w-auto rounded-md bg-white/90 p-1 sm:h-32"
-                />
-                <div className="min-w-0">
-                  <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs sm:text-sm">
-                    <UserRoundPlus className="h-4 w-4" />
-                    Mobile Registrierung
-                  </div>
-                  <h1 className="text-xl font-bold tracking-tight sm:text-3xl">Boxbereich beitreten</h1>
-                  <div className="mt-2 flex items-center gap-2 text-sm leading-6 text-blue-50/90 sm:text-base">
-                    <span>Direkter Einstieg per QR-Code.</span>
-                    <InfoHint text="Kompakte Handyseite für den direkten Einstieg per QR-Code." />
-                  </div>
-                </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6 text-center">
+          <Image src="/logo.png" alt="TSV Falkensee" width={64} height={64} className="h-20 w-auto mx-auto mb-4" />
+          <h1 className="text-xl font-semibold">Boxbereich beitreten</h1>
+          <p className="text-sm text-gray-600 mt-2">Registrierung für den Bereich Boxen im TSV Falkensee.</p>
+        </div>
+
+        <div className="text-xs text-gray-500 text-center mb-6">Die Teilnahme am Boxtraining ist nur für Mitglieder des TSV Falkensee möglich.</div>
+
+        <div className="text-sm text-gray-600 text-center mb-4">
+          Bitte fülle die folgenden Angaben vollständig aus.
+        </div>
+
+        <div className="bg-white rounded-xl p-6 space-y-4 border border-gray-200">
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleMemberRegistration()
+            }}
+          >
+            <ErrorBox message={apiError} />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Vorname <span className="ml-1 text-gray-800">*</span></Label>
+                <Input value={registerFirstName} onChange={(e) => setRegisterFirstName(e.target.value)} placeholder="Vorname" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
               </div>
-              <Card className="rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur">
-                <CardContent className="p-5">
-                  <div className="rounded-2xl bg-white/10 p-3 text-sm">
-                    <div className="text-zinc-300">Ablauf</div>
-                    <div className="mt-1 font-semibold">Daten eingeben</div>
-                    <div className="mt-1 flex items-center gap-2 text-zinc-300">
-                      <span>E-Mail bestätigen.</span>
-                      <InfoHint text="E-Mail bestätigen und auf Freigabe warten." />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Nachname <span className="ml-1 text-gray-800">*</span></Label>
+                <Input value={registerLastName} onChange={(e) => setRegisterLastName(e.target.value)} placeholder="Nachname" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+              </div>
             </div>
-          </div>
-        </div>
 
-        <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle>Registrierung</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void handleMemberRegistration()
-              }}
-            >
-              <ErrorBox message={apiError} />
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Vorname <span className="ml-1 text-red-500">*</span></Label>
-                  <Input value={registerFirstName} onChange={(e) => setRegisterFirstName(e.target.value)} placeholder="Vorname" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Nachname <span className="ml-1 text-red-500">*</span></Label>
-                  <Input value={registerLastName} onChange={(e) => setRegisterLastName(e.target.value)} placeholder="Nachname" className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-                </div>
-              </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Geburtsdatum <span className="ml-1 text-gray-800">*</span></Label>
+              <Input type="date" value={registerBirthDate} onChange={(e) => setRegisterBirthDate(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </div>
 
-              <div className="space-y-2">
-                <Label>Geburtsdatum <span className="ml-1 text-red-500">*</span></Label>
-                <Input type="date" value={registerBirthDate} onChange={(e) => setRegisterBirthDate(e.target.value)} className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900" />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Stammgruppe <span className="ml-1 text-red-500">*</span></Label>
-                <Select
-                  value={registerBaseGroup}
-                  onValueChange={(value) => setRegisterBaseGroup(normalizeTrainingGroupOrFallback(value, groupOptions[0]))}
-                >
-                  <SelectTrigger className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900">
-                    <SelectValue placeholder="Gruppe auswählen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {groupOptions.map((group) => (
-                      <SelectItem key={group} value={group}>
-                        {group}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Passwort selbst wählen <span className="ml-1 text-red-500">*</span></Label>
-                <PasswordInput
-                  value={registerPin}
-                  onChange={(e) => setRegisterPin(e.target.value)}
-                  placeholder="Eigenes Passwort wählen"
-                  className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                />
-                <p className="text-xs text-zinc-500">Dieses Passwort legst du bei der Registrierung selbst fest.</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>E-Mail *</Label>
-                <Input
-                  type="email"
-                  value={registerEmail}
-                  onChange={(e) => setRegisterEmail(e.target.value)}
-                  placeholder="E-Mail"
-                  className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="flex items-start gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-                  <input
-                    type="checkbox"
-                    checked={privacyAccepted}
-                    onChange={(event) => {
-                      setPrivacyAccepted(event.target.checked)
-                      if (event.target.checked) {
-                        setPrivacyError("")
-                      }
-                    }}
-                    className="mt-1 h-4 w-4 rounded border-zinc-300 text-[#154c83]"
-                  />
-                  <span>
-                    Ich akzeptiere die{" "}
-                    <Link href="/datenschutz" className="font-medium text-[#154c83] underline underline-offset-4">
-                      Datenschutzerklärung
-                    </Link>
-                    <span className="ml-1 text-red-500">*</span>
-                  </span>
-                </label>
-                {privacyError ? <p className="text-sm text-red-600">{privacyError}</p> : null}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Telefon *</Label>
-                <Input
-                  value={registerPhone}
-                  onChange={(e) => setRegisterPhone(e.target.value)}
-                  placeholder="z. B. +49 123 456789"
-                  className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                className="h-12 w-full rounded-2xl bg-[linear-gradient(135deg,#154c83_0%,#1b5d9f_65%,#e6332a_170%)] text-white hover:opacity-95"
-                disabled={dbLoading}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Geschlecht <span className="ml-1 text-gray-800">*</span></label>
+              <select
+                name="gender"
+                required
+                value={registerGender}
+                onChange={(event) => setRegisterGender(event.target.value)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               >
-                {dbLoading ? "Speichert..." : "Boxbereich beitreten"}
-              </Button>
+                <option value="" disabled>Bitte Geschlecht auswählen</option>
+                <option value="male">Männlich</option>
+                <option value="female">Weiblich</option>
+              </select>
+            </div>
 
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                <div className="flex items-center gap-2">
-                  <span>{MEMBER_PASSWORD_HINT}</span>
-                  <InfoHint
-                    text={`Das Passwort wird bei der Registrierung selbst gewählt. ${MEMBER_PASSWORD_HINT}`}
-                  />
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Stammgruppe <span className="ml-1 text-gray-800">*</span></Label>
+              <select
+                name="registerGroup"
+                value={registerBaseGroup}
+                onChange={(e) => setRegisterBaseGroup(e.target.value)}
+                required
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="" disabled>
+                  Bitte Stammgruppe auswählen
+                </option>
+                <option value="Basic 10 - 14 Jahre">Basic 10 - 14 Jahre</option>
+                <option value="Basic 15 - 18 Jahre">Basic 15 - 18 Jahre</option>
+                <option value="Basic Ü18">Basic Ü18</option>
+                <option value="L-Gruppe">L-Gruppe</option>
+              </select>
+              {suggestedGroup && !registerBaseGroup ? (
+                <div className="mt-2 text-xs text-blue-700">
+                  Empfohlene Gruppe basierend auf dem Alter: <strong>{suggestedGroup}</strong>
                 </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Passwort selbst wählen <span className="ml-1 text-gray-800">*</span></Label>
+              <PasswordInput
+                value={registerPin}
+                onChange={(e) => setRegisterPin(e.target.value)}
+                placeholder="Eigenes Passwort wählen"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-zinc-500">Dieses Passwort legst du bei der Registrierung selbst fest.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">E-Mail *</Label>
+              <Input
+                type="email"
+                value={registerEmail}
+                onChange={(e) => setRegisterEmail(e.target.value)}
+                placeholder="E-Mail"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex items-start gap-3 rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={privacyAccepted}
+                  onChange={(event) => {
+                    setPrivacyAccepted(event.target.checked)
+                    if (event.target.checked) {
+                      setPrivacyError("")
+                    }
+                  }}
+                  className="mt-1 h-4 w-4 rounded border-zinc-300 text-[#154c83]"
+                />
+                <span>
+                  Ich akzeptiere die{" "}
+                  <Link href="/datenschutz" className="font-medium text-[#154c83] underline underline-offset-4">
+                    Datenschutzerklärung
+                  </Link>
+                  <span className="ml-1 text-gray-800">*</span>
+                </span>
+              </label>
+              {privacyError ? <p className="text-sm text-red-600">{privacyError}</p> : null}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Telefon *</Label>
+              <Input
+                value={registerPhone}
+                onChange={(e) => setRegisterPhone(e.target.value)}
+                placeholder="z. B. +49 123 456789"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-[#0f2a44] hover:bg-[#13365a] text-white py-3 rounded-md"
+              disabled={dbLoading}
+            >
+              {dbLoading ? "Speichert..." : "Registrierung abschließen"}
+            </button>
+
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+              <div className="flex items-center gap-2">
+                <span>{MEMBER_PASSWORD_HINT}</span>
+                <InfoHint
+                  text={`Das Passwort wird bei der Registrierung selbst gewählt. ${MEMBER_PASSWORD_HINT}`}
+                />
               </div>
-            </form>
-          </CardContent>
-        </Card>
+            </div>
+          </form>
+
+          <div className="text-xs text-gray-500 text-center mt-6">Noch kein TSV-Mitglied?</div>
+          <a
+            href="https://tsv-falkensee.de/service/mitgliedschaft/"
+            target="_blank"
+            rel="noreferrer"
+            className="block text-center text-blue-700 text-sm mt-2 underline"
+          >
+            Mitglied beim TSV Falkensee werden
+          </a>
+        </div>
       </div>
     </div>
   )

@@ -2,47 +2,42 @@ import { cookies } from "next/headers"
 import { verifyTrainerSessionToken } from "@/lib/authSession"
 import { readMemberSession } from "@/lib/publicAreaSession"
 
-export type ResolvedUserContext =
-  | {
-      type: "trainer"
-      role: "admin" | "trainer" | null
-      memberId: string | null
-      source: "trainer_session"
-      hasMemberSession: boolean
-    }
-  | {
-      type: "member"
-      memberId: string
-      source: "member_session"
-    }
+export type ResolvedUserContext = {
+  isLoggedIn: boolean
+  isMember: boolean
+  isTrainer: boolean
+  isAdmin: boolean
+  memberId: string | null
+}
 
-export async function resolveUserContext(): Promise<ResolvedUserContext | null> {
+export async function resolveUserContext(): Promise<ResolvedUserContext> {
   const cookieStore = await cookies()
 
-  const trainerToken = cookieStore.get("trainer_session")?.value
   const memberSession = await readMemberSession(cookieStore)
 
+  let trainerSession: Awaited<ReturnType<typeof verifyTrainerSessionToken>> | null = null
+  const trainerToken = cookieStore.get("trainer_session")?.value
   if (trainerToken) {
-    const trainerSession = await verifyTrainerSessionToken(trainerToken)
-
-    if (trainerSession) {
-      return {
-        type: "trainer",
-        role: trainerSession.role,
-        memberId: trainerSession.memberId ?? trainerSession.linkedMemberId ?? null,
-        source: "trainer_session",
-        hasMemberSession: !!memberSession,
-      }
-    }
+    trainerSession = await verifyTrainerSessionToken(trainerToken)
   }
 
-  if (memberSession) {
-    return {
-      type: "member",
-      memberId: memberSession.memberId,
-      source: "member_session",
-    }
-  }
+  const trainerRole =
+    trainerSession?.role === "admin" || trainerSession?.role === "trainer"
+      ? trainerSession.role
+      : trainerSession?.accountRole === "admin" || trainerSession?.accountRole === "trainer"
+        ? trainerSession.accountRole
+        : null
 
-  return null
+  const isMember = !!memberSession || trainerRole === "admin"
+  const isTrainer = !!trainerSession
+  const isAdmin = trainerRole === "admin"
+  const memberId = memberSession?.memberId ?? trainerSession?.memberId ?? trainerSession?.linkedMemberId ?? null
+
+  return {
+    isLoggedIn: isMember || isTrainer,
+    isMember,
+    isTrainer,
+    isAdmin,
+    memberId,
+  }
 }

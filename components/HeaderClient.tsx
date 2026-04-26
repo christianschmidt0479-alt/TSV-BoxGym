@@ -1,0 +1,180 @@
+"use client"
+
+import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
+import type { ResolvedUserContext } from "@/lib/resolveUserContext"
+
+type Props = {
+  user: ResolvedUserContext
+}
+
+const headerStyle = {
+  background: "linear-gradient(90deg, #0b2a4a 0%, #133a63 100%)",
+  color: "#fff",
+  padding: "16px",
+  display: "flex",
+  flexDirection: "column" as const,
+  boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+}
+
+function navLinkStyle(active: boolean) {
+  return {
+    color: "white",
+    textDecoration: "none",
+    fontWeight: 500,
+    paddingBottom: 6,
+    borderBottom: active ? "2px solid rgba(255,255,255,0.8)" : "2px solid transparent",
+    opacity: active ? 1 : 0.8,
+    transition: "all 0.2s ease",
+  } as const
+}
+
+export function HeaderClient({ user }: Props) {
+  const pathname = usePathname() ?? ""
+  const router = useRouter()
+
+  const { isLoggedIn, isMember, isTrainer, isAdmin } = user
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+    })
+
+    router.replace("/")
+    router.refresh()
+  }
+
+  return (
+    <div style={headerStyle}>
+      {/* TOP ROW */}
+      <div style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        {/* LEFT: LOGO */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <img
+            src="/logo.png"
+            alt="TSV BoxGym"
+            style={{ height: 48, width: "auto", objectFit: "contain" }}
+          />
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+            <span style={{ fontWeight: 700, fontSize: 16 }}>TSV Falkensee</span>
+            <span style={{ fontWeight: 700, fontSize: 14, opacity: 0.9 }}>BoxGym</span>
+          </div>
+        </div>
+
+        {/* RIGHT: ROLE-BASED NAV */}
+        <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+          {!isLoggedIn && (
+            <Link href="/" style={{ textDecoration: "none" }}>
+              <button className="px-3 py-2 text-sm rounded-md text-white bg-red-600 hover:bg-red-700" type="button">
+                Startseite
+              </button>
+            </Link>
+          )}
+
+          {isMember && (
+            <Link
+              href="/mein-bereich/dashboard"
+              className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-white/20 text-white hover:bg-white/30 transition whitespace-nowrap"
+              style={{ textDecoration: "none" }}
+            >
+              Dashboard
+            </Link>
+          )}
+
+          {isTrainer && (
+            <Link
+              href="/trainer"
+              className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-white/20 text-white hover:bg-white/30 transition whitespace-nowrap"
+              style={{ textDecoration: "none" }}
+            >
+              Trainer
+            </Link>
+          )}
+
+          {isAdmin && (
+            <Link
+              href="/verwaltung-neu"
+              className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-white/20 text-white hover:bg-white/30 transition whitespace-nowrap"
+              style={{ textDecoration: "none" }}
+            >
+              Verwaltung
+            </Link>
+          )}
+
+          {isLoggedIn && (
+            <button
+              className="px-3 py-2 text-sm rounded-md text-white bg-red-600 hover:bg-red-700"
+              style={{ border: "none", outline: "none", cursor: "pointer" }}
+              type="button"
+              onClick={() => void handleLogout()}
+            >
+              Logout
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* MEMBER AREA SUB-NAV */}
+      {isMember && (pathname === "/mein-bereich" || pathname.startsWith("/mein-bereich/")) && (
+        <div style={{ width: "100%", marginTop: 16, display: "flex", gap: 20, fontSize: 14 }}>
+          <Link
+            href="/mein-bereich/dashboard"
+            style={navLinkStyle(
+              pathname === "/mein-bereich" ||
+                pathname === "/mein-bereich/dashboard" ||
+                pathname.startsWith("/mein-bereich/dashboard"),
+            )}
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/mein-bereich/einstellungen"
+            className="text-sm font-medium"
+            style={navLinkStyle(
+              pathname === "/mein-bereich/einstellungen" || pathname.startsWith("/mein-bereich/einstellungen"),
+            )}
+          >
+            Einstellungen
+          </Link>
+        </div>
+      )}
+
+      {/* VERWALTUNG SUB-NAV */}
+      {(pathname === "/verwaltung-neu" || pathname.startsWith("/verwaltung-neu/")) && (
+        <div style={{ width: "100%", marginTop: 16, display: "flex", gap: 20, fontSize: 14 }}>
+          <Link
+            href="/verwaltung-neu"
+            style={navLinkStyle(pathname === "/verwaltung-neu" || pathname === "/verwaltung-neu/")}
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/verwaltung-neu/freigaben"
+            style={navLinkStyle(
+              pathname === "/verwaltung-neu/freigaben" || pathname.startsWith("/verwaltung-neu/freigaben"),
+            )}
+          >
+            Freigaben
+          </Link>
+          <Link
+            href="/verwaltung-neu/mitglieder"
+            style={navLinkStyle(
+              pathname === "/verwaltung-neu/mitglieder" || pathname.startsWith("/verwaltung-neu/mitglieder"),
+            )}
+          >
+            Mitglieder
+          </Link>
+          <Link
+            href="/verwaltung-neu/qr-code"
+            style={navLinkStyle(
+              pathname === "/verwaltung-neu/qr-code" || pathname.startsWith("/verwaltung-neu/qr-code"),
+            )}
+          >
+            QR Code
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -188,7 +188,7 @@ export default function TrainerCheckinPage() {
                       onClick={() => handleCheckin(member)}
                       className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 sm:w-auto"
                     >
-                      {isLoading ? "Pruefe..." : "Einchecken"}
+                      {isLoading ? "Prüfe..." : "Einchecken"}
                     </button>
 
                     {message && (

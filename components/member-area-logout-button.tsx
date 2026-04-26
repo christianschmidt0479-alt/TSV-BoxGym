@@ -33,17 +33,13 @@ export function MemberAreaLogoutButton({
   async function handleClick() {
     try {
       setPending(true)
-      const res = await fetch("/api/public/member-area", {
+      void sessionType
+      const res = await fetch("/api/auth/logout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: sessionType === "member" ? "logout_member_session" : "logout_parent_session",
-        }),
       })
-      const data = await res.json()
-      if (!res.ok || !data.ok) {
+      if (!res.ok) {
         if (process.env.NODE_ENV !== "production") {
-          console.error("Logout failed:", data.error)
+          console.error("Logout failed")
         }
       }
     } finally {
@@ -57,8 +53,8 @@ export function MemberAreaLogoutButton({
 
       if (redirectTo) {
         router.replace(redirectTo)
-        router.refresh()
       }
+      router.refresh()
 
       setPending(false)
     }

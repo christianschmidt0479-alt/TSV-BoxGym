@@ -38,10 +38,9 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
     return { ok: false, code: "validation-error", error: birthDateResult.error || "Ungültiges Geburtsdatum" }
   }
 
-  // Gender: Pflichtfeld, aber keine Sonderlogik
-  if (!input.gender || typeof input.gender !== "string" || input.gender.trim().length < 1) {
-    return { ok: false, code: "validation-error", error: "Geschlecht ist erforderlich." }
-  }
+  const normalizedGender = typeof input.gender === "string" && input.gender.trim().length > 0
+    ? input.gender.trim()
+    : null
 
   const emailResult = validateEmail(input.email)
   if (!emailResult.valid) {
@@ -99,7 +98,7 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
       first_name: input.firstName.trim(),
       last_name: input.lastName.trim(),
       birthdate: input.birthDate,
-      gender: input.gender,
+      gender: normalizedGender,
       email: input.email.trim().toLowerCase(),
       phone: normalizedPhone,
       is_trial: true,

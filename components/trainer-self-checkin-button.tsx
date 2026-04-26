@@ -56,7 +56,7 @@ export default function TrainerSelfCheckinButton({ memberId }: TrainerSelfChecki
         disabled={loading}
         className="rounded-xl bg-[#154c83] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#123f6d] disabled:cursor-not-allowed disabled:opacity-70"
       >
-        {loading ? "Pruefe..." : "Selbst einchecken"}
+        {loading ? "Prüfe..." : "Selbst einchecken"}
       </button>
 
       {message ? (

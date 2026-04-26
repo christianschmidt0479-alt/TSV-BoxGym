@@ -82,7 +82,7 @@ export function FormSelect({
       {label && (
         <Label htmlFor={name} className="text-sm font-medium text-zinc-700">
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="ml-1 text-gray-800">*</span>}
         </Label>
       )}
 
