@@ -1,87 +1,76 @@
-import { cookies } from "next/headers"
-import { redirect } from "next/navigation"
-import { getPendingMembers, getAllMembers } from "@/lib/boxgymDb";
-import Card from "@/components/Card"
-import { container, title, card } from "@/components/ui";
+"use client"
 
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { container, card, pageTitle } from "@/lib/ui"
 
-export default async function DashboardPage() {
-  const cookieStore = await cookies()
-  const session = cookieStore.get("trainer_session")
+export default function DashboardPage() {
+  const [totalMembers, setTotalMembers] = useState<number | null>(null)
+  const [pendingApprovals, setPendingApprovals] = useState<number | null>(null)
 
-  if (!session) {
-    redirect("/trainer-zugang")
-  }
+  useEffect(() => {
+    async function load() {
+      const res = await fetch("/api/admin/get-members", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page: 1, pageSize: 999 }),
+      })
+      if (!res.ok) return
 
-  let pending = [];
-  let members = [];
-  let error: unknown = null;
-  try {
-    pending = await getPendingMembers();
-    members = await getAllMembers();
-  } catch (e) {
-    error = e;
-  }
+      const result = await res.json()
+      const members: { is_approved?: boolean }[] = result.data ?? []
+      setTotalMembers(result.total ?? members.length)
+      setPendingApprovals(members.filter((m) => !m.is_approved).length)
+    }
 
-  if (error) {
-    throw new Error(`Fehler beim Laden der Admin-Daten: ${error instanceof Error ? error.message : String(error)}`);
-  }
+    void load()
+  }, [])
 
-  const cardStyle = {
-    background: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-    cursor: "pointer",
-    transition: "0.15s ease",
-    marginBottom: 8,
-  }
-
-  const infoTitle = {
-    fontSize: 14,
-    color: "#666",
-  }
-
-  const infoValue = {
-    fontSize: 22,
-    fontWeight: 600,
-    margin: "6px 0",
+  const statCard = {
+    ...card,
+    cursor: "pointer" as const,
+    textDecoration: "none" as const,
+    display: "block",
+    marginBottom: 12,
   }
 
   return (
     <div style={container}>
-      {/* Nur Content, keine eigene Navigation oder Header */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
-        <Card
-          href="/verwaltung-neu/mitglieder"
-          title="Mitglieder"
-          subtitle="Verwalten & bearbeiten"
-          icon="👥"
-        />
-        <Card
-          href="/verwaltung-neu/freigaben"
-          title="Freigaben"
-          subtitle="Offene Anfragen prüfen"
-          icon="✅"
-        />
-        <Card
-          href="/verwaltung-neu/mail"
-          title="Kommunikation"
-          subtitle="E-Mails & Nachrichten"
-          icon="✉️"
-        />
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={card}>
-          <div style={{ fontSize: 14, color: "#666" }}>Offene Freigaben</div>
-          <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0" }}>{pending.length}</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 14, color: "#666" }}>Mitglieder gesamt</div>
-          <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0" }}>{members.length}</div>
-        </div>
-      </div>
-    </div>
-  );
+      <div style={pageTitle}>Admin-Übersicht</div>
 
+      <Link href="/verwaltung-neu/mitglieder" style={{ textDecoration: "none" }}>
+        <div style={statCard}>
+          <div style={{ fontSize: 14, color: "#666" }}>Mitglieder gesamt</div>
+          <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0" }}>
+            {totalMembers ?? "…"}
+          </div>
+        </div>
+      </Link>
+
+      <Link href="/verwaltung-neu/freigaben" style={{ textDecoration: "none" }}>
+        <div style={statCard}>
+          <div style={{ fontSize: 14, color: "#666" }}>Offene Freigaben</div>
+          <div
+            style={{
+              fontSize: 22,
+              fontWeight: 600,
+              margin: "6px 0",
+              color: pendingApprovals ? "#b45309" : "#15803d",
+            }}
+          >
+            {pendingApprovals ?? "…"}
+          </div>
+        </div>
+      </Link>
+
+      <Link href="/verwaltung-neu/qr-code" style={{ textDecoration: "none" }}>
+        <div style={statCard}>
+          <div style={{ fontSize: 14, color: "#666" }}>QR Code</div>
+          <div style={{ fontSize: 16, fontWeight: 600, margin: "6px 0" }}>Anzeigen →</div>
+        </div>
+      </Link>
+    </div>
+  )
 }
+

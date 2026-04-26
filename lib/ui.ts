@@ -1,7 +1,7 @@
 export const container = {
-  maxWidth: 1000,
+  maxWidth: 1152,
   margin: "0 auto",
-  padding: "24px 20px",
+  padding: "24px",
 }
 
 export const pageTitle = {
@@ -32,7 +32,7 @@ export const cardRow = {
 }
 
 export const buttonPrimary = {
-  background: "#0b2a4a",
+  background: "#0f2a44",
   color: "#fff",
   padding: "8px 12px",
   borderRadius: 8,
@@ -41,10 +41,10 @@ export const buttonPrimary = {
 }
 
 export const buttonSecondary = {
-  background: "#eef2f6",
-  color: "#0b2a4a",
+  background: "#fff",
+  color: "#1f2937",
   padding: "8px 12px",
   borderRadius: 8,
-  border: "none",
+  border: "1px solid #d1d5db",
   cursor: "pointer",
 }

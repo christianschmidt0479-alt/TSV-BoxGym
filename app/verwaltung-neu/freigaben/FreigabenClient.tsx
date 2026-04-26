@@ -32,6 +32,12 @@ function statusColor(status: ApprovalMember["member_phase"]) {
   return { background: "#f3f4f6", color: "#374151", border: "1px solid #d1d5db" }
 }
 
+function statusLabel(status: ApprovalMember["member_phase"]) {
+  if (status === "member") return "Freigegeben"
+  if (status === "extended") return "Verlängert"
+  return "Offen"
+}
+
 export default function FreigabenClient({ initialMembers }: { initialMembers: ApprovalMember[] }) {
   const [members, setMembers] = useState<ApprovalMember[]>(initialMembers)
   const [loadingMemberId, setLoadingMemberId] = useState<string | null>(null)
@@ -141,7 +147,7 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
         )
       )
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Trial-Verlängerung fehlgeschlagen")
+      setError(actionError instanceof Error ? actionError.message : "Verlängerung fehlgeschlagen")
     } finally {
       setLoadingMemberId(null)
     }
@@ -172,7 +178,7 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
                 <div style={{ color: "#64748b", fontSize: 14 }}>{member.email || "Keine E-Mail"}</div>
               </div>
               <span style={{ ...statusColor(status), borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 600 }}>
-                {status}
+                {statusLabel(status)}
               </span>
             </div>
 
@@ -184,10 +190,10 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
                 <strong>Check-ins:</strong> {member.checkin_count}
               </div>
               <div>
-                <strong>member_phase:</strong> {member.member_phase}
+                <strong>Mitgliedsphase:</strong> {statusLabel(member.member_phase)}
               </div>
               <div>
-                <strong>Status:</strong> {status}
+                <strong>Status:</strong> {statusLabel(status)}
               </div>
             </div>
 
@@ -234,7 +240,7 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
                 onClick={() => extendTrial(member)}
                 disabled={isBusy}
               >
-                Trial verlängern
+                Probemitglied verlängern
               </button>
             </div>
           </div>

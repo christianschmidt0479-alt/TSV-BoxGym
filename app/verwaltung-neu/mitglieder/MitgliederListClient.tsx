@@ -24,7 +24,7 @@ function memberName(member: MemberRow) {
 
 function memberStatus(member: MemberRow) {
   if (member.is_trial) return "Probemitglied"
-  if (!member.is_approved) return "Mitglied - Pruefung offen"
+  if (!member.is_approved) return "Mitglied - Prüfung offen"
   return "Freigegeben"
 }
 
@@ -50,7 +50,7 @@ function priority(member: MemberRow) {
     return { label: "dringend", color: "#dc2626", bg: "#fee2e2" }
   }
   if (!member.is_approved && count >= 5) {
-    return { label: "bald pruefen", color: "#b45309", bg: "#fef3c7" }
+    return { label: "bald prüfen", color: "#b45309", bg: "#fef3c7" }
   }
   return { label: "normal", color: "#6b7280", bg: "#f3f4f6" }
 }
@@ -76,7 +76,9 @@ function sortBucket(member: MemberRow) {
 
 export default function MitgliederListClient({ members }: { members: MemberRow[] }) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [search, setSearch] = useState("")
+  const [groupFilter, setGroupFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("all")
   const [approvingById, setApprovingById] = useState<Record<string, boolean>>({})
   const [messageById, setMessageById] = useState<Record<string, { type: "success" | "error"; text: string }>>({})
 
@@ -84,13 +86,32 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
     setLocalMembers(members)
   }, [members])
 
-  useEffect(() => {
-    const availableIds = new Set(localMembers.map((member) => member.id))
-    setSelectedIds((prev) => prev.filter((id) => availableIds.has(id)))
-  }, [localMembers])
+  const filteredMembers = useMemo(() => {
+    const normalizedSearch = search.toLowerCase().trim()
+
+    return localMembers.filter((m) => {
+      const fullName = memberName(m).toLowerCase()
+      const email = (m.email || "").toLowerCase()
+
+      const matchSearch =
+        normalizedSearch.length < 1 ||
+        fullName.includes(normalizedSearch) ||
+        email.includes(normalizedSearch)
+
+      const matchGroup =
+        groupFilter === "all" || m.base_group === groupFilter
+
+      const matchStatus =
+        statusFilter === "all" ||
+        (statusFilter === "approved" && Boolean(m.is_approved)) ||
+        (statusFilter === "pending" && !m.is_approved)
+
+      return matchSearch && matchGroup && matchStatus
+    })
+  }, [localMembers, search, groupFilter, statusFilter])
 
   const sortedMembers = useMemo(() => {
-    return [...localMembers].sort((a, b) => {
+    return [...filteredMembers].sort((a, b) => {
       const bucketDiff = sortBucket(a) - sortBucket(b)
       if (bucketDiff !== 0) return bucketDiff
 
@@ -99,7 +120,7 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
 
       return memberName(a).localeCompare(memberName(b), "de")
     })
-  }, [localMembers])
+  }, [filteredMembers])
 
   const todayMembers = useMemo(() => sortedMembers.filter((member) => Boolean(member.checkedInToday)), [sortedMembers])
   const notTodayMembers = useMemo(() => sortedMembers.filter((member) => !member.checkedInToday), [sortedMembers])
@@ -111,25 +132,22 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
   const totalCriticalCount = useMemo(() => localMembers.filter((member) => (member.checkinCount ?? 0) >= 7).length, [localMembers])
   const totalOpenCount = useMemo(() => localMembers.filter((member) => !member.is_approved).length, [localMembers])
 
-  async function handleBulkDelete() {
-    if (selectedIds.length < 1) return
-    if (!confirm("Alle ausgewählten löschen?")) return
+  async function handleDelete(memberId: string) {
+    if (!confirm("Mitglied wirklich löschen?")) return
 
-    const idsToDelete = [...selectedIds]
+    const res = await fetch("/api/admin/delete-member", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberId }),
+    })
 
-    setLocalMembers((prev) => prev.filter((member) => !idsToDelete.includes(member.id)))
-    setSelectedIds([])
+    if (!res.ok) {
+      alert("Löschen fehlgeschlagen")
+      return
+    }
 
-    await Promise.all(
-      idsToDelete.map((id) =>
-        fetch("/api/admin/delete-member", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ memberId: id }),
-        })
-      )
-    )
+    setLocalMembers((prev) => prev.filter((m) => m.id !== memberId))
   }
 
   async function handleApprove(member: MemberRow) {
@@ -220,6 +238,37 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
         </div>
       </div>
 
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+        <input
+          placeholder="Name oder E-Mail suchen"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", minWidth: 260 }}
+        />
+
+        <select
+          value={groupFilter}
+          onChange={(e) => setGroupFilter(e.target.value)}
+          style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px" }}
+        >
+          <option value="all">Alle Gruppen</option>
+          <option value="Basic 10 - 14 Jahre">Basic 10 - 14</option>
+          <option value="Basic 15 - 18 Jahre">Basic 15 - 18</option>
+          <option value="Basic Ü18">Basic Ü18</option>
+          <option value="L-Gruppe">L-Gruppe</option>
+        </select>
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px" }}
+        >
+          <option value="all">Alle</option>
+          <option value="approved">Freigegeben</option>
+          <option value="pending">Offen</option>
+        </select>
+      </div>
+
       {criticalTodayMembers.length > 0 && (
         <div
           style={{
@@ -233,14 +282,6 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
           }}
         >
           🔴 Kritisch heute ({criticalTodayMembers.length})
-        </div>
-      )}
-
-      {selectedIds.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <button style={buttonSecondary} onClick={() => void handleBulkDelete()}>
-            Löschen ({selectedIds.length})
-          </button>
         </div>
       )}
 
@@ -262,19 +303,6 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
         <div key={m.id} style={{ ...card, marginBottom: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
             <div>
-              <div style={{ marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(m.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedIds((prev) => (prev.includes(m.id) ? prev : [...prev, m.id]))
-                    } else {
-                      setSelectedIds((prev) => prev.filter((id) => id !== m.id))
-                    }
-                  }}
-                />
-              </div>
               <div style={cardTitle}>{memberName(m)}</div>
               <div style={{ fontSize: 14, color: "#666", marginBottom: 6 }}>{m.email || "-"}</div>
               <div style={{ fontSize: 14, color: "#334155" }}>Gruppe: {m.base_group || "-"}</div>
@@ -384,6 +412,12 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
           ) : null}
 
           <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => void handleDelete(m.id)}
+              style={{ background: "transparent", border: "none", color: "#dc2626", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+            >
+              Löschen
+            </button>
             {!m.is_approved && (
               <button
                 style={buttonSecondary}
@@ -419,19 +453,6 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
         <div key={m.id} style={{ ...card, marginBottom: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
             <div>
-              <div style={{ marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(m.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedIds((prev) => (prev.includes(m.id) ? prev : [...prev, m.id]))
-                    } else {
-                      setSelectedIds((prev) => prev.filter((id) => id !== m.id))
-                    }
-                  }}
-                />
-              </div>
               <div style={cardTitle}>{memberName(m)}</div>
               <div style={{ fontSize: 14, color: "#666", marginBottom: 6 }}>{m.email || "-"}</div>
               <div style={{ fontSize: 14, color: "#334155" }}>Gruppe: {m.base_group || "-"}</div>
@@ -524,6 +545,12 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
           ) : null}
 
           <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => void handleDelete(m.id)}
+              style={{ background: "transparent", border: "none", color: "#dc2626", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+            >
+              Löschen
+            </button>
             {!m.is_approved && (
               <button
                 style={buttonSecondary}
