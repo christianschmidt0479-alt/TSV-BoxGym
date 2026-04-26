@@ -157,6 +157,14 @@ export async function readMemberAreaSessionFromHeaders(request: Request) {
   return verifyMemberAreaSessionToken(getCookieValueFromHeader(request.headers.get("cookie"), MEMBER_AREA_SESSION_COOKIE))
 }
 
+type CookieStoreLike = {
+  get(name: string): { value: string } | undefined
+}
+
+export async function readMemberSession(cookieStore: CookieStoreLike) {
+  return verifyMemberAreaSessionToken(cookieStore.get(MEMBER_AREA_SESSION_COOKIE)?.value)
+}
+
 export async function applyMemberAreaSessionCookie(response: NextResponse, input: Omit<MemberAreaSessionPayload, "exp">) {
   return applyCookie(response, MEMBER_AREA_SESSION_COOKIE, await createMemberAreaSessionToken(input))
 }

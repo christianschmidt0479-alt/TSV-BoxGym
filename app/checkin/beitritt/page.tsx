@@ -41,7 +41,9 @@ export default function CheckinJoinPage() {
   const [registerGuardianName, setRegisterGuardianName] = useState("")
   const [registerBaseGroup, setRegisterBaseGroup] = useState(groupOptions[0] ?? "")
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
-  const [privacyError, setPrivacyError] = useState("")  const [apiError, setApiError] = useState(\"\")
+  const [privacyError, setPrivacyError] = useState("")
+  const [apiError, setApiError] = useState("")
+
   useEffect(() => {
     setIsClient(true)
     setRegisterFirstName(getStoredString("tsv_register_first_name"))

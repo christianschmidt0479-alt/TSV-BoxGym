@@ -1,5 +1,6 @@
-import { getMemberCheckinMode, FERIEN_CHECKIN_GROUPS } from "@/lib/memberCheckin"
+import { getMemberCheckinMode, FERIEN_CHECKIN_GROUPS, getSessionsForDate } from "@/lib/memberCheckin"
 import { getActiveCheckinSession, isSessionOpenForCheckin } from "@/lib/checkinWindow"
+import { createClient } from "@supabase/supabase-js"
 
 export async function processMemberCheckin(input: {
   email?: string
@@ -11,8 +12,6 @@ export async function processMemberCheckin(input: {
   // TODO: email oder token vorhanden?
 
   // 2. MITGLIED LADEN
-  import { createClient } from "@supabase/supabase-js"
-
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -62,9 +61,6 @@ export async function processMemberCheckin(input: {
     return { ok: false, error: "PIN falsch" }
   }
 
-  // 4. DEBUG
-  console.log("CORE MEMBER:", member.id)
-
   // SETTINGS LADEN
   const { data: settings } = await supabase
     .from("settings")
@@ -74,10 +70,12 @@ export async function processMemberCheckin(input: {
 
   // MODUS BESTIMMEN
   const mode = getMemberCheckinMode(settings?.disableCheckinTimeWindow)
-  console.log("CHECKIN MODE:", mode)
 
   // SESSION BESTIMMEN
-  const session = getActiveCheckinSession()
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
+  const dailySessions = getSessionsForDate(today)
+  const session = getActiveCheckinSession(now, dailySessions)
 
   if (!session && mode === "normal") {
     return { ok: false, error: "Kein aktives Training" }
@@ -85,7 +83,7 @@ export async function processMemberCheckin(input: {
 
   // ZEITFENSTER CHECK
   if (mode === "normal") {
-    const isOpen = isSessionOpenForCheckin(session)
+    const isOpen = session ? isSessionOpenForCheckin(session, now) : false
     if (!isOpen) {
       return { ok: false, error: "Außerhalb des Zeitfensters" }
     }
@@ -102,23 +100,18 @@ export async function processMemberCheckin(input: {
     if (!input.ferienGroup) {
       return { ok: false, error: "Bitte Gruppe auswählen" }
     }
-    if (!FERIEN_CHECKIN_GROUPS.includes(input.ferienGroup)) {
+    const ferienGroup = input.ferienGroup as (typeof FERIEN_CHECKIN_GROUPS)[number]
+    if (!FERIEN_CHECKIN_GROUPS.includes(ferienGroup)) {
       return { ok: false, error: "Ungültige Gruppe" }
     }
     // optional: Boxzwerge ausschließen
     if (member.base_group === "Boxzwerge") {
       return { ok: false, error: "Nicht im Ferienmodus erlaubt" }
     }
-    effectiveGroup = input.ferienGroup
+    effectiveGroup = ferienGroup
   }
 
-
-  // DEBUG
-  console.log("EFFECTIVE GROUP:", effectiveGroup)
-
   // DUPLICATE CHECK
-  const today = new Date().toISOString().slice(0, 10)
-
   const { data: existingCheckin } = await supabase
     .from("checkins")
     .select("id")
@@ -141,7 +134,9 @@ export async function processMemberCheckin(input: {
     })
 
   if (insertError) {
-    console.error(insertError)
+    if (process.env.NODE_ENV !== "production") {
+      console.error(insertError)
+    }
     return { ok: false, error: "Fehler beim Speichern" }
   }
 

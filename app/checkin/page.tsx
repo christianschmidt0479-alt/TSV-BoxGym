@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 
@@ -21,7 +21,7 @@ import Link from "next/link"
  * - entry: optional, validated server-side
  * - mode/limits: NEVER sent from client, always computed server-side
  */
-export default function CheckinPage() {
+function CheckinPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -305,4 +305,20 @@ export default function CheckinPage() {
   }
 
   return null
+}
+
+export default function CheckinPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center text-sm text-slate-600 shadow">
+            Seite wird geladen...
+          </div>
+        </div>
+      }
+    >
+      <CheckinPageContent />
+    </Suspense>
+  )
 }

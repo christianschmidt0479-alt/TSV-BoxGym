@@ -22,10 +22,6 @@ export async function sendMemberVerificationMail(input: MemberVerificationMailIn
 
   const verifyUrl = `${BASE_URL}/mein-bereich/verifizieren?token=${trimmedToken}`
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log("VERIFICATION LINK", verifyUrl)
-  }
-
   // Mailinhalt bauen (zentral, professionell, mobilfreundlich)
   const subject = "E-Mail-Adresse bestätigen – TSV BoxGym"
   const html = buildMemberMail({

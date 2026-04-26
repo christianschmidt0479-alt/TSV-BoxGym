@@ -7,7 +7,7 @@ type Props = {
   onBack: () => void
 }
 
-export default function Step3({ formData, setFormData, onSubmit, onBack }) {
+export default function Step3({ formData, setFormData, onSubmit, onBack }: { formData: any; setFormData: (value: any | ((prev: any) => any)) => void; onSubmit: () => void; onBack: () => void }) {
   const isValid = !!(formData.password && formData.email && formData.privacy);
 
   return (
@@ -17,19 +17,19 @@ export default function Step3({ formData, setFormData, onSubmit, onBack }) {
         type="email"
         placeholder="E-Mail"
         value={formData.email}
-        onChange={e => setFormData(f => ({ ...f, email: e.target.value }))}
+        onChange={e => setFormData((f: any) => ({ ...f, email: e.target.value }))}
         className="h-16 w-full text-xl text-center rounded-2xl bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
       />
       <input
         type="password"
         placeholder="Passwort wählen"
         value={formData.password}
-        onChange={e => setFormData(f => ({ ...f, password: e.target.value }))}
+        onChange={e => setFormData((f: any) => ({ ...f, password: e.target.value }))}
         className="h-16 w-full text-xl text-center rounded-2xl bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
       />
       <div
         className={`p-4 rounded-2xl flex items-center gap-3 cursor-pointer select-none ${formData.privacy ? "bg-blue-600 text-white" : "bg-gray-50 text-gray-700"}`}
-        onClick={() => setFormData(f => ({ ...f, privacy: !f.privacy }))}
+        onClick={() => setFormData((f: any) => ({ ...f, privacy: !f.privacy }))}
       >
         <span className="text-2xl">{formData.privacy ? "☑" : "☐"}</span>
         Datenschutz akzeptieren

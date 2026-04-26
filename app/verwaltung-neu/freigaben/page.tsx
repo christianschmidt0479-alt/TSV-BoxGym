@@ -1,24 +1,15 @@
 
-import { container, pageTitle, card, cardTitle, cardRow, buttonPrimary } from "@/lib/ui";
-import { getPendingMembers } from "@/lib/boxgymDb";
+import { container, pageTitle } from "@/lib/ui"
+import { getApprovalWorkflowMembers } from "@/lib/boxgymDb"
+import FreigabenClient from "./FreigabenClient"
 
 export default async function FreigabenPage() {
-  const members = await getPendingMembers();
+  const members = await getApprovalWorkflowMembers()
 
   return (
     <div style={container}>
       <div style={pageTitle}>Freigaben</div>
-      {members.length === 0 && (
-        <p>Keine offenen Freigaben</p>
-      )}
-      {members.map((m) => (
-        <div key={m.id} style={{ ...card, marginBottom: 16 }}>
-          <div style={cardTitle}>{m.name}</div>
-          <div style={{ fontSize: 14, color: "#666", marginBottom: 8 }}>{m.email}</div>
-          {/* Beispielbutton, falls vorhanden: */}
-          {/* <button style={buttonPrimary}>Freigeben</button> */}
-        </div>
-      ))}
+      <FreigabenClient initialMembers={members} />
     </div>
-  );
+  )
 }

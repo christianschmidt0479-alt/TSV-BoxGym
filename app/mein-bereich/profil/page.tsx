@@ -294,15 +294,14 @@ export function MemberProfilePageContent({ section }: { section: ProfileSection 
     const timeoutId = window.setTimeout(() => {
       void (async () => {
         try {
-          await fetch("/api/public/member-area", {
-            method: "POST",
+          await fetch("/api/trainer-session", {
+            method: "DELETE",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "logout_member_session" }),
           })
         } catch (error) {
           console.error(error)
         } finally {
-          router.replace("/mein-bereich")
+          router.replace("/trainer-zugang")
           router.refresh()
         }
       })()

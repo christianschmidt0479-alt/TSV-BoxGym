@@ -23,9 +23,10 @@ function withoutOptionalMemberFields<T extends Record<string, unknown>>(payload:
       ([key]) =>
         key !== "guardian_name" &&
         key !== "gender" &&
-        key !== "created_from_excel"
+        key !== "created_from_excel" &&
+        key !== "member_phase"
     )
-  ) as Omit<T, "guardian_name" | "gender" | "created_from_excel">
+  ) as Omit<T, "guardian_name" | "gender" | "created_from_excel" | "member_phase">
 }
 
 function withoutLegacyMemberFallbackFields<T extends Record<string, unknown>>(payload: T) {
@@ -61,6 +62,7 @@ type MemberInput = {
   member_pin?: string
   is_approved?: boolean
   base_group?: string
+  member_phase?: string
   email_verification_token?: string
   email_verification_expires_at?: string
 }
@@ -195,17 +197,7 @@ export async function findMemberByEmail(email: string) {
 // Dubletten-Prioritätsregel: 1. verifiziert, 2. jüngster nicht-verifizierter, nicht-freigegebener, 3. jüngster
 export async function findMemberByEmailAndPin(email: string, pin: string): Promise<MemberAuthResult | null> {
   const normalizedEmail = email.trim().toLowerCase()
-  console.log("LOGIN_EMAIL_NORMALIZED", { email: normalizedEmail })
-  const pinType = typeof pin
-  const pinOriginalLength = pin ? String(pin).length : 0
   const pinTrimmed = pin ? pin.trim() : ""
-  const pinTrimmedLength = pinTrimmed.length
-  console.log("LOGIN_PIN_PRESENT", {
-    present: !!pin,
-    typeof: pinType,
-    original_length: pinOriginalLength,
-    trimmed_length: pinTrimmedLength
-  })
   const normalizedPin = pinTrimmed
 
 
@@ -217,29 +209,12 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
     .limit(10)
 
   if (error) throw error
-  const candidateCount = data ? data.length : 0
-  const candidateIds = data ? data.map(m => m.id) : []
-  const candidateEmails = data ? data.map(m => m.email) : []
-  console.log("LOGIN_MEMBER_CANDIDATES_FOUND", {
-    count: candidateCount,
-    ids: candidateIds,
-    emails: candidateEmails
-  })
   if (!data || data.length === 0) return null
 
   // 1. Alle verifizierten Datensätze mit passendem Pin, nach created_at absteigend
   const verified = data.filter((m) => m.email_verified)
   for (const member of verified) {
-    console.log("LOGIN_MEMBER_SELECTED", {
-      id: member.id,
-      email: member.email,
-      email_verified: member.email_verified,
-      is_approved: member.is_approved,
-      member_pin_present: !!member.member_pin
-    })
-    console.log("LOGIN_COMPARE_START", { id: member.id })
     const passwordOk = await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))
-    console.log("LOGIN_COMPARE_RESULT", { id: member.id, passwordOk })
     if (passwordOk) {
       if (!isBcryptHash(String(member.member_pin ?? ""))) {
         await setStoredMemberPin(member.id, normalizedPin)
@@ -252,16 +227,7 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
   // 2. Jüngster nicht-verifizierter, nicht-freigegebener mit passendem Pin
   const notVerifiedNotApproved = data.filter((m) => !m.email_verified && !m.is_approved)
   for (const member of notVerifiedNotApproved) {
-    console.log("LOGIN_MEMBER_SELECTED", {
-      id: member.id,
-      email: member.email,
-      email_verified: member.email_verified,
-      is_approved: member.is_approved,
-      member_pin_present: !!member.member_pin
-    })
-    console.log("LOGIN_COMPARE_START", { id: member.id })
     const passwordOk = await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))
-    console.log("LOGIN_COMPARE_RESULT", { id: member.id, passwordOk })
     if (passwordOk) {
       if (!isBcryptHash(String(member.member_pin ?? ""))) {
         await setStoredMemberPin(member.id, normalizedPin)
@@ -273,16 +239,7 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
 
   // 3. Jüngster Datensatz mit passendem Pin
   for (const member of data) {
-    console.log("LOGIN_MEMBER_SELECTED", {
-      id: member.id,
-      email: member.email,
-      email_verified: member.email_verified,
-      is_approved: member.is_approved,
-      member_pin_present: !!member.member_pin
-    })
-    console.log("LOGIN_COMPARE_START", { id: member.id })
     const passwordOk = await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))
-    console.log("LOGIN_COMPARE_RESULT", { id: member.id, passwordOk })
     if (passwordOk) {
       if (!isBcryptHash(String(member.member_pin ?? ""))) {
         await setStoredMemberPin(member.id, normalizedPin)
@@ -332,21 +289,12 @@ export async function findMemberByFirstLastName(firstName: string, lastName: str
 
 export async function createMember(input: MemberInput) {
   const fullName = `${input.first_name.trim()} ${input.last_name.trim()}`.trim()
-  const memberPinPresent = !!input.member_pin
-  console.log("CREATE_MEMBER_ENTRY_MEMBER_PIN_PRESENT", {
-    email: input.email,
-    member_pin_present: memberPinPresent
-  })
   let hashCreated = false
   let memberPinHash: string | null = null
   if (input.member_pin) {
     memberPinHash = await hashMemberPinValue(input.member_pin)
     hashCreated = true
   }
-  console.log("CREATE_MEMBER_HASH_CREATED", {
-    email: input.email,
-    hash_created: hashCreated
-  })
   const payload = {
     name: fullName,
     first_name: input.first_name.trim(),
@@ -362,13 +310,10 @@ export async function createMember(input: MemberInput) {
     member_pin: memberPinHash,
     is_approved: input.is_approved ?? false,
     base_group: normalizeTrainingGroup(input.base_group) || null,
+    member_phase: input.member_phase ?? null,
     member_qr_token: generateMemberQrToken(),
     member_qr_active: true,
   }
-  console.log("CREATE_MEMBER_PRIMARY_INSERT_START", {
-    email: payload.email,
-    member_pin_present: !!payload.member_pin
-  })
   const primary = await supabase
     .from("members")
     .insert([payload])
@@ -376,22 +321,6 @@ export async function createMember(input: MemberInput) {
     .single()
 
   if (!primary.error) {
-    console.log("CREATE_MEMBER_PRIMARY_INSERT_DONE", { email: payload.email })
-    // Nach Insert: Rücklesen und Log
-    const { data: inserted, error: readError } = await supabase
-      .from("members")
-      .select("id, email, member_pin")
-      .eq("email", payload.email)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (inserted && inserted.member_pin == null) {
-      console.log("CREATE_MEMBER_POSTREAD_MEMBER_PIN_NULL", {
-        id: inserted.id,
-        email: inserted.email,
-        insert_path: "primary"
-      })
-    }
     return primary.data
   }
 
@@ -399,15 +328,12 @@ export async function createMember(input: MemberInput) {
     throw primary.error
   }
 
-  console.warn("[createMember] primary insert failed (missing column); retrying ohne optionale Felder", primary.error?.message)
-  console.log("CREATE_MEMBER_FALLBACK_INSERT_START", {
-    email: payload.email,
-    member_pin_present: !!payload.member_pin
-  })
+  if (process.env.NODE_ENV !== "production") {
+    console.warn("[createMember] primary insert failed (missing column); retrying without optional fields")
+  }
   // Fallback: Prüfen, ob member_pin entfernt würde
   const fallbackPayload = withoutOptionalMemberFields(payload)
   if (!('member_pin' in fallbackPayload) || fallbackPayload.member_pin == null) {
-    console.error("CREATE_MEMBER_FALLBACK_ABORT", { email: payload.email, reason: "member_pin würde entfernt" })
     throw new Error("[createMember] Fallback-Insert ohne member_pin nicht erlaubt. Registrierung abgebrochen.")
   }
   const fallback = await supabase
@@ -417,22 +343,6 @@ export async function createMember(input: MemberInput) {
     .single()
 
   if (!fallback.error) {
-    console.log("CREATE_MEMBER_FALLBACK_INSERT_DONE", { email: fallbackPayload.email })
-    // Nach Insert: Rücklesen und Log
-    const { data: inserted, error: readError } = await supabase
-      .from("members")
-      .select("id, email, member_pin")
-      .eq("email", fallbackPayload.email)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (inserted && inserted.member_pin == null) {
-      console.log("CREATE_MEMBER_POSTREAD_MEMBER_PIN_NULL", {
-        id: inserted.id,
-        email: inserted.email,
-        insert_path: "fallback"
-      })
-    }
     return fallback.data
   }
 
@@ -440,15 +350,12 @@ export async function createMember(input: MemberInput) {
     throw fallback.error
   }
 
-  console.warn("[createMember] fallback also failed; using last-resort legacy path (privacy+QR stripped)", fallback.error?.message)
-  console.log("CREATE_MEMBER_LEGACY_FALLBACK_START", {
-    email: fallbackPayload.email,
-    member_pin_present: !!fallbackPayload.member_pin
-  })
+  if (process.env.NODE_ENV !== "production") {
+    console.warn("[createMember] fallback also failed; using last-resort legacy path")
+  }
   // Legacy-Fallback: member_pin darf nicht entfernt werden
   const legacyPayload = withoutLegacyMemberFallbackFields(fallbackPayload)
   if (!('member_pin' in legacyPayload) || legacyPayload.member_pin == null) {
-    console.error("CREATE_MEMBER_LEGACY_FALLBACK_ABORT", { email: fallbackPayload.email, reason: "member_pin würde entfernt" })
     throw new Error("[createMember] Legacy-Fallback-Insert ohne member_pin nicht erlaubt. Registrierung abgebrochen.")
   }
   const legacyFallback = await supabase
@@ -458,22 +365,6 @@ export async function createMember(input: MemberInput) {
     .single()
 
   if (legacyFallback.error) throw legacyFallback.error
-  console.log("CREATE_MEMBER_LEGACY_FALLBACK_DONE", { email: legacyPayload.email })
-  // Nach Insert: Rücklesen und Log
-  const { data: inserted, error: readError } = await supabase
-    .from("members")
-    .select("id, email, member_pin")
-    .eq("email", legacyPayload.email)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (inserted && inserted.member_pin == null) {
-    console.log("CREATE_MEMBER_POSTREAD_MEMBER_PIN_NULL", {
-      id: inserted.id,
-      email: inserted.email,
-      insert_path: "legacy-fallback"
-    })
-  }
   return legacyFallback.data
 }
 
@@ -742,10 +633,97 @@ export async function getPendingMembers() {
     .or("is_approved.is.null,is_approved.eq.false")
     .order("created_at", { ascending: false })
 
-  console.log("PENDING MEMBERS:", data);
-
   if (error) throw error
   return (data || []).map((row) => withNormalizedBaseGroup(row))
+}
+
+export type ApprovalWorkflowMember = {
+  id: string
+  name: string | null
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  base_group: string | null
+  is_trial: boolean
+  is_approved: boolean
+  member_phase: "trial" | "extended" | "member"
+  checkin_count: number
+}
+
+export async function getApprovalWorkflowMembers(): Promise<ApprovalWorkflowMember[]> {
+  const selectWithPhase =
+    "id, name, first_name, last_name, email, base_group, is_trial, is_approved, member_phase, created_at"
+  const selectFallback = "id, name, first_name, last_name, email, base_group, is_trial, is_approved, created_at"
+
+  const primary = await supabase
+    .from("members")
+    .select(selectWithPhase)
+    .or("is_approved.is.false,is_approved.is.null,member_phase.eq.trial,member_phase.eq.extended")
+    .order("created_at", { ascending: false })
+
+  let rows: Array<Record<string, unknown>> = []
+
+  if (!primary.error) {
+    rows = (primary.data ?? []) as Array<Record<string, unknown>>
+  } else if (isMissingColumnError(primary.error)) {
+    const fallback = await supabase
+      .from("members")
+      .select(selectFallback)
+      .or("is_approved.is.false,is_approved.is.null,is_trial.eq.true")
+      .order("created_at", { ascending: false })
+
+    if (fallback.error) throw fallback.error
+    rows = (fallback.data ?? []) as Array<Record<string, unknown>>
+  } else {
+    throw primary.error
+  }
+
+  const memberIds = rows
+    .map((row) => String(row.id || ""))
+    .filter((id) => id.length > 0)
+
+  const counts = new Map<string, number>()
+  if (memberIds.length > 0) {
+    const checkins = await supabase
+      .from("checkins")
+      .select("member_id")
+      .in("member_id", memberIds)
+
+    if (checkins.error) throw checkins.error
+
+    for (const row of (checkins.data ?? []) as Array<{ member_id?: string | null }>) {
+      const memberId = row.member_id ?? ""
+      if (!memberId) continue
+      counts.set(memberId, (counts.get(memberId) ?? 0) + 1)
+    }
+  }
+
+  return rows.map((row) => {
+    const memberId = String(row.id)
+    const isTrial = Boolean(row.is_trial)
+    const isApproved = Boolean(row.is_approved)
+    const rawPhase = typeof row.member_phase === "string" ? row.member_phase : null
+    const phase = rawPhase === "extended" || rawPhase === "member" || rawPhase === "trial"
+      ? rawPhase
+      : isApproved
+        ? "member"
+        : isTrial
+          ? "trial"
+          : "member"
+
+    return {
+      id: memberId,
+      name: typeof row.name === "string" ? row.name : null,
+      first_name: typeof row.first_name === "string" ? row.first_name : null,
+      last_name: typeof row.last_name === "string" ? row.last_name : null,
+      email: typeof row.email === "string" ? row.email : null,
+      base_group: normalizeTrainingGroup(typeof row.base_group === "string" ? row.base_group : null) || null,
+      is_trial: isTrial,
+      is_approved: isApproved,
+      member_phase: phase,
+      checkin_count: counts.get(memberId) ?? 0,
+    }
+  })
 }
 
 export async function getAllMembers() {

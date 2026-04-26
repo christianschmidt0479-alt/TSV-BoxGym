@@ -1,7 +1,9 @@
-export default function AdminLayout({ children }) {
+import type { ReactNode } from "react"
+
+export default function AdminLayout({ children }: { children: ReactNode }) {
   const path = typeof window !== "undefined" ? window.location.pathname : "";
 
-  const linkStyle = (href) => ({
+  const linkStyle = (href: string) => ({
     color: "white",
     textDecoration: "none",
     fontWeight: path === href ? 700 : 400,

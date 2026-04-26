@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   const { id, birthdate, weight, group, isFighter } = body
 
 
-  const updateData = {
+  const updateData: Record<string, unknown> = {
     birthdate,
     base_group: group, // Stammgruppe immer speichern
     is_competition_member: isFighter
@@ -39,26 +39,15 @@ export async function POST(req: Request) {
     updateData["weight"] = null
   }
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log("UPDATE DATA:", {
-      id,
-      birthdate,
-      base_group: group,
-      is_competition_member: isFighter
-    })
-  }
-
   const { error } = await supabase
     .from("members")
     .update(updateData)
     .eq("id", id)
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log("UPDATE ERROR:", error)
-  }
-
   if (error) {
-    console.error("UPDATE FAILED:", error)
+    if (process.env.NODE_ENV !== "production") {
+      console.error("UPDATE FAILED:", error)
+    }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

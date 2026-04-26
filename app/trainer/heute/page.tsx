@@ -72,6 +72,10 @@ export default async function TrainerTodayPage() {
     redirect("/trainer-zugang")
   }
 
+  if (trainerSession.role !== "trainer" && trainerSession.role !== "admin") {
+    redirect("/mein-bereich")
+  }
+
   const supabase = createServerSupabaseServiceClient()
 
   const [membersResponse, checkinsResponse] = await Promise.all([

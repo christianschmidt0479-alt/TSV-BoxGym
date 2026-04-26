@@ -1,7 +1,7 @@
 "use client"
 
 import { useSearchParams, useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 
 /**
@@ -15,7 +15,7 @@ import Link from "next/link"
  * - id parameter validation (no blind rendering)
  * - auto-redirect if missing
  */
-export default function CheckinSuccessPage() {
+function CheckinSuccessPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const checkinId = searchParams?.get("id")
@@ -104,5 +104,21 @@ export default function CheckinSuccessPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function CheckinSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
+          <div className="w-full max-w-sm text-center">
+            <p className="text-slate-600">Wird weitergeleitet...</p>
+          </div>
+        </div>
+      }
+    >
+      <CheckinSuccessPageContent />
+    </Suspense>
   )
 }

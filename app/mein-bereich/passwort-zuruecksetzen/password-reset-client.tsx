@@ -14,7 +14,7 @@ import { MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, isValidMemb
 export function PasswordResetClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const token = searchParams.get("token")?.trim() || ""
+  const token = searchParams?.get("token")?.trim() || ""
   const [email, setEmail] = useState("")
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)

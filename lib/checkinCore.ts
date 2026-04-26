@@ -15,6 +15,11 @@ import { MAX_TRAININGS_WITHOUT_APPROVAL } from "@/lib/memberCheckin"
 export const MAX_TRIAL_CHECKINS = 3
 
 /**
+ * Maximum number of check-ins after trainer-granted trial extension
+ */
+export const MAX_EXTENDED_TRIAL_CHECKINS = 8
+
+/**
  * Member data required for check-in decision
  */
 export type Member = {
@@ -23,6 +28,7 @@ export type Member = {
   is_approved: boolean
   email_verified: boolean
   base_group: string | null
+  member_phase?: string | null
 }
 
 /**
@@ -113,10 +119,12 @@ export async function handleCheckin(
   }
 
   // ============================================================================
-  // D2) TRIAL MEMBER LIMIT CHECK - Max 3 trainings
+  // D2) TRIAL MEMBER LIMIT CHECK - Max 3 (or 8 if extended by trainer)
   // ============================================================================
   if (member.is_trial) {
-    if (memberCheckinCount >= MAX_TRIAL_CHECKINS) {
+    const trialLimit =
+      member.member_phase === "extended" ? MAX_EXTENDED_TRIAL_CHECKINS : MAX_TRIAL_CHECKINS
+    if (memberCheckinCount >= trialLimit) {
       return {
         ok: false,
         error: "Du hast die maximale Anzahl an Probetrainings erreicht.",

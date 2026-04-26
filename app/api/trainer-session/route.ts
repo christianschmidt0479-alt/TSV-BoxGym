@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { applyTrainerSessionCookie, clearTrainerSessionCookie, readTrainerSessionFromHeaders, getTrainerSessionMaxAgeMs } from "@/lib/authSession"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { findTrainerByEmail } from "@/lib/trainerDb"
+import { findMemberById } from "@/lib/boxgymDb"
 
 export async function POST(request: Request) {
   if (!isAllowedOrigin(request)) {
@@ -25,12 +26,16 @@ export async function POST(request: Request) {
   }
 
   const accountRole = trainerAccount.role === "admin" ? "admin" : "trainer"
+  const linkedMemberId = trainerAccount.linked_member_id ?? null
+  const linkedMember = linkedMemberId ? await findMemberById(linkedMemberId) : null
+  const memberId = linkedMember?.id ?? null
 
   const response = NextResponse.json({
     ok: true,
     role: accountRole,
     accountRole,
-    linkedMemberId: trainerAccount.linked_member_id ?? null,
+    linkedMemberId,
+    memberId,
     accountEmail: trainerAccount.email,
     accountFirstName: trainerAccount.first_name,
     accountLastName: trainerAccount.last_name,
@@ -38,12 +43,16 @@ export async function POST(request: Request) {
   })
 
   return await applyTrainerSessionCookie(response, {
+    userId: trainerAccount.id,
     role: accountRole,
     accountRole,
-    linkedMemberId: trainerAccount.linked_member_id ?? null,
+    linkedMemberId,
+    memberId,
+    isMember: Boolean(memberId),
     accountEmail: trainerAccount.email,
     accountFirstName: trainerAccount.first_name,
     accountLastName: trainerAccount.last_name,
+    version: 1,
   })
 }
 

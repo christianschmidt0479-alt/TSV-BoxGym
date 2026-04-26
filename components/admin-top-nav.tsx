@@ -113,6 +113,7 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
   const [badges, setBadges] = useState<NavBadgesResponse | null>(null)
   const [badgesTick, setBadgesTick] = useState(0)
   const pathname = usePathname()
+  const currentPath = pathname ?? ""
   const navRef = useRef<HTMLDivElement>(null)
   const menu = buildMenu(isAdmin)
 
@@ -165,8 +166,8 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
   function isSectionActive(section: MenuSection) {
     return section.items.some(
       (item) =>
-        pathname === item.href ||
-        (item.href !== "/verwaltung" && pathname.startsWith(item.href + "/"))
+        currentPath === item.href ||
+        (item.href !== "/verwaltung" && currentPath.startsWith(item.href + "/"))
     )
   }
 
@@ -209,9 +210,9 @@ export function AdminTopNav({ isAdmin }: { isAdmin: boolean }) {
                   <div className="grid grid-cols-1 gap-0.5">
                     {section.items.map((item) => {
                       const itemActive =
-                        pathname === item.href ||
+                        currentPath === item.href ||
                         (item.href !== "/verwaltung" &&
-                          pathname.startsWith(item.href + "/"))
+                          currentPath.startsWith(item.href + "/"))
                       const itemBadge = getItemBadge(badges, section.badgeSectionKey, item.badgeKey)
                       return (
                         <Link

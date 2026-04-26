@@ -14,28 +14,24 @@ export async function POST(request: Request) {
     const body = await request.json()
     //
     // Nur relevante Felder für den Service normalisieren
-    const parsedGroup = parseTrainingGroup(body.baseGroup)
+    const birthDateFinal = body.birthDate || body.birthdate
+    const baseGroupFinal = body.baseGroup || body.base_group
+    const normalizedPassword = typeof body.password === "string" ? body.password.trim() : ""
+    const normalizedPin = body.pin == null ? "" : String(body.pin).trim()
+    const parsedGroup = parseTrainingGroup(baseGroupFinal)
     const input = {
       firstName: body.firstName?.trim() ?? "",
       lastName: body.lastName?.trim() ?? "",
-      birthDate: body.birthDate?.trim() ?? "",
+      birthDate: typeof birthDateFinal === "string" ? birthDateFinal.trim() : "",
       gender: body.gender?.trim() ?? "",
-      password: body.password?.trim() ?? body.pin?.trim() ?? "",
+      password: normalizedPassword || (normalizedPin.length >= 4 ? normalizedPin : ""),
       email: body.email?.trim() ?? "",
       phone: body.phone?.trim() ?? "",
       baseGroup: typeof parsedGroup === "string" ? parsedGroup : "",
       consent: body.consent === true,
     }
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log("REGISTER INPUT:", input)
-    }
-
-    //
     const result = await registerMemberService(input)
-    if (process.env.NODE_ENV !== "production") {
-      console.log("REGISTER RESULT:", result)
-    }
 
     if (result.ok) {
       const mailResult = { sent: result.mailSent }
@@ -65,9 +61,7 @@ export async function POST(request: Request) {
       error: result.error || "Interner Fehler",
     }, { status: 500 })
   } catch (error) {
-    // Fehler-Log nur in dev
-    if (process.env.NODE_ENV === "development") {
-      // eslint-disable-next-line no-console
+    if (process.env.NODE_ENV !== "production") {
       console.error("[member-register] failed", error)
     }
     return NextResponse.json({ ok: false, error: "Interner Fehler" }, { status: 500 })

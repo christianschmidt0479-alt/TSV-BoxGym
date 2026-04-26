@@ -13,8 +13,6 @@ type ResendSendResponse = {
 
 export const resendProvider = {
   async sendMail(input: SendMailInput): Promise<SendMailResult> {
-    // Debug-Log: Einstieg Resend-Provider
-    console.log("RESEND_PROVIDER_SEND_START", { to: input.to })
     try {
       const result: ResendSendResponse = await resend.emails.send({
         from: input.from || process.env.RESEND_FROM_EMAIL!,
@@ -24,10 +22,11 @@ export const resendProvider = {
         text: input.text,
       })
       const id = result && result.data && typeof result.data === "object" && result.data !== null ? result.data.id : undefined
-      console.log("MAIL_SEND_SUCCESS", { to: input.to, id })
       return { id }
     } catch (err) {
-      console.error("MAIL_SEND_FAILED", { to: input.to, err })
+      if (process.env.NODE_ENV !== "production") {
+        console.error("MAIL_SEND_FAILED", err)
+      }
       throw err
     }
   },

@@ -5,9 +5,10 @@ const SESSION_MAX_AGE_SECONDS = 10 * 60
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
-export type ServerTrainerRole = "admin" | "trainer"
+export type ServerTrainerRole = "admin" | "trainer" | null
 
 export type TrainerSessionPayload = {
+  userId?: string
   role: ServerTrainerRole
   accountRole: ServerTrainerRole
   linkedMemberId: string | null
@@ -17,6 +18,7 @@ export type TrainerSessionPayload = {
   accountFirstName: string
   accountLastName: string
   exp: number
+  version: number
 }
 
 function getSessionSecret() {
@@ -85,10 +87,11 @@ function timingSafeEqualString(left: string, right: string) {
   return result === 0
 }
 
-export async function createTrainerSessionToken(input: Omit<TrainerSessionPayload, "exp">) {
+export async function createTrainerSessionToken(input: Omit<TrainerSessionPayload, "exp" | "version">) {
   const payload: TrainerSessionPayload = {
     ...input,
     exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
+    version: 2,
   }
 
   const encodedPayload = toBase64Url(JSON.stringify(payload))
@@ -98,25 +101,42 @@ export async function createTrainerSessionToken(input: Omit<TrainerSessionPayloa
 
 export async function verifyTrainerSessionToken(token: string | undefined | null) {
   if (!token) return null
+
   const [encodedPayload, providedSignature] = token.split(".")
+
   if (!encodedPayload || !providedSignature) return null
 
   const expectedSignature = await sign(encodedPayload)
+
   if (!timingSafeEqualString(providedSignature, expectedSignature)) {
     return null
   }
 
   try {
-    const payload = JSON.parse(fromBase64Url(encodedPayload)) as TrainerSessionPayload
+    const decoded = fromBase64Url(encodedPayload)
+    const payload = JSON.parse(decoded) as TrainerSessionPayload
+
+    if (!payload) return null
+
+    // Reject old tokens (version < 2)
+    if (!payload.version || payload.version < 2) {
+      return null
+    }
+
     if (!payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) {
       return null
     }
-    if (payload.role !== "admin" && payload.role !== "trainer") {
+    if (
+      payload.role !== "admin" &&
+      payload.role !== "trainer" &&
+      payload.isMember !== true
+    ) {
       return null
     }
-    if (payload.accountRole !== "admin" && payload.accountRole !== "trainer") {
+    if (payload.accountRole !== "admin" && payload.accountRole !== "trainer" && payload.accountRole !== null) {
       return null
     }
+
     return payload
   } catch {
     return null

@@ -2,9 +2,9 @@
 
 import { useState } from "react"
 
-import { PrimaryButton } from "@/components/ui/PrimaryButton"
+import { Button } from "@/components/ui/button"
 
-import { Card } from "@/components/ui/Card"
+import { Card } from "@/components/ui/card"
 
 export default function RegisterStep1({ onNext }: { onNext: (data: any) => void }) {
 
@@ -23,9 +23,9 @@ export default function RegisterStep1({ onNext }: { onNext: (data: any) => void 
       return
 
     }
-
+            <Button onClick={handleNext}>
     setError("")
-
+            </Button>
     onNext({ firstName, lastName })
 
   }
@@ -120,11 +120,11 @@ export default function RegisterStep1({ onNext }: { onNext: (data: any) => void 
 
       <div className="fixed bottom-16 left-0 right-0 bg-white border-t p-4">
 
-        <PrimaryButton onClick={handleNext}>
+        <Button onClick={handleNext}>
 
           Weiter
 
-        </PrimaryButton>
+        </Button>
 
       </div>
 

@@ -1,21 +1,17 @@
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
+import { verifyTrainerSessionToken } from "@/lib/authSession"
 
 export async function GET() {
   const cookieStore = await cookies()
 
-  const trainerSession = cookieStore.get("trainer_session")
-  const memberSession = cookieStore.get("tsv_member_area_session")
+  const trainerSession = cookieStore.get("trainer_session")?.value
 
-  if (trainerSession?.value) {
-    try {
-      const data = JSON.parse(trainerSession.value)
+  if (trainerSession) {
+    const data = await verifyTrainerSessionToken(trainerSession)
+    if (data?.role) {
       return NextResponse.json({ role: data.role })
-    } catch {}
-  }
-
-  if (memberSession) {
-    return NextResponse.json({ role: "member" })
+    }
   }
 
   return NextResponse.json({ role: "guest" })

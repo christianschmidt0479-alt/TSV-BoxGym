@@ -40,7 +40,7 @@ Important variables for production:
 
 Optional / legacy only:
 
-- `ADMIN_LOGIN_PASSWORD` for the standalone `/api/admin-auth` password endpoint
+- `ADMIN_LOGIN_PASSWORD` is legacy and no longer used for login (standalone `/api/admin-auth` is deprecated)
 - `NEXT_PUBLIC_RESEND_API_KEY` only as local-development fallback
 
 ## Mail Domain

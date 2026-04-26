@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { readMemberAreaSessionFromHeaders } from "@/lib/publicAreaSession"
-import { findMemberById } from "@/lib/boxgymDb"
+import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { verifyAuthSecret } from "@/lib/authSecret"
 
 export async function POST(request: Request) {
@@ -11,15 +10,16 @@ export async function POST(request: Request) {
     if (!password) {
       return NextResponse.json({ ok: false, code: "missing_password", message: "Bitte Passwort eingeben." }, { status: 400 })
     }
-    const session = await readMemberAreaSessionFromHeaders(request)
-    if (!session) {
+    const trainerSession = await readTrainerSessionFromHeaders(request)
+    const memberId = trainerSession?.memberId ?? trainerSession?.linkedMemberId ?? null
+    if (!memberId) {
       return NextResponse.json({ ok: false, code: "not_logged_in", message: "Nicht eingeloggt." }, { status: 401 })
     }
     const supabase = createServerSupabaseServiceClient()
     const { data: member, error } = await supabase
       .from("members")
       .select("id, member_pin")
-      .eq("id", session.memberId)
+      .eq("id", memberId)
       .maybeSingle()
     if (error || !member) {
       return NextResponse.json({ ok: false, code: "not_found", message: "Mitglied nicht gefunden." }, { status: 404 })

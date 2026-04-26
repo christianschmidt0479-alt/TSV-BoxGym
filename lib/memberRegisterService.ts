@@ -22,15 +22,6 @@ export type RegisterMemberResult =
   | { ok: false; error: string; code?: "already-exists" | "validation-error" | "error" }
 
 export async function registerMemberService(input: RegisterMemberInput): Promise<RegisterMemberResult> {
-  // Debug-Log: Einstieg Service
-  if (process.env.NODE_ENV !== "production") {
-    console.log("MEMBER_REGISTER_SERVICE_PASSWORD_PRESENT", {
-      email: input.email,
-      password_present: !!input.password,
-      password_length: input.password ? String(input.password).length : 0,
-    })
-  }
-
   // 1. Eingaben validieren (nur Kernfelder, keine Altlogik)
   const firstNameResult = validateName(input.firstName, "Vorname")
   if (!firstNameResult.valid) {
@@ -111,29 +102,16 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
       gender: input.gender,
       email: input.email.trim().toLowerCase(),
       phone: normalizedPhone,
-      is_trial: false,
+      is_trial: true,
+      member_phase: "trial",
       base_group: input.baseGroup,
       member_pin: input.password, // Minimaler Fix: Passwort als member_pin übergeben
       // Keine guardian_name, keine Alt-/Sonderfelder
     }
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log("MEMBER_REGISTER_SERVICE_MEMBER_PIN_PRESENT", {
-        email: payload.email,
-        member_pin_present: !!payload.member_pin,
-      })
-    }
-
     const created = await createMember(payload)
     if (!created || !created.id) {
       return { ok: false, code: "error", error: "Mitglied konnte nicht angelegt werden." }
-    }
-
-    if (process.env.NODE_ENV !== "production") {
-      console.log("SERVICE CREATE MEMBER", {
-        id: created.id,
-        email: created.email || payload.email,
-      })
     }
 
     // 4. Verifizierungstoken erzeugen und speichern
@@ -155,23 +133,11 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
       }
     }
 
-    // Debug-Log: Vor Mailversand
-    if (process.env.NODE_ENV !== "production") {
-      console.log("MEMBER_REGISTER_BEFORE_MAIL", { email: input.email })
-    }
-
     // 5. Verifizierungs-Mail versenden
     try {
       await sendMemberVerificationMail({ email: input.email.trim().toLowerCase(), token })
-      const mailResult = { sent: true }
-      if (process.env.NODE_ENV !== "production") {
-        console.log("SERVICE MAIL:", mailResult)
-      }
       return { ok: true, memberId: created.id, mailSent: true }
     } catch (err) {
-      if (process.env.NODE_ENV !== "production") {
-        console.log("SERVICE MAIL:", { sent: false, error: err instanceof Error ? err.message : String(err) })
-      }
       return { ok: true, memberId: created.id, mailSent: false }
     }
   } catch (err) {

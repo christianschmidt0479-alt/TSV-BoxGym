@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { readMemberAreaSessionFromHeaders } from "@/lib/publicAreaSession"
+import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 
 export async function POST(request: Request) {
   try {
-    const session = await readMemberAreaSessionFromHeaders(request)
-    if (!session) {
+    const trainerSession = await readTrainerSessionFromHeaders(request)
+    const memberId = trainerSession?.memberId ?? trainerSession?.linkedMemberId ?? null
+    if (!memberId) {
       return NextResponse.json({ open: false })
     }
     const supabase = createServerSupabaseServiceClient()
     const { data, error } = await supabase
       .from("member_deletion_requests")
       .select("id")
-      .eq("member_id", session.memberId)
+      .eq("member_id", memberId)
       .eq("status", "pending")
       .maybeSingle()
     if (error || !data) {

@@ -1,13 +1,9 @@
-import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
-import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
-import { createCheckin, createMember, findMemberByFirstLastAndBirthdate, updateMemberProfile, updateMemberRegistrationData } from "@/lib/boxgymDb"
+import { createCheckin, findMemberByFirstLastAndBirthdate, updateMemberProfile } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
-import { handleCheckin } from "@/lib/checkinCore"
-import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
+import { handleCheckin, type Context } from "@/lib/checkinCore"
 import { getSessionsForDate } from "@/lib/memberCheckin"
-import { sendVerificationEmail } from "@/lib/resendClient"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 const supabase = createServerSupabaseServiceClient()
@@ -113,24 +109,29 @@ export async function POST(request: Request) {
     }
 
     const checkinSettings = await readCheckinSettings()
-    const checkinMode = checkinSettings.disableCheckinTimeWindow ? "ferien" : "normal"
+    const checkinMode: Context["mode"] = checkinSettings.disableCheckinTimeWindow ? "ferien" : "normal"
 
-    let member = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
-    let isNewTrialMember = false
+    const member = await findMemberByFirstLastAndBirthdate(firstName, lastName, birthDate)
 
     if (!member) {
-      member = await createMember({
-        first_name: firstName,
-        last_name: lastName,
-        birthdate: birthDate,
-        email,
-        phone,
-        is_trial: true,
-        is_approved: false,
-        base_group: selectedSession.group,
-      })
-      isNewTrialMember = true
-    } else if (!member.is_trial) {
+      // TEMP LIVE MONITORING
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[trial-flow][checkin][blocked] reason=not_registered")
+      }
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Mitglied nicht vorhanden - bitte zuerst registrieren.",
+        },
+        { status: 404 }
+      )
+    }
+
+    if (!member.is_trial) {
+      // TEMP LIVE MONITORING
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[trial-flow][checkin][blocked] reason=member_already_exists id=${member.id}`)
+      }
       return NextResponse.json(
         {
           ok: false,
@@ -140,12 +141,10 @@ export async function POST(request: Request) {
       )
     }
 
-    if (member.is_trial) {
-      member = await updateMemberProfile(member.id, {
-        email,
-        phone,
-      })
-    }
+    const trialMember = await updateMemberProfile(member.id, {
+      email,
+      phone,
+    })
 
     const { data: memberCheckins, error: memberCheckinsError } = await supabase
       .from("checkins")
@@ -163,18 +162,19 @@ export async function POST(request: Request) {
       return checkinDate.getTime() === todayStart.getTime()
     })
 
-    let source = (body.source ?? "").trim().toLowerCase()
-    if (source !== "qr" && source !== "form") {
-      source = "form"
-    }
+    const requestedSource = (body.source ?? "").trim().toLowerCase()
+    const source: Context["source"] = requestedSource === "qr" || requestedSource === "form"
+      ? requestedSource
+      : "form"
 
     const result = await handleCheckin(
       {
-        id: member.id,
-        is_trial: Boolean(member.is_trial),
-        is_approved: Boolean(member.is_approved),
-        email_verified: Boolean(member.email_verified),
-        base_group: member.base_group,
+        id: trialMember.id,
+        is_trial: Boolean(trialMember.is_trial),
+        is_approved: Boolean(trialMember.is_approved),
+        email_verified: Boolean(trialMember.email_verified),
+        base_group: trialMember.base_group,
+        member_phase: typeof trialMember.member_phase === "string" ? trialMember.member_phase : null,
       },
       {
         source,
@@ -184,7 +184,11 @@ export async function POST(request: Request) {
       hasCheckedInToday
     )
 
+    // TEMP LIVE MONITORING
     if (!result.ok) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[trial-flow][checkin][blocked] reason=${result.reason || "unknown"} id=${trialMember.id}`)
+      }
       return NextResponse.json(
         {
           ok: false,
@@ -196,6 +200,10 @@ export async function POST(request: Request) {
     }
 
     if (hasCheckedInToday) {
+      // TEMP LIVE MONITORING
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[trial-flow][checkin][blocked] reason=DUPLICATE id=${trialMember.id}`)
+      }
       return NextResponse.json(
         {
           ok: false,
@@ -207,7 +215,7 @@ export async function POST(request: Request) {
     }
 
     const createdCheckin = await createCheckin({
-      member_id: member.id,
+      member_id: trialMember.id,
       group_name: selectedSession.group,
       checkin_mode: checkinMode,
       date: liveDate,
@@ -216,48 +224,9 @@ export async function POST(request: Request) {
       month_key: currentMonthKey,
     })
 
-    if (isNewTrialMember) {
-      const emailToken = randomUUID()
-      try {
-        await updateMemberRegistrationData(member.id, {
-          email_verified: false,
-          email_verified_at: null,
-          email_verification_token: emailToken,
-        })
-      } catch (tokenError) {
-        if (process.env.NODE_ENV !== "production") {
-          console.error("trial verification token update failed", tokenError)
-        }
-      }
-
-      const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-      const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${emailToken}`
-
-      try {
-        await sendVerificationEmail({
-          email,
-          name: `${firstName} ${lastName}`.trim(),
-          link: verificationLink,
-          kind: "member",
-        })
-      } catch (mailError) {
-        if (process.env.NODE_ENV !== "production") {
-          console.error("trial verification mail failed", mailError)
-        }
-      }
-
-      try {
-        await enqueueAdminNotification({
-          kind: "member",
-          memberName: `${firstName} ${lastName} (Probetraining)`,
-          email,
-          group: selectedSession.group,
-        })
-      } catch (notifyError) {
-        if (process.env.NODE_ENV !== "production") {
-          console.error("trial admin notification failed", notifyError)
-        }
-      }
+    // TEMP LIVE MONITORING
+    if (process.env.NODE_ENV !== "production") {
+      console.info(`[trial-flow][checkin][success] id=${trialMember.id}`)
     }
 
     return NextResponse.json({

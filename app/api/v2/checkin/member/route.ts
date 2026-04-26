@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
       is_approved: Boolean(member.is_approved),
       email_verified: Boolean(member.email_verified),
       base_group: member.base_group,
+      member_phase: typeof member.member_phase === 'string' ? member.member_phase : null,
     },
     {
       source: 'form',

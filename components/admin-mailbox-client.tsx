@@ -82,7 +82,7 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
   const [summaryText, setSummaryText] = useState("")
   const [data, setData] = useState<MailboxPayload>({ inbox: [], drafts: [], deleted: [] })
   const [selectedId, setSelectedId] = useState<string | null>(detailId ?? null)
-  const [draftForm, setDraftForm] = useState({ to: searchParams.get("to") ?? "", subject: "", content: "" })
+  const [draftForm, setDraftForm] = useState({ to: searchParams?.get("to") ?? "", subject: "", content: "" })
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkBusy, setBulkBusy] = useState(false)
   const [inboundEmails, setInboundEmails] = useState<InboundEmail[]>([])
@@ -94,7 +94,7 @@ export function AdminMailboxClient({ basePath, backHref, detailId }: AdminMailbo
   const [inboxSubTab, setInboxSubTab] = useState<"aufgaben" | "emails">("aufgaben")
   const [syncBusy, setSyncBusy] = useState(false)
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
-  const activeTab = getTabFromSearchParam(searchParams.get("tab"))
+  const activeTab = getTabFromSearchParam(searchParams?.get("tab") ?? null)
   const isDetailPage = Boolean(detailId)
 
 

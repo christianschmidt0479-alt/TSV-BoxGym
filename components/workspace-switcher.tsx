@@ -22,7 +22,7 @@ export function WorkspaceSwitcher() {
   const [hasParentSession, setHasParentSession] = useState(false)
   const [unreadEmailCount, setUnreadEmailCount] = useState(0)
 
-  const currentWorkspace = getWorkspace(pathname)
+  const currentWorkspace = getWorkspace(pathname ?? "")
   const hasTrainerAccess = Boolean(role)
   const hasAdminAccess = accountRole === "admin"
   const sportlerHref = linkedMemberId ? "/mein-bereich?trainer_access=1" : "/mein-bereich"

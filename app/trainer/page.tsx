@@ -2,24 +2,29 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
-import { MAX_TRAININGS_WITHOUT_APPROVAL } from "@/lib/memberCheckin"
-import { MAX_TRIAL_CHECKINS } from "@/lib/checkinCore"
 import { getUserContext } from "@/lib/getUserContext"
-import TrainerSelfCheckinButton from "@/components/trainer-self-checkin-button"
+import { resolveUserContext } from "@/lib/resolveUserContext"
+import ExtendTrialButton from "@/components/extend-trial-button"
 
-type RestrictionCode =
-  | "EMAIL_NOT_VERIFIED"
-  | "NO_GROUP"
-  | "DUPLICATE"
-  | "LIMIT_TRIAL"
-  | "LIMIT_MEMBER"
+export const dynamic = "force-dynamic"
 
-const RESTRICTION_LABELS: Record<RestrictionCode, string> = {
-  EMAIL_NOT_VERIFIED: "E-Mail nicht bestaetigt",
-  NO_GROUP: "Keine Trainingsgruppe zugewiesen",
-  DUPLICATE: "Heute bereits eingecheckt",
-  LIMIT_TRIAL: "Probetraining-Limit erreicht",
-  LIMIT_MEMBER: "Mitgliedschaftspruefung erforderlich (Limit erreicht)",
+type MemberPhase = "trial" | "extended" | "member"
+
+type TrainerMemberRow = {
+  id: string
+  name: string | null
+  first_name: string | null
+  last_name: string | null
+  base_group: string | null
+  is_trial: boolean | null
+  is_approved: boolean | null
+  member_phase: string | null
+}
+
+type CheckinRow = {
+  member_id: string | null
+  date: string | null
+  created_at: string | null
 }
 
 function getBerlinDayKey(date: Date) {
@@ -32,126 +37,199 @@ function getBerlinDayKey(date: Date) {
 }
 
 export default async function TrainerPage() {
-  const userContext = await getUserContext()
-  if (!userContext) {
+  const resolvedContext = await resolveUserContext()
+  if (!resolvedContext || resolvedContext.type !== "trainer") {
     redirect("/trainer-zugang")
   }
 
-  let selfStatus: {
-    displayName: string
-    todayCheckedIn: boolean
-    checkinCount: number
-    checkinLimit: number
-    restriction: RestrictionCode | null
-    memberId: string
-  } | null = null
+  const context = await getUserContext()
+  if (!context) {
+    redirect("/trainer-zugang")
+  }
 
-  if (userContext.isMember && userContext.member?.id) {
-    const supabase = createServerSupabaseServiceClient()
-    const { data: checkins, error: checkinError } = await supabase
-      .from("checkins")
-      .select("id, date, created_at")
-      .eq("member_id", userContext.member.id)
+  if (context.role !== "trainer" && context.role !== "admin") {
+    redirect("/mein-bereich")
+  }
 
-    if (checkinError) {
-      throw checkinError
+  if (!context.trainer) {
+    redirect("/mein-bereich")
+  }
+
+  const trainerName = `${context.trainer.firstName ?? ""} ${context.trainer.lastName ?? ""}`.trim() || context.trainer.email
+  const supabase = createServerSupabaseServiceClient()
+
+  const [membersResponse, checkinsResponse] = await Promise.all([
+    supabase
+      .from("members")
+      .select("id, name, first_name, last_name, base_group, is_trial, is_approved, member_phase")
+      .order("last_name", { ascending: true })
+      .order("first_name", { ascending: true }),
+    supabase.from("checkins").select("member_id, date, created_at"),
+  ])
+
+  if (membersResponse.error) {
+    throw membersResponse.error
+  }
+  if (checkinsResponse.error) {
+    throw checkinsResponse.error
+  }
+
+  const members = (membersResponse.data ?? []) as TrainerMemberRow[]
+  const checkins = (checkinsResponse.data ?? []) as CheckinRow[]
+
+  const todayIsoDate = getTodayIsoDateInBerlin()
+  const checkedInTodayByMemberId = new Set<string>()
+
+  for (const row of checkins) {
+    if (!row.member_id) continue
+
+    if (row.date === todayIsoDate) {
+      checkedInTodayByMemberId.add(row.member_id)
+      continue
     }
 
-    const todayIsoDate = getTodayIsoDateInBerlin()
-    const checkinRows = checkins ?? []
-    const todayCheckedIn = checkinRows.some((row) => {
-      const rowDate = typeof row.date === "string" && row.date ? row.date : null
-      if (rowDate === todayIsoDate) return true
-      if (!row.created_at) return false
-      const createdAt = new Date(row.created_at)
-      if (Number.isNaN(createdAt.getTime())) return false
-      return getBerlinDayKey(createdAt) === todayIsoDate
+    if (!row.created_at) continue
+    const createdAt = new Date(row.created_at)
+    if (Number.isNaN(createdAt.getTime())) continue
+    if (getBerlinDayKey(createdAt) === todayIsoDate) {
+      checkedInTodayByMemberId.add(row.member_id)
+    }
+  }
+
+  function resolvePhase(member: TrainerMemberRow): MemberPhase {
+    if (member.member_phase === "trial" || member.member_phase === "extended" || member.member_phase === "member") {
+      return member.member_phase
+    }
+    if (member.is_approved) return "member"
+    if (member.is_trial) return "trial"
+    return "member"
+  }
+
+  function displayName(member: TrainerMemberRow) {
+    const fullName = `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim()
+    return fullName || member.name || "Unbekannt"
+  }
+
+  const rows = members
+    .map((member) => ({
+      member,
+      phase: resolvePhase(member),
+      isTodayCheckedIn: checkedInTodayByMemberId.has(member.id),
+    }))
+    .sort((a, b) => {
+      if (a.isTodayCheckedIn !== b.isTodayCheckedIn) {
+        return a.isTodayCheckedIn ? -1 : 1
+      }
+      return displayName(a.member).localeCompare(displayName(b.member), "de")
     })
 
-    const checkinCount = checkinRows.length
-    const checkinLimit = userContext.member.is_trial ? MAX_TRIAL_CHECKINS : MAX_TRAININGS_WITHOUT_APPROVAL
+  const todayCount = rows.filter((row) => row.isTodayCheckedIn).length
+  const trialCount = rows.filter((row) => row.phase === "trial").length
+  const extendedCount = rows.filter((row) => row.phase === "extended").length
 
-    let restriction: RestrictionCode | null = null
-    if (!userContext.member.email_verified) {
-      restriction = "EMAIL_NOT_VERIFIED"
-    } else if (!userContext.member.base_group) {
-      restriction = "NO_GROUP"
-    } else if (todayCheckedIn) {
-      restriction = "DUPLICATE"
-    } else if (userContext.member.is_trial && checkinCount >= MAX_TRIAL_CHECKINS) {
-      restriction = "LIMIT_TRIAL"
-    } else if (!userContext.member.is_trial && !userContext.member.is_approved && checkinCount >= MAX_TRAININGS_WITHOUT_APPROVAL) {
-      restriction = "LIMIT_MEMBER"
+  function phaseBadgeStyle(phase: MemberPhase) {
+    if (phase === "member") {
+      return "bg-emerald-100 text-emerald-800 border border-emerald-300"
     }
-
-    const fullName = `${userContext.member.first_name ?? ""} ${userContext.member.last_name ?? ""}`.trim()
-
-    selfStatus = {
-      displayName: fullName || userContext.member.name || userContext.trainer.email,
-      todayCheckedIn,
-      checkinCount,
-      checkinLimit,
-      restriction,
-      memberId: userContext.member.id,
+    if (phase === "extended") {
+      return "bg-amber-100 text-amber-800 border border-amber-300"
     }
+    return "bg-zinc-100 text-zinc-700 border border-zinc-300"
+  }
+
+  function attendanceBadgeStyle(isTodayCheckedIn: boolean) {
+    return isTodayCheckedIn
+      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+      : "bg-zinc-100 text-zinc-700 border border-zinc-300"
   }
 
   return (
     <div className="min-h-screen bg-zinc-50 px-4 py-6 text-zinc-900 md:px-6 md:py-8">
-      <div className="mx-auto max-w-3xl space-y-4">
-        <div className="rounded-2xl bg-[#154c83] px-4 py-3 text-base font-semibold text-white">
-          Trainerbereich
+      <div className="mx-auto max-w-5xl space-y-4">
+        <div className="rounded-2xl bg-[#154c83] px-4 py-4 text-base font-semibold text-white">
+          Trainerbereich Halle
+          <div className="mt-1 text-sm font-medium text-blue-100">{trainerName}</div>
         </div>
 
-        {selfStatus ? (
-          <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <div className="text-base font-semibold text-zinc-900">Eigener Status</div>
-                <div className="text-sm text-zinc-700">{selfStatus.displayName}</div>
-                <div className="text-sm text-zinc-600">
-                  Heute eingecheckt: {selfStatus.todayCheckedIn ? "Ja" : "Nein"}
-                </div>
-                <div className="text-sm text-zinc-600">
-                  Trainingszaehler: {selfStatus.checkinCount} / {selfStatus.checkinLimit}
-                </div>
-                <div className={`text-sm font-semibold ${selfStatus.restriction ? "text-amber-700" : "text-emerald-700"}`}>
-                  Moegliche Einschraenkungen: {selfStatus.restriction ? RESTRICTION_LABELS[selfStatus.restriction] : "Keine"}
-                </div>
-              </div>
-
-              <TrainerSelfCheckinButton memberId={selfStatus.memberId} />
-            </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Heute da</div>
+            <div className="text-2xl font-extrabold text-zinc-900">{todayCount}</div>
           </div>
-        ) : null}
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Trial</div>
+            <div className="text-2xl font-extrabold text-zinc-900">{trialCount}</div>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Extended</div>
+            <div className="text-2xl font-extrabold text-zinc-900">{extendedCount}</div>
+          </div>
+        </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <Link
             href="/verwaltung-neu/checkin"
-            className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm transition hover:border-zinc-300 hover:shadow"
+            className="rounded-2xl border border-[#154c83] bg-[#154c83] px-5 py-5 text-lg font-semibold text-white shadow-sm transition hover:bg-[#0f3d6b]"
           >
-            <div className="text-base font-semibold">Check-in</div>
-            <div className="mt-1 text-sm text-zinc-600">Mitglieder direkt einchecken</div>
-          </Link>
-
-          <Link
-            href="/trainer/heute"
-            className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm transition hover:border-zinc-300 hover:shadow"
-          >
-            <div className="text-base font-semibold">Heute im Training</div>
-            <div className="mt-1 text-sm text-zinc-600">Anwesenheit und aktuelle Lage</div>
+            <div>Check-in starten</div>
+            <div className="mt-1 text-sm font-medium text-blue-100">Sofort einchecken</div>
           </Link>
 
           <Link
             href="/verwaltung-neu/mitglieder"
-            className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm transition hover:border-zinc-300 hover:shadow sm:col-span-2"
+            className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
           >
-            <div className="text-base font-semibold">Mitglieder</div>
-            <div className="mt-1 text-sm text-zinc-600">Nur Übersicht (optional read-only)</div>
+            <div>Mitglieder pruefen</div>
+            <div className="mt-1 text-sm font-medium text-zinc-600">Stammdaten aufrufen</div>
           </Link>
+
+          <Link
+            href="/trainer/heute"
+            className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
+          >
+            <div>Heute im Training</div>
+            <div className="mt-1 text-sm font-medium text-zinc-600">Anwesenheit kompakt</div>
+          </Link>
+        </div>
+
+        <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
+          <div className="border-b border-zinc-100 px-4 py-3">
+            <div className="text-base font-semibold text-zinc-900">Mitgliederliste</div>
+            <div className="text-sm text-zinc-600">Name, Gruppe, Status und Check-in fuer heute</div>
+          </div>
+
+          {rows.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-zinc-600">Keine Mitglieder gefunden.</div>
+          ) : (
+            <div className="max-h-[65vh] space-y-3 overflow-y-auto px-3 py-3">
+              {rows.map((row) => (
+                <div key={row.member.id} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="text-base font-semibold text-zinc-900">{displayName(row.member)}</div>
+                      <div className="text-sm text-zinc-600">Gruppe: {row.member.base_group || "-"}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${phaseBadgeStyle(row.phase)}`}>
+                        {row.phase}
+                      </span>
+                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${attendanceBadgeStyle(row.isTodayCheckedIn)}`}>
+                        {row.isTodayCheckedIn ? "heute da" : "nicht da"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {row.phase === "trial" ? (
+                    <div className="mt-3">
+                      <ExtendTrialButton memberId={row.member.id} />
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
   )
 }
-console.log("NEW SYSTEM ACTIVE")

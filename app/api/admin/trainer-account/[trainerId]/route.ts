@@ -38,21 +38,6 @@ const TRAINER_ACCOUNT_OPTIONAL_COLUMNS = [
   "bemerkung",
 ] as const
 
-const MEMBER_AUTO_CREATE_BASE_SELECT = "id, first_name, last_name, email, created_at"
-const MEMBER_AUTO_CREATE_OPTIONAL_COLUMNS = [
-  "phone",
-  "birthdate",
-  "guardian_name",
-  "gender",
-  "member_pin",
-  "is_trial",
-  "trial_count",
-  "is_approved",
-  "email_verified",
-  "email_verified_at",
-  "base_group",
-] as const
-
 type UpdatedTrainerResponse = {
   id: string
   first_name?: string | null
@@ -111,11 +96,6 @@ function isMissingColumnError(error: { message?: string } | null) {
 function findMissingColumn(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
   return TRAINER_ACCOUNT_OPTIONAL_COLUMNS.find((column) => message.includes(column)) ?? null
-}
-
-function findMissingMemberColumn(error: { message?: string } | null) {
-  const message = error?.message?.toLowerCase() ?? ""
-  return MEMBER_AUTO_CREATE_OPTIONAL_COLUMNS.find((column) => message.includes(column)) ?? null
 }
 
 function isUniqueConstraintError(error: { code?: string; message?: string; details?: string | null } | null) {
@@ -193,34 +173,6 @@ async function updateTrainerWithFallback(
     }
 
     const missingColumn = isMissingColumnError(response.error) ? findMissingColumn(response.error) : null
-    if (!missingColumn || !(missingColumn in attemptPayload)) {
-      return response
-    }
-
-    delete attemptPayload[missingColumn]
-    const missingIndex = optionalColumns.indexOf(missingColumn)
-    if (missingIndex >= 0) {
-      optionalColumns.splice(missingIndex, 1)
-    }
-  }
-}
-
-async function createMemberWithFallback(
-  supabase: ReturnType<typeof getServerSupabase>,
-  payload: Record<string, unknown>
-) {
-  const attemptPayload = { ...payload }
-  const optionalColumns = MEMBER_AUTO_CREATE_OPTIONAL_COLUMNS.filter((column) => column in attemptPayload)
-
-  while (true) {
-    const select = [MEMBER_AUTO_CREATE_BASE_SELECT, ...optionalColumns].join(", ")
-    const response = await supabase.from("members").insert([attemptPayload]).select(select).single()
-
-    if (!response.error) {
-      return response
-    }
-
-    const missingColumn = isMissingColumnError(response.error) ? findMissingMemberColumn(response.error) : null
     if (!missingColumn || !(missingColumn in attemptPayload)) {
       return response
     }
@@ -347,54 +299,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
 
     const trainerRow = currentTrainer as ExistingTrainerRow
     let resolvedLinkedMemberId = linkedMemberId
-    let autoCreatedMemberId: string | null = null
 
     if (isSportler && !resolvedLinkedMemberId) {
       const matchedMember = await findMatchingMemberByEmail(supabase, email)
       if (matchedMember?.id) {
         resolvedLinkedMemberId = matchedMember.id
       } else {
-        if (!memberBirthdate) {
-          return jsonError("Bitte ein Geburtsdatum für das neue Mitglied eingeben.", 400)
-        }
-
-        const memberPayload: Record<string, unknown> = {
-          name: `${firstName} ${lastName}`.trim(),
-          first_name: firstName,
-          last_name: lastName,
-          birthdate: memberBirthdate,
-          email,
-          phone: phone || null,
-          guardian_name: null,
-          gender: null,
-          is_trial: false,
-          trial_count: 0,
-          member_pin: trainerRow.password_hash || null,
-          is_approved: trainerRow.is_approved ?? true,
-          email_verified: trainerRow.email_verified ?? false,
-          email_verified_at: trainerRow.email_verified_at ?? null,
-          base_group: null,
-        }
-
-        const { data: createdMember, error: createdMemberError } = await createMemberWithFallback(supabase, memberPayload)
-        if (createdMemberError) {
-          if (isUniqueConstraintError(createdMemberError)) {
-            const duplicateMember = await findMatchingMemberByEmail(supabase, email)
-            if (duplicateMember?.id) {
-              resolvedLinkedMemberId = duplicateMember.id
-            } else {
-              return jsonError("Zur E-Mail existiert bereits ein Mitglied. Bitte bestehendes Mitglied prüfen und erneut speichern.", 409)
-            }
-          } else {
-            throw createdMemberError
-          }
-        }
-
-        if (!resolvedLinkedMemberId && createdMember) {
-          const member = createdMember as unknown as { id: string }
-          resolvedLinkedMemberId = member.id
-          autoCreatedMemberId = member.id
-        }
+        return jsonError("Mitglied muss zuerst registriert werden.", 409)
       }
     }
 
@@ -435,10 +346,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
       targetType: "trainer",
       targetId: trainer.id,
       targetName: `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim() || trainer.email || "—",
-      details: `E-Mail: ${trainer.email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${trainerLicenseRenewals.length ? `, Verlängerungen: ${trainerLicenseRenewals.join(", ")}` : ""}${lizenzart ? `, lizenzart: ${lizenzart}` : ""}${lizenznummer ? `, lizenznr: ${lizenznummer}` : ""}${lizenzGueltigBis ? `, gueltig_bis: ${lizenzGueltigBis}` : ""}${resolvedLinkedMemberId ? `, Mitglied verknüpft: ${resolvedLinkedMemberId}` : ""}${autoCreatedMemberId ? `, Mitglied automatisch angelegt` : ""}`,
+      details: `E-Mail: ${trainer.email}${trainerLicense ? `, Lizenz: ${trainerLicense}` : ""}${trainerLicenseRenewals.length ? `, Verlängerungen: ${trainerLicenseRenewals.join(", ")}` : ""}${lizenzart ? `, lizenzart: ${lizenzart}` : ""}${lizenznummer ? `, lizenznr: ${lizenznummer}` : ""}${lizenzGueltigBis ? `, gueltig_bis: ${lizenzGueltigBis}` : ""}${resolvedLinkedMemberId ? `, Mitglied verknüpft: ${resolvedLinkedMemberId}` : ""}`,
     })
 
-    return NextResponse.json({ ok: true, trainer, linkedMemberId: resolvedLinkedMemberId, autoCreatedMemberId })
+    return NextResponse.json({ ok: true, trainer, linkedMemberId: resolvedLinkedMemberId })
   } catch (error) {
     console.error("admin trainer account update failed", error)
     const details = error instanceof Error ? error.message : undefined

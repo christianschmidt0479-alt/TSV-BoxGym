@@ -3,7 +3,7 @@ import { cookies } from "next/headers"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
-import { handleCheckin } from "@/lib/checkinCore"
+import { handleCheckin, type Context } from "@/lib/checkinCore"
 import { signDeviceToken, verifyDeviceToken } from "@/lib/deviceToken"
 import { verifyTrainerSessionToken } from "@/lib/authSession"
 import { findMemberByEmailAndPin } from "@/lib/boxgymDb"
@@ -43,6 +43,16 @@ function getMonthKey(dateString: string) {
   return dateString.slice(0, 7)
 }
 
+type MemberCheckinRecord = {
+  id: string
+  email_verified: boolean | null
+  is_approved: boolean | null
+  is_trial: boolean | null
+  base_group: string | null
+  member_pin: string | null
+  member_phase: string | null
+}
+
 /**
  * POST /api/checkin/member
  * Member Check-in mit zentraler Core-Logik und Sicherheitsüberprüfungen
@@ -79,10 +89,14 @@ export async function POST(request: Request) {
     // ========================================================================
     // SECURITY: VALIDATE SOURCE (allowlist, not trusted from client)
     // ========================================================================
-    let source = (body.source ?? "").trim().toLowerCase()
-    if (source !== "qr" && source !== "nfc" && source !== "form" && source !== "trainer") {
-      source = "qr"
-    }
+    const requestedSource = (body.source ?? "").trim().toLowerCase()
+    const source: Context["source"] =
+      requestedSource === "qr" ||
+      requestedSource === "nfc" ||
+      requestedSource === "form" ||
+      requestedSource === "trainer"
+        ? requestedSource
+        : "qr"
 
     // ========================================================================
     // SECURITY: VALIDATE ENTRY (optional, hardening for QR integration)
@@ -95,16 +109,7 @@ export async function POST(request: Request) {
     // LOAD MEMBER
     // ========================================================================
     const supabase = createServerSupabaseServiceClient()
-    let member:
-      | {
-          id: string
-          email_verified: boolean | null
-          is_approved: boolean | null
-          is_trial: boolean | null
-          base_group: string | null
-          member_pin: string | null
-        }
-      | null = null
+    let member: MemberCheckinRecord | null = null
 
     if (source === "trainer") {
       const session = (await cookies()).get("trainer_session")
@@ -130,7 +135,7 @@ export async function POST(request: Request) {
     if (source === "trainer" && memberId) {
       const { data: trainerMember, error: trainerMemberError } = await supabase
         .from("members")
-        .select("id, email_verified, is_approved, is_trial, base_group, member_pin")
+        .select("id, email_verified, is_approved, is_trial, base_group, member_pin, member_phase")
         .eq("id", memberId)
         .maybeSingle()
 
@@ -151,7 +156,7 @@ export async function POST(request: Request) {
       if (tokenCheck.valid && tokenCheck.memberId) {
         const { data: tokenMember, error: tokenMemberError } = await supabase
           .from("members")
-          .select("id, email_verified, is_approved, is_trial, base_group, member_pin")
+          .select("id, email_verified, is_approved, is_trial, base_group, member_pin, member_phase")
           .eq("id", tokenCheck.memberId)
           .maybeSingle()
 
@@ -190,7 +195,7 @@ export async function POST(request: Request) {
         )
       }
 
-      member = loginMatch.member
+      member = loginMatch.member as MemberCheckinRecord
     }
 
     if (process.env.NODE_ENV !== "production") {
@@ -224,7 +229,7 @@ export async function POST(request: Request) {
     // Mode is always determined server-side from Settings
     // This prevents client-side tampering with ferienmodus flag
     const settings = await readCheckinSettings()
-    const mode = settings.disableCheckinTimeWindow ? "ferien" : "normal"
+    const mode: Context["mode"] = settings.disableCheckinTimeWindow ? "ferien" : "normal"
 
     // ========================================================================
     // BUILD CONTEXT (server-side only, all values validated/computed here)
@@ -234,7 +239,7 @@ export async function POST(request: Request) {
     // - mode: from Settings (computed above)
     // - entry: optional, validated above
     // All core decision logic uses this server-built context
-    const context = {
+    const context: Context = {
       source,
       mode,
     }
@@ -249,6 +254,7 @@ export async function POST(request: Request) {
         is_approved: member.is_approved ?? false,
         email_verified: member.email_verified ?? false,
         base_group: member.base_group,
+        member_phase: member.member_phase,
       },
       context,
       memberCheckinCount,

@@ -40,6 +40,7 @@ type MemberRecord = {
   is_trial?: boolean | null
   is_approved?: boolean | null
   is_competition_member?: boolean | null
+  member_phase?: string | null
 }
 
 function getBerlinDateParts(date = new Date()) {
@@ -207,6 +208,7 @@ export async function POST(request: Request) {
         is_approved: Boolean(resolvedMember.is_approved),
         email_verified: Boolean(resolvedMember.email_verified),
         base_group: resolvedMember.base_group ?? null,
+        member_phase: typeof resolvedMember.member_phase === "string" ? resolvedMember.member_phase : null,
       },
       {
         source: "form",
@@ -216,7 +218,11 @@ export async function POST(request: Request) {
       hasCheckedInToday
     )
 
+    // TEMP LIVE MONITORING
     if (!checkinResult.ok) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn('[member-flow][checkin][blocked] reason=' + (checkinResult.reason || 'unknown') + ' id=' + resolvedMember.id)
+      }
       return NextResponse.json(
         {
           ok: false,
@@ -293,7 +299,10 @@ export async function POST(request: Request) {
       weight_already_recorded_today,
     })
 
-    console.info('[member-flow][checkin][success] id=' + resolvedMember.id)
+    // TEMP LIVE MONITORING
+    if (process.env.NODE_ENV !== "production") {
+      console.info('[member-flow][checkin][success] id=' + resolvedMember.id)
+    }
     if (shouldRememberDevice && rememberToken) {
       return applyMemberDeviceCookie(response, rememberToken)
     }
@@ -304,7 +313,9 @@ export async function POST(request: Request) {
       const req = error?.body || error?.requestBody || ''
       if (typeof req === 'string' && req.includes('@')) masked = ' email=' + maskEmail(req)
     } catch {}
-    console.error('[member-flow][checkin][error] reason=exception' + masked, error)
+    if (process.env.NODE_ENV !== "production") {
+      console.error('[member-flow][checkin][error] reason=exception' + masked, error)
+    }
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }

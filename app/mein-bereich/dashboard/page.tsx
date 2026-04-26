@@ -1,48 +1,32 @@
-import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
+import { findMemberById } from "@/lib/boxgymDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { MAX_TRAININGS_WITHOUT_APPROVAL } from "@/lib/memberCheckin"
-import { verifyTrainerSessionToken } from "@/lib/authSession"
+import { getUserContext } from "@/lib/getUserContext"
+import { resolveUserContext } from "@/lib/resolveUserContext"
 
 export default async function DashboardPage() {
-  const cookieStore = await cookies()
-  const memberSession = cookieStore.get("tsv_member_area_session")
-  const trainerSession = cookieStore.get("trainer_session")
+  const resolvedContext = await resolveUserContext()
 
-  let role: "guest" | "member" | "trainer" | "admin" = "guest"
-  let isAdmin = false
-  if (trainerSession?.value) {
-    const data = await verifyTrainerSessionToken(trainerSession.value)
+  if (!resolvedContext) {
+    redirect("/mein-bereich/login")
+  }
 
-    if (data?.role === "trainer" || data?.role === "admin") {
-      role = data.role
+  const context = await getUserContext()
+  let memberId = resolvedContext.memberId ?? null
+  let role: "member" | "trainer" | "admin" = context?.role === "admin" ? "admin" : context?.role === "trainer" ? "trainer" : "member"
+
+  if (!memberId) {
+    const member = await findMemberById(resolvedContext.memberId ?? "")
+    if (!member?.id) {
+      redirect("/mein-bereich/login")
     }
 
-    if (data?.role === "admin") {
-      isAdmin = true
-    }
+    memberId = member.id
+    role = "member"
   }
 
-  if (!memberSession && role !== "admin" && role !== "trainer") {
-    redirect("/mein-bereich")
-  }
-
-  let sessionData: any = null
-  if (memberSession) {
-    try {
-      sessionData = JSON.parse(memberSession.value)
-    } catch {
-      if (role !== "admin" && role !== "trainer") {
-        redirect("/mein-bereich")
-      }
-    }
-  }
-
-  if (role !== "admin" && role !== "trainer" && (!sessionData || !sessionData.memberId || !sessionData.email)) {
-    redirect("/mein-bereich")
-  }
-
-  const memberId = sessionData?.memberId
+  const isAdmin = role === "admin"
   const supabase = createServerSupabaseServiceClient()
   let member: {
     first_name: string | null

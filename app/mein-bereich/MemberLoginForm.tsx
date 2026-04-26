@@ -23,18 +23,19 @@ export default function MemberLoginForm() {
         body: JSON.stringify({
           action: "member_login",
           email,
-          password,
+          pin: password,
         }),
       })
 
       const data = await res.json()
 
       if (!res.ok || !data.ok) {
-        setError(data?.error || "E-Mail oder Passwort falsch")
+        setError(data?.error || "Login fehlgeschlagen")
         return
       }
 
-      router.push("/mein-bereich/dashboard")
+      router.push("/mein-bereich")
+      router.refresh()
     } catch (err) {
       if (process.env.NODE_ENV !== "production") {
         console.error(err)
@@ -58,7 +59,7 @@ export default function MemberLoginForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-zinc-900">Passwort</label>
+          <label className="block text-sm font-medium text-zinc-900">PIN</label>
           <input
             type="password"
             value={password}

@@ -84,7 +84,7 @@ function isMissingColumnError(error: { message?: string } | null) {
 }
 
 const MEMBER_ADMIN_BASE_SELECT =
-  "id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group"
+  "id, name, first_name, last_name, birthdate, email, email_verified, email_verified_at, phone, guardian_name, has_competition_pass, is_competition_member, competition_license_number, last_medical_exam_date, competition_fights, competition_wins, competition_losses, competition_draws, is_trial, is_approved, base_group, member_phase"
 const MEMBER_ADMIN_OPTIONAL_COLUMNS = ["competition_target_weight", "needs_trainer_assist_checkin"] as const
 type MemberAdminRow = Record<string, unknown> & {
   id: string
@@ -192,11 +192,17 @@ export async function POST(request: Request) {
       if (preApproveError) throw preApproveError
       if (!preApproveCheck) return jsonError("Mitglied nicht gefunden", 404)
       if (!preApproveCheck.email_verified) {
+        // TEMP LIVE MONITORING
+        if (process.env.NODE_ENV !== "production") {
+          console.warn(`[admin-flow][approve][blocked] reason=email_not_verified id=${body.memberId}`)
+        }
         return jsonError("Die E-Mail-Adresse wurde noch nicht bestätigt. Freigabe erst nach E-Mail-Bestätigung möglich.", 400)
       }
 
       const updatePayload: Record<string, unknown> = {
         is_approved: true,
+        is_trial: false,
+        member_phase: "member",
         base_group: approvedGroup,
       }
 
@@ -227,6 +233,11 @@ export async function POST(request: Request) {
         targetName: getMemberDisplayName(data),
         details: `Gruppe: ${approvedGroup}`,
       })
+
+      // TEMP LIVE MONITORING
+      if (process.env.NODE_ENV !== "production") {
+        console.info(`[admin-flow][approve][success] id=${data.id} group=${approvedGroup}`)
+      }
 
       return NextResponse.json({ ok: true, member: { ...sanitizeMemberForAdmin(data as Record<string, unknown>), base_group: approvedGroup } })
     }
@@ -424,7 +435,9 @@ export async function POST(request: Request) {
     return jsonError("Invalid action", 400)
   }
   catch (error) {
-    console.error("admin member action failed", error)
+    if (process.env.NODE_ENV !== "production") {
+      console.error("admin member action failed", error)
+    }
     return jsonError("Internal server error", 500)
   }
 }

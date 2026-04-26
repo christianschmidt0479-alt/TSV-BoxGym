@@ -8,18 +8,18 @@ type LayoutProps = {
 }
 
 export default async function Layout({ children }: LayoutProps) {
-  const userContext = await getUserContext()
-  if (!userContext) {
+  const context = await getUserContext()
+  if (!context) {
     redirect("/trainer-zugang")
   }
 
-  if (userContext.role !== "admin") {
+  if (context.role !== "admin") {
     redirect("/trainer")
   }
 
-  const fullName = `${userContext.trainer.firstName} ${userContext.trainer.lastName}`.trim()
-  const displayName = fullName || userContext.trainer.email
-  const roleLabel = userContext.isMember ? "Admin + Trainer + Mitglied" : "Admin + Trainer"
+  const fullName = `${context.trainer.firstName} ${context.trainer.lastName}`.trim()
+  const displayName = fullName || context.trainer.email
+  const roleLabel = context.isMember ? "Admin + Trainer + Mitglied" : "Admin + Trainer"
 
   return (
     <div className="space-y-3 px-4 py-3 md:px-6 md:py-4">

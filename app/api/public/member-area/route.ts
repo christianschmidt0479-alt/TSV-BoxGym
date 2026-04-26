@@ -15,6 +15,13 @@ import {
   registerLoginFailureAsync,
   sanitizeTextInput,
 } from "@/lib/apiSecurity"
+import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import {
+  applyMemberAreaSessionCookie,
+  clearMemberAreaSessionCookie,
+  MEMBER_AREA_SESSION_COOKIE,
+  verifyMemberAreaSessionToken,
+} from "@/lib/publicAreaSession"
 
 // Keine Trainer-/Admin-Session-Logik importieren oder verwenden
 import {
@@ -29,10 +36,6 @@ import { sessions } from "@/lib/boxgymSessions"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
-import {
-  clearMemberAreaSessionCookie,
-  readMemberAreaSessionFromHeaders
-} from "@/lib/publicAreaSession"
 
 type MemberAreaBody =
   | { action: "member_login"; email?: string; password?: string; pin?: string }
@@ -423,16 +426,12 @@ async function buildMemberSnapshot(member: MemberRecord) {
 
 
 async function resolveEditableMember(request: Request, body: { memberId?: string; loginEmail?: string; password?: string; pin?: string }) {
-  const memberSession = await readMemberAreaSessionFromHeaders(request)
-  if (memberSession && body.memberId) {
-    const sessionMember = (await findMemberById(memberSession.memberId)) as MemberRecord | null
-    if (sessionMember && sessionMember.id === body.memberId) {
-      // Härtung: Freigabe-Prüfung erfolgt in den jeweiligen Aktionen, nicht hier
-      return sessionMember
-    }
+  const trainerSession = await readTrainerSessionFromHeaders(request)
+  const trainerMemberId = trainerSession?.memberId ?? trainerSession?.linkedMemberId ?? null
+  if (trainerMemberId && body.memberId) {
+    const sessionMember = (await findMemberById(trainerMemberId)) as MemberRecord | null
+    if (sessionMember && sessionMember.id === body.memberId) return sessionMember
   }
-
-    // Trainer-Linked-Member-Logik entfernt: Nur noch echte Member-Session
 
   const loginEmail = sanitizeMemberAreaEmail(body.loginEmail)
   const password = sanitizeMemberAreaPassword(body.password ?? body.pin)
@@ -455,9 +454,10 @@ async function resolveMemberFromSessionOrCredentials(
   request: Request,
   body: { email?: string; password?: string; pin?: string }
 ) {
-  const memberSession = await readMemberAreaSessionFromHeaders(request)
-  if (memberSession) {
-    const sessionMember = (await findMemberById(memberSession.memberId)) as MemberRecord | null
+  const trainerSession = await readTrainerSessionFromHeaders(request)
+  const trainerMemberId = trainerSession?.memberId ?? trainerSession?.linkedMemberId ?? null
+  if (trainerMemberId) {
+    const sessionMember = (await findMemberById(trainerMemberId)) as MemberRecord | null
     if (sessionMember) return sessionMember
   }
 
@@ -499,89 +499,100 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "member_login") {
-      // Nur Member-Session-Logik verwenden
-      const email = sanitizeMemberAreaEmail(body.email)
-      const password = sanitizeMemberAreaPassword(body.password ?? body.pin)
-      //
       const requestIp = getRequestIp(request)
-      const rateLimit = await checkRateLimitAsync(`member-login:${requestIp}`, 5, 15 * 60 * 1000)
-      if (!rateLimit.ok) {
-        return NextResponse.json({ ok: false, code: "rate_limit", message: "Too many requests" }, { status: 429 })
+      const loginIdentifier = sanitizeMemberAreaEmail(body.email) || "__email__"
+      const loginKey = `member:${loginIdentifier}`
+
+      const ipRateLimit = await checkRateLimitAsync(`member-login:${requestIp}`, 5, 15 * 60 * 1000)
+      if (!ipRateLimit.ok) {
+        return NextResponse.json({ ok: false, error: "Zu viele Anfragen" }, { status: 429 })
       }
 
-      const loginKey = `member:${email || "__email__"}`
       const lockState = await getLoginLockStateAsync(loginKey, 10)
       if (lockState.blocked) {
         await delayFailedLogin()
         const minutes = Math.max(1, Math.ceil((lockState.retryAfterMs ?? 0) / 60000))
-        return NextResponse.json({ ok: false, code: "login_locked", message: `Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.` }, { status: 429 })
+        return NextResponse.json({ ok: false, error: `Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.` }, { status: 429 })
       }
 
+      const email = sanitizeMemberAreaEmail(body.email)
+      const password = sanitizeMemberAreaPassword(body.password ?? body.pin)
       if (!email || !password) {
-        return NextResponse.json({ ok: false, code: "missing_credentials", message: "Bitte E-Mail und Passwort eingeben." }, { status: 400 })
-      }
-
-      if (!isWithinMaxLength(email, 254) || !isWithinMaxLength(password, 64)) {
-        return NextResponse.json({ ok: false, code: "invalid_credentials", message: "Ungültige Anmeldedaten." }, { status: 400 })
+        await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
+        await delayFailedLogin()
+        return NextResponse.json({ ok: false, error: MEMBER_LOGIN_ERROR_MESSAGE }, { status: 401 })
       }
 
       const memberMatch = await findMemberByEmailAndPin(email, password)
-      if (memberMatch?.status === "missing_email") {
-          //
+      if (!memberMatch || memberMatch.status !== "success") {
         await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
         await delayFailedLogin()
-        return NextResponse.json({ ok: false, code: "not_found", message: MEMBER_LOGIN_ERROR_MESSAGE }, { status: 401 })
-      }
-
-      const member = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
-      if (!member) {
-          //
-        await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
-        await delayFailedLogin()
-        return NextResponse.json({ ok: false, code: "not_found", message: MEMBER_LOGIN_ERROR_MESSAGE }, { status: 401 })
+        return NextResponse.json({ ok: false, error: MEMBER_LOGIN_ERROR_MESSAGE }, { status: 401 })
       }
 
       await clearLoginFailuresAsync(loginKey)
-      if (member) {
-        //
-      }
 
+      const member = memberMatch.member as MemberRecord
       if (!hasAcceptedPrivacy(member)) {
-          //
-        return NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
+        return privacyConsentRequiredResponse()
       }
 
-      const memberData = await buildMemberSnapshot(member)
-      const res = NextResponse.json({ ok: true, code: "login_success", message: "Login erfolgreich.", member: memberData })
-      res.cookies.set("tsv_member_area_session", JSON.stringify({
+      const payload = await buildMemberSnapshot(member)
+      const response = NextResponse.json({ ok: true, ...payload })
+      return applyMemberAreaSessionCookie(response, {
         memberId: member.id,
-        email: member.email,
-      }), {
-        httpOnly: true,
-        path: "/",
+        email: member.email ?? email,
       })
-      return res
     }
 
     if (body.action === "member_session") {
-      // Nur Member-Session-Logik verwenden
-      const session = await readMemberAreaSessionFromHeaders(request)
-      if (!session) {
+      const memberSessionToken = request.headers
+        .get("cookie")
+        ?.split(";")
+        .map((entry) => entry.trim())
+        .find((entry) => entry.startsWith(`${MEMBER_AREA_SESSION_COOKIE}=`))
+        ?.split("=")
+        .slice(1)
+        .join("=")
+
+      const memberSession = await verifyMemberAreaSessionToken(memberSessionToken)
+      if (memberSession?.memberId) {
+        const member = (await findMemberById(memberSession.memberId)) as MemberRecord | null
+        if (!member) {
+          const response = NextResponse.json({ ok: false, code: "not_found", message: "Mitglied nicht gefunden." }, { status: 401 })
+          return clearMemberAreaSessionCookie(response)
+        }
+
+        if (!hasAcceptedPrivacy(member)) {
+          return NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
+        }
+
+        const memberData = await buildMemberSnapshot(member)
+        return NextResponse.json({
+          ok: true,
+          code: "session_valid",
+          message: "Session gültig.",
+          member: {
+            ...memberData,
+            email_verified: member.email_verified ?? false,
+          },
+        })
+      }
+
+      const trainerSession = await readTrainerSessionFromHeaders(request)
+      const trainerMemberId = trainerSession?.memberId ?? trainerSession?.linkedMemberId ?? null
+      if (!trainerMemberId) {
         return NextResponse.json({ ok: false, code: "not_logged_in", message: "Nicht eingeloggt." }, { status: 401 })
       }
 
-      const member = (await findMemberById(session.memberId)) as MemberRecord | null
+      const member = (await findMemberById(trainerMemberId)) as MemberRecord | null
       if (!member) {
-        return clearMemberAreaSessionCookie(
-          NextResponse.json({ ok: false, code: "not_found", message: "Mitglied nicht gefunden." }, { status: 401 })
-        )
+        return NextResponse.json({ ok: false, code: "not_found", message: "Mitglied nicht gefunden." }, { status: 401 })
       }
 
 
       if (!hasAcceptedPrivacy(member)) {
-        return clearMemberAreaSessionCookie(
-          NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
-        )
+        return NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
       }
 
       const memberData = await buildMemberSnapshot(member)
@@ -598,10 +609,8 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "logout_member_session") {
-      // Nur Member-Session-Logik verwenden
-      return clearMemberAreaSessionCookie(
-        NextResponse.json({ ok: true, code: "logout_success", message: "Logout erfolgreich." })
-      )
+      const response = NextResponse.json({ ok: true, code: "logged_out" })
+      return clearMemberAreaSessionCookie(response)
     }
 
     // Aktion "trainer_linked_member" entfernt: Nur noch dedizierte Member-Session
@@ -829,11 +838,7 @@ export async function POST(request: Request) {
       }
 
       const acceptedMember = data as MemberRecord
-      const response = NextResponse.json(await buildMemberSnapshot(acceptedMember))
-      return await applyMemberAreaSessionCookie(response, {
-        memberId: acceptedMember.id,
-        email: sanitizeMemberAreaEmail(acceptedMember.email || body.email || ""),
-      })
+      return NextResponse.json(await buildMemberSnapshot(acceptedMember))
     }
 
     return NextResponse.json({ ok: false, error: "Invalid action" }, { status: 400 })

@@ -33,6 +33,7 @@ type MemberRecord = {
   is_trial?: boolean | null
   is_approved?: boolean | null
   is_competition_member?: boolean | null
+  member_phase?: string | null
 }
 
 function getBerlinDateParts(date = new Date()) {
@@ -182,6 +183,7 @@ export async function POST(request: Request) {
         is_approved: Boolean(member.is_approved),
         email_verified: Boolean(member.email_verified),
         base_group: member.base_group ?? null,
+        member_phase: typeof member.member_phase === "string" ? member.member_phase : null,
       },
       {
         source: "fast",
@@ -245,7 +247,9 @@ export async function POST(request: Request) {
 
     return applyMemberDeviceCookie(response, refreshedToken)
   } catch (error) {
-    console.error("public member fast checkin failed", error)
+    if (process.env.NODE_ENV !== "production") {
+      console.error("public member fast checkin failed", error)
+    }
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }

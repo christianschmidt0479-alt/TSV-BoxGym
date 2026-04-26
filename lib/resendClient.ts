@@ -168,8 +168,6 @@ async function sendMailWithResend(input: {
     throw new Error("Missing RESEND_API_KEY")
   }
 
-  // Exaktes Logging nach Vorgabe
-  console.log("MAIL_SEND_START", { to: input.to, from, kind: input.kind || undefined });
   let response;
   try {
     response = await fetch("https://api.resend.com/emails", {
@@ -189,7 +187,9 @@ async function sendMailWithResend(input: {
     });
     const text = await response.text();
     if (!response.ok) {
-      console.error("MAIL_SEND_FAILED", { status: response.status, body: text });
+      if (process.env.NODE_ENV !== "production") {
+        console.error("MAIL_SEND_FAILED", { status: response.status });
+      }
       throw new Error(text || "Resend request failed");
     }
     let messageId = null;
@@ -197,16 +197,15 @@ async function sendMailWithResend(input: {
       const payload = JSON.parse(text);
       messageId = typeof payload?.id === "string" ? payload.id : null;
     } catch {}
-    console.log("MAIL_SEND_SUCCESS", { status: response.status, messageId });
     return {
       provider: "resend",
       messageId,
     };
   } catch (error) {
     let status = response?.status;
-    let body = null;
-    try { body = await response?.text(); } catch {}
-    console.error("MAIL_SEND_FAILED", { error, status, body });
+    if (process.env.NODE_ENV !== "production") {
+      console.error("MAIL_SEND_FAILED", { status, error });
+    }
     throw error;
   }
 }

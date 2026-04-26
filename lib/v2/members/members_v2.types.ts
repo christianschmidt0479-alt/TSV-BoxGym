@@ -11,4 +11,5 @@ export interface MemberV2 {
 	email_verified: boolean;
 	created_at: string;
 	updated_at: string;
+	member_phase?: string | null;
 }

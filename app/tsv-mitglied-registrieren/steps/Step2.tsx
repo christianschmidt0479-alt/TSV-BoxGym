@@ -8,7 +8,7 @@ type Props = {
 }
 
 
-export default function Step2({ formData, setFormData, onNext }) {
+export default function Step2({ formData, setFormData, onNext }: { formData: any; setFormData: (value: any | ((prev: any) => any)) => void; onNext: () => void }) {
   const isValid = !!(formData.birthdate && formData.gender);
 
   return (
@@ -17,19 +17,19 @@ export default function Step2({ formData, setFormData, onNext }) {
       <input
         type="date"
         value={formData.birthdate}
-        onChange={e => setFormData(f => ({ ...f, birthdate: e.target.value }))}
+        onChange={e => setFormData((f: any) => ({ ...f, birthdate: e.target.value }))}
         className={`w-full h-16 rounded-2xl bg-gray-50 text-lg text-center focus:ring-2 focus:ring-blue-500 ${!formData.birthdate ? "ring-2 ring-red-300" : ""}`}
       />
       <div className="grid gap-4">
         <div
           className={`h-20 rounded-2xl flex items-center justify-center text-lg font-semibold transition cursor-pointer select-none ${formData.gender === "männlich" ? "bg-blue-600 text-white" : "bg-gray-50 text-gray-700"}`}
-          onClick={() => setFormData(f => ({ ...f, gender: "männlich" }))}
+          onClick={() => setFormData((f: any) => ({ ...f, gender: "männlich" }))}
         >
           <span className="text-2xl mr-2">👨</span> Männlich
         </div>
         <div
           className={`h-20 rounded-2xl flex items-center justify-center text-lg font-semibold transition cursor-pointer select-none ${formData.gender === "weiblich" ? "bg-blue-600 text-white" : "bg-gray-50 text-gray-700"}`}
-          onClick={() => setFormData(f => ({ ...f, gender: "weiblich" }))}
+          onClick={() => setFormData((f: any) => ({ ...f, gender: "weiblich" }))}
         >
           <span className="text-2xl mr-2">👩</span> Weiblich
         </div>

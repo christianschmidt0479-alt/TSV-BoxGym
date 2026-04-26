@@ -13,7 +13,7 @@ import { MEMBER_PASSWORD_HINT, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, isValidMemb
 export function ZugangEinrichtenClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const token = searchParams.get("token")?.trim() || ""
+  const token = searchParams?.get("token")?.trim() || ""
 
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")

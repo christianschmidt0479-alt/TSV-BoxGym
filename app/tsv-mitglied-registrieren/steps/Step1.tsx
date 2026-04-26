@@ -8,7 +8,7 @@ type Props = {
 
 import { useState } from "react"
 
-export default function Step1({ formData, setFormData, onNext }) {
+export default function Step1({ formData, setFormData, onNext }: { formData: any; setFormData: (value: any | ((prev: any) => any)) => void; onNext: () => void }) {
   const [showLastName, setShowLastName] = useState(false)
 
   const handleFirstName = () => {
@@ -28,7 +28,7 @@ export default function Step1({ formData, setFormData, onNext }) {
             autoFocus
             placeholder="Vorname"
             value={formData.firstName}
-            onChange={e => setFormData(f => ({ ...f, firstName: e.target.value }))}
+            onChange={e => setFormData((f: any) => ({ ...f, firstName: e.target.value }))}
             className="h-16 w-full text-xl text-center rounded-2xl bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
@@ -45,7 +45,7 @@ export default function Step1({ formData, setFormData, onNext }) {
             autoFocus
             placeholder="Nachname"
             value={formData.lastName}
-            onChange={e => setFormData(f => ({ ...f, lastName: e.target.value }))}
+            onChange={e => setFormData((f: any) => ({ ...f, lastName: e.target.value }))}
             className="h-16 w-full text-xl text-center rounded-2xl bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button

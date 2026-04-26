@@ -12,6 +12,7 @@ export type UserContextMember = {
   is_trial?: boolean | null
   is_approved?: boolean | null
   email_verified?: boolean | null
+  member_phase?: string | null
 }
 
 export type UserContext = {
@@ -30,11 +31,22 @@ export type UserContext = {
 
 export async function getUserContext(): Promise<UserContext | null> {
   const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get(TRAINER_SESSION_COOKIE)
-  if (!sessionCookie?.value) return null
+  const token = cookieStore.get(TRAINER_SESSION_COOKIE)?.value
 
-  const session = await verifyTrainerSessionToken(sessionCookie.value)
-  if (!session) return null
+  if (!token) return null
+
+  const session = await verifyTrainerSessionToken(token)
+
+  if (!session) {
+    // Automatically clear invalid sessions
+    try {
+      const store = await cookies()
+      store.delete(TRAINER_SESSION_COOKIE)
+    } catch (err) {
+      // Cookie deletion failed - ignore, session is invalid anyway
+    }
+    return null
+  }
 
   const memberId = session.memberId ?? session.linkedMemberId ?? null
   const member = memberId ? ((await findMemberById(memberId)) as UserContextMember | null) : null
