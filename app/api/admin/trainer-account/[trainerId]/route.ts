@@ -63,8 +63,8 @@ type MemberLookupRow = {
   email?: string | null
 }
 
-function jsonError(message: string, status: number, details?: string) {
-  return NextResponse.json({ ok: false, error: message, ...(details ? { details } : {}) }, { status })
+function jsonError(message: string, status: number) {
+  return NextResponse.json({ ok: false, error: message }, { status })
 }
 
 function getServerSupabase() {
@@ -351,9 +351,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
 
     return NextResponse.json({ ok: true, trainer, linkedMemberId: resolvedLinkedMemberId })
   } catch (error) {
-    console.error("admin trainer account update failed", error)
-    const details = error instanceof Error ? error.message : undefined
-    return jsonError("Internal server error", 500, details)
+    console.error("API ERROR:", error)
+    return new Response(JSON.stringify({ error: true, message: "Serverfehler" }), { status: 500 })
   }
 }
 
@@ -445,8 +444,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ trai
 
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error("admin trainer account delete failed", error)
-    const details = error instanceof Error ? error.message : typeof error === "object" && error !== null && "message" in error ? String((error as { message: unknown }).message) : undefined
-    return jsonError("Internal server error", 500, details)
+    console.error("API ERROR:", error)
+    return new Response(JSON.stringify({ error: true, message: "Serverfehler" }), { status: 500 })
   }
 }

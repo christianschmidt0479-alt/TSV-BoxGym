@@ -19,7 +19,7 @@ test.describe("public production smoke", () => {
     await page.goto("/trainer")
     await expect(page).toHaveURL(/\/trainer-zugang$/)
 
-    await page.goto("/verwaltung/checkins")
+    await page.goto("/verwaltung-neu/checkin")
     await expect(page).toHaveURL(/\/trainer-zugang$/)
   })
 

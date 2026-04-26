@@ -102,8 +102,7 @@ export async function POST(request: Request) {
       confirmationNoLink: resolvedConfirmationNoLink ?? null,
     })
   } catch (error) {
-    console.error(error)
-    const message = error instanceof Error ? error.message : "GS-Anfrage konnte nicht versendet werden."
-    return jsonError(message || "GS-Anfrage konnte nicht versendet werden.", 500)
+    console.error("API ERROR:", error)
+    return new Response(JSON.stringify({ error: true, message: "Serverfehler" }), { status: 500 })
   }
 }

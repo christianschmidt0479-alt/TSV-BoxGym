@@ -14,6 +14,7 @@ type MemberRow = {
   is_trial?: boolean | null
   is_approved?: boolean | null
   email_verified?: boolean | null
+  member_phase?: "trial" | "extended" | "member"
   checkinCount?: number
   checkedInToday?: boolean
 }
@@ -79,8 +80,6 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
   const [search, setSearch] = useState("")
   const [groupFilter, setGroupFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [approvingById, setApprovingById] = useState<Record<string, boolean>>({})
-  const [messageById, setMessageById] = useState<Record<string, { type: "success" | "error"; text: string }>>({})
 
   useEffect(() => {
     setLocalMembers(members)
@@ -89,25 +88,27 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
   const filteredMembers = useMemo(() => {
     const normalizedSearch = search.toLowerCase().trim()
 
-    return localMembers.filter((m) => {
-      const fullName = memberName(m).toLowerCase()
-      const email = (m.email || "").toLowerCase()
+    return localMembers
+      .filter((m) => m.member_phase === "member")
+      .filter((m) => {
+        const fullName = memberName(m).toLowerCase()
+        const email = (m.email || "").toLowerCase()
 
-      const matchSearch =
-        normalizedSearch.length < 1 ||
-        fullName.includes(normalizedSearch) ||
-        email.includes(normalizedSearch)
+        const matchSearch =
+          normalizedSearch.length < 1 ||
+          fullName.includes(normalizedSearch) ||
+          email.includes(normalizedSearch)
 
-      const matchGroup =
-        groupFilter === "all" || m.base_group === groupFilter
+        const matchGroup =
+          groupFilter === "all" || m.base_group === groupFilter
 
-      const matchStatus =
-        statusFilter === "all" ||
-        (statusFilter === "approved" && Boolean(m.is_approved)) ||
-        (statusFilter === "pending" && !m.is_approved)
+        const matchStatus =
+          statusFilter === "all" ||
+          (statusFilter === "approved" && Boolean(m.is_approved)) ||
+          (statusFilter === "pending" && !m.is_approved)
 
-      return matchSearch && matchGroup && matchStatus
-    })
+        return matchSearch && matchGroup && matchStatus
+      })
   }, [localMembers, search, groupFilter, statusFilter])
 
   const sortedMembers = useMemo(() => {
@@ -131,88 +132,6 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
   const totalTodayCount = useMemo(() => localMembers.filter((member) => Boolean(member.checkedInToday)).length, [localMembers])
   const totalCriticalCount = useMemo(() => localMembers.filter((member) => (member.checkinCount ?? 0) >= 7).length, [localMembers])
   const totalOpenCount = useMemo(() => localMembers.filter((member) => !member.is_approved).length, [localMembers])
-
-  async function handleDelete(memberId: string) {
-    if (!confirm("Mitglied wirklich löschen?")) return
-
-    const res = await fetch("/api/admin/delete-member", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memberId }),
-    })
-
-    if (!res.ok) {
-      alert("Löschen fehlgeschlagen")
-      return
-    }
-
-    setLocalMembers((prev) => prev.filter((m) => m.id !== memberId))
-  }
-
-  async function handleApprove(member: MemberRow) {
-    setApprovingById((prev) => ({ ...prev, [member.id]: true }))
-    setMessageById((prev) => {
-      const next = { ...prev }
-      delete next[member.id]
-      return next
-    })
-
-    try {
-      const response = await fetch("/api/admin/member-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          memberId: member.id,
-          action: "approve",
-          // Existing endpoint still requires baseGroup; memberId/action remain the primary payload.
-          baseGroup: member.base_group || "",
-        }),
-      })
-
-      const data = (await response.json()) as { ok?: boolean; error?: string; member?: { is_approved?: boolean } }
-
-      if (!response.ok || !data.ok) {
-        setMessageById((prev) => ({
-          ...prev,
-          [member.id]: {
-            type: "error",
-            text: data.error || "Freigabe fehlgeschlagen",
-          },
-        }))
-        return
-      }
-
-      setLocalMembers((prev) =>
-        prev.map((row) =>
-          row.id === member.id
-            ? {
-                ...row,
-                is_approved: true,
-              }
-            : row
-        )
-      )
-
-      setMessageById((prev) => ({
-        ...prev,
-        [member.id]: {
-          type: "success",
-          text: "Freigegeben",
-        },
-      }))
-    } catch {
-      setMessageById((prev) => ({
-        ...prev,
-        [member.id]: {
-          type: "error",
-          text: "Freigabe fehlgeschlagen",
-        },
-      }))
-    } finally {
-      setApprovingById((prev) => ({ ...prev, [member.id]: false }))
-    }
-  }
 
   return (
     <>
@@ -398,37 +317,9 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
             </div>
           )}
 
-          {messageById[m.id] ? (
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                fontWeight: 600,
-                color: messageById[m.id].type === "success" ? "#15803d" : "#b91c1c",
-              }}
-            >
-              {messageById[m.id].text}
-            </div>
-          ) : null}
-
           <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={() => void handleDelete(m.id)}
-              style={{ background: "transparent", border: "none", color: "#dc2626", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-            >
-              Löschen
-            </button>
-            {!m.is_approved && (
-              <button
-                style={buttonSecondary}
-                onClick={() => void handleApprove(m)}
-                disabled={Boolean(approvingById[m.id])}
-              >
-                {approvingById[m.id] ? "Freigabe..." : "Freigeben"}
-              </button>
-            )}
-            <Link href={`/verwaltung-neu/mitglieder/${m.id}/demo`}>
-              <button style={buttonSecondary}>Details</button>
+            <Link href={`/verwaltung-neu/mitglieder/${m.id}`}>
+              <button style={buttonSecondary}>Daten ändern</button>
             </Link>
           </div>
         </div>
@@ -531,37 +422,9 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
             </div>
           )}
 
-          {messageById[m.id] ? (
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                fontWeight: 600,
-                color: messageById[m.id].type === "success" ? "#15803d" : "#b91c1c",
-              }}
-            >
-              {messageById[m.id].text}
-            </div>
-          ) : null}
-
           <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={() => void handleDelete(m.id)}
-              style={{ background: "transparent", border: "none", color: "#dc2626", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-            >
-              Löschen
-            </button>
-            {!m.is_approved && (
-              <button
-                style={buttonSecondary}
-                onClick={() => void handleApprove(m)}
-                disabled={Boolean(approvingById[m.id])}
-              >
-                {approvingById[m.id] ? "Freigabe..." : "Freigeben"}
-              </button>
-            )}
-            <Link href={`/verwaltung-neu/mitglieder/${m.id}/demo`}>
-              <button style={buttonSecondary}>Details</button>
+            <Link href={`/verwaltung-neu/mitglieder/${m.id}`}>
+              <button style={buttonSecondary}>Daten ändern</button>
             </Link>
           </div>
         </div>

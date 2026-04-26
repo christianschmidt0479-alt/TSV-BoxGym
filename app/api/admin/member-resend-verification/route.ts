@@ -6,49 +6,62 @@ import { verifyTrainerSessionToken } from "@/lib/authSession"
 import { sendMemberVerificationMail } from "@/lib/mail/memberVerificationMail"
 
 export async function POST(req: NextRequest) {
-  const session = (await cookies()).get("trainer_session")
-
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "Nicht autorisiert" }, { status: 401 })
-  }
-
-  const valid = await verifyTrainerSessionToken(session.value)
-
-  if (!valid || valid.role !== "admin") {
-    return NextResponse.json({ ok: false, error: "Keine Berechtigung" }, { status: 403 })
-  }
-
-  const { member_id } = await req.json()
-  if (!member_id || typeof member_id !== "string") {
-    return NextResponse.json({ ok: false, error: "member_id fehlt" }, { status: 400 })
-  }
-
-  // Mitglied laden
-  const member = await findMemberById(member_id)
-  if (!member) {
-    return NextResponse.json({ ok: false, error: "Mitglied nicht gefunden" }, { status: 404 })
-  }
-  if (!member.email || member.email_verified) {
-    return NextResponse.json({ ok: false, error: "E-Mail fehlt oder bereits bestätigt" }, { status: 400 })
-  }
-
-  // Neuen Token und Ablaufzeit erzeugen
-  const token = randomUUID()
-  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
   try {
-    await updateMemberRegistrationData(member.id, {
-      email_verification_token: token,
-      email_verification_expires_at: expiresAt,
-    })
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: "Token konnte nicht gespeichert werden" }, { status: 500 })
-  }
+    const session = (await cookies()).get("trainer_session")
 
-  // Mail senden
-  try {
-    await sendMemberVerificationMail({ email: member.email.trim().toLowerCase(), token })
-    return NextResponse.json({ ok: true })
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: "Mail konnte nicht gesendet werden" }, { status: 500 })
+    if (!session) {
+      return NextResponse.json({ ok: false, error: "Nicht autorisiert" }, { status: 401 })
+    }
+
+    const valid = await verifyTrainerSessionToken(session.value)
+
+    if (!valid || valid.role !== "admin") {
+      return NextResponse.json({ ok: false, error: "Keine Berechtigung" }, { status: 403 })
+    }
+
+    let body: unknown = {}
+    try {
+      body = await req.json()
+    } catch {
+      body = {}
+    }
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return new Response(JSON.stringify({ error: "Invalid request" }), { status: 400 })
+    }
+
+    const { member_id } = body as { member_id?: string }
+    if (!member_id || typeof member_id !== "string") {
+      return NextResponse.json({ ok: false, error: "member_id fehlt" }, { status: 400 })
+    }
+
+    const member = await findMemberById(member_id)
+    if (!member) {
+      return NextResponse.json({ ok: false, error: "Mitglied nicht gefunden" }, { status: 404 })
+    }
+    if (!member.email || member.email_verified) {
+      return NextResponse.json({ ok: false, error: "E-Mail fehlt oder bereits bestätigt" }, { status: 400 })
+    }
+
+    const token = randomUUID()
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+    try {
+      await updateMemberRegistrationData(member.id, {
+        email_verification_token: token,
+        email_verification_expires_at: expiresAt,
+      })
+    } catch (err) {
+      return NextResponse.json({ ok: false, error: "Token konnte nicht gespeichert werden" }, { status: 500 })
+    }
+
+    try {
+      await sendMemberVerificationMail({ email: member.email.trim().toLowerCase(), token })
+      return NextResponse.json({ ok: true })
+    } catch (err) {
+      return NextResponse.json({ ok: false, error: "Mail konnte nicht gesendet werden" }, { status: 500 })
+    }
+  } catch (error) {
+    console.error("API ERROR:", error)
+    return new Response(JSON.stringify({ error: true, message: "Serverfehler" }), { status: 500 })
   }
 }

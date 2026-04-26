@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { container, pageTitle } from "@/lib/ui"
-import FreigabenClient from "./FreigabenClient"
+import ProbemitgliederClient from "./ProbemitgliederClient"
 
 let fetchCount = 0
 
-type ApprovalMember = {
+type TrialMember = {
   id: string
   name: string | null
   first_name: string | null
@@ -20,10 +20,7 @@ type ApprovalMember = {
   checkin_count: number
 }
 
-function toApprovalMember(m: Record<string, unknown>): ApprovalMember {
-  const isApproved = Boolean(m.is_approved)
-  const isTrial = Boolean(m.is_trial)
-
+function toTrialMember(m: Record<string, unknown>): TrialMember {
   return {
     id: String(m.id),
     name: typeof m.name === "string" ? m.name : null,
@@ -32,24 +29,23 @@ function toApprovalMember(m: Record<string, unknown>): ApprovalMember {
     email: typeof m.email === "string" ? m.email : null,
     base_group: typeof m.base_group === "string" ? m.base_group : null,
     email_verified: Boolean(m.email_verified),
-    is_trial: isTrial,
-    is_approved: isApproved,
-    member_phase: m.member_phase === "trial" || m.member_phase === "extended" || m.member_phase === "member"
-      ? m.member_phase
-      : "member",
+    is_trial: Boolean(m.is_trial),
+    is_approved: Boolean(m.is_approved),
+    member_phase:
+      m.member_phase === "trial" || m.member_phase === "extended" ? m.member_phase : "trial",
     checkin_count: typeof m.checkinCount === "number" ? m.checkinCount : 0,
   }
 }
 
-export default function FreigabenPage() {
-  const [members, setMembers] = useState<ApprovalMember[] | null>(null)
+export default function ProbemitgliederPage() {
+  const [members, setMembers] = useState<TrialMember[] | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
 
     async function load() {
       fetchCount++
-      console.log("GET-MEMBERS PAGE:", { page: "freigaben" })
+      console.log("GET-MEMBERS PAGE:", { page: "probemitglieder" })
       console.log("GET-MEMBERS CALL:", fetchCount)
 
       const res = await fetch("/api/admin/get-members", {
@@ -65,11 +61,11 @@ export default function FreigabenPage() {
       }
       const result = await res.json()
       const all: Record<string, unknown>[] = result.data ?? []
-      const pending = all.filter((m) => !m.is_approved && m.member_phase === "member")
+      const trial = all.filter((m) => m.member_phase === "trial" || m.member_phase === "extended")
 
-      console.log("freigaben loaded:", pending.length)
+      console.log("probemitglieder loaded:", trial.length)
 
-      setMembers(pending.map(toApprovalMember))
+      setMembers(trial.map(toTrialMember))
     }
 
     void load().catch((err: unknown) => {
@@ -88,13 +84,12 @@ export default function FreigabenPage() {
 
   return (
     <div style={container}>
-      <div style={pageTitle}>Freigaben</div>
+      <div style={pageTitle}>Probemitglieder</div>
       {members === null ? (
         <p>Lade…</p>
       ) : (
-        <FreigabenClient initialMembers={members} />
+        <ProbemitgliederClient initialMembers={members} />
       )}
     </div>
   )
 }
-

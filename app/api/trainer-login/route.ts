@@ -4,6 +4,7 @@ import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { verifyAuthSecret } from "@/lib/authSecret"
 import { TRAINER_SESSION_COOKIE, createTrainerSessionToken } from "@/lib/authSession"
 import { clearMemberAreaSessionCookie } from "@/lib/publicAreaSession"
+import { ratelimit } from "@/lib/ratelimit"
 
 type TrainerLoginBody = {
   email?: string
@@ -24,7 +25,24 @@ type TrainerAccountRow = {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as TrainerLoginBody
+    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown"
+    const { success } = await ratelimit.limit(`trainer-login:${ip}`)
+    if (!success) {
+      return NextResponse.json({ error: "Zu viele Anfragen" }, { status: 429 })
+    }
+
+    let rawBody: unknown = {}
+    try {
+      rawBody = await request.json()
+    } catch {
+      rawBody = {}
+    }
+
+    if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 })
+    }
+
+    const body = rawBody as TrainerLoginBody
     const email = (body.email ?? "").trim().toLowerCase()
     const inputPassword = (body.password ?? "").trim()
 

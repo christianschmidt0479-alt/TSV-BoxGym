@@ -158,12 +158,28 @@ export function HeaderClient({ user }: Props) {
             Freigaben
           </Link>
           <Link
+            href="/verwaltung-neu/probemitglieder"
+            style={navLinkStyle(
+              pathname === "/verwaltung-neu/probemitglieder" || pathname.startsWith("/verwaltung-neu/probemitglieder"),
+            )}
+          >
+            Probemitglieder
+          </Link>
+          <Link
             href="/verwaltung-neu/mitglieder"
             style={navLinkStyle(
               pathname === "/verwaltung-neu/mitglieder" || pathname.startsWith("/verwaltung-neu/mitglieder"),
             )}
           >
             Mitglieder
+          </Link>
+          <Link
+            href="/verwaltung-neu/trainer"
+            style={navLinkStyle(
+              pathname === "/verwaltung-neu/trainer" || pathname.startsWith("/verwaltung-neu/trainer"),
+            )}
+          >
+            Trainer
           </Link>
           <Link
             href="/verwaltung-neu/qr-code"

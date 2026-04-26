@@ -142,10 +142,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, email })
   } catch (error) {
     if (isTrainerAccountEmailConflict(error)) {
-      return new NextResponse(error.message, { status: 409 })
+      return new NextResponse("E-Mail-Adresse bereits vergeben.", { status: 409 })
     }
 
     console.error("admin trainer account creation failed", error)
-    return new NextResponse("Interner Fehler", { status: 500 })
+    return new Response(JSON.stringify({ error: true, message: "Serverfehler" }), { status: 500 })
   }
 }

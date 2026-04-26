@@ -43,6 +43,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, draft })
   } catch (error) {
     console.error("admin manual mail outbox failed", error)
-    return new NextResponse(error instanceof Error ? error.message : "Interner Fehler", { status: 500 })
+    return NextResponse.json({ ok: false, error: "Serverfehler" }, { status: 500 })
   }
 }

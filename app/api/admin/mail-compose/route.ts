@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, drafts })
   } catch (error) {
     console.error("admin mail compose preview failed", error)
-    return jsonError(error instanceof Error ? error.message : "Entwurf konnte nicht geladen werden.", 500)
+    return jsonError("Serverfehler", 500)
   }
 }
 
@@ -179,6 +179,6 @@ export async function PUT(request: Request) {
   } catch (error) {
     console.error("admin mail compose send failed", error)
     void reportAppError("mail", "send_failed", "high", error, { route: "/api/admin/mail-compose" })
-    return jsonError(error instanceof Error ? error.message : "Mail konnte nicht versendet werden.", 500)
+    return jsonError("Serverfehler", 500)
   }
 }

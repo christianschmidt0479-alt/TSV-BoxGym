@@ -52,7 +52,7 @@ export async function GET(request: Request, context: { params: Promise<{ mailId:
     return NextResponse.json({ ok: true, record })
   } catch (error) {
     console.error("admin mailbox detail failed", error)
-    return jsonError(error instanceof Error ? error.message : "Mailbox-Detail konnte nicht geladen werden.", 500)
+    return jsonError("Serverfehler", 500)
   }
 }
 
@@ -89,7 +89,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ mailI
     return NextResponse.json({ ok: true, record })
   } catch (error) {
     console.error("admin mailbox update failed", error)
-    return jsonError(error instanceof Error ? error.message : "Mailbox-Eintrag konnte nicht gespeichert werden.", 500)
+    return jsonError("Serverfehler", 500)
   }
 }
 
@@ -108,6 +108,6 @@ export async function DELETE(request: Request, context: { params: Promise<{ mail
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error("admin mailbox delete failed", error)
-    return jsonError(error instanceof Error ? error.message : "Mailbox-Eintrag konnte nicht gelöscht werden.", 500)
+    return jsonError("Serverfehler", 500)
   }
 }

@@ -1,25 +1,25 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { createClient } from "@supabase/supabase-js"
 import { verifyTrainerSessionToken } from "@/lib/authSession"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
     const session = (await cookies()).get("trainer_session")
 
     if (!session) {
-      return NextResponse.json({ ok: false, error: "Nicht autorisiert" }, { status: 401 })
+      return NextResponse.json({ error: "Nicht autorisiert" }, { status: 401 })
     }
 
     const valid = await verifyTrainerSessionToken(session.value)
 
     if (!valid || valid.role !== "admin") {
-      return NextResponse.json({ ok: false, error: "Keine Berechtigung" }, { status: 403 })
+      return NextResponse.json({ error: "Keine Berechtigung" }, { status: 403 })
     }
 
     let body: unknown = {}
     try {
-      body = await req.json()
+      body = await request.json()
     } catch {
       body = {}
     }
@@ -28,28 +28,25 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: "Invalid request" }), { status: 400 })
     }
 
-    const { memberId } = body as { memberId?: string }
+    const { trainerId, trainer_license } = body as { trainerId?: string; trainer_license?: string }
 
-    if (!memberId) {
-      return NextResponse.json({ error: "missing_member_id" }, { status: 400 })
+    if (!trainerId) {
+      return NextResponse.json({ error: "trainerId ist erforderlich" }, { status: 400 })
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const supabase = createServerSupabaseServiceClient()
 
     const { error } = await supabase
-      .from("members")
-      .delete()
-      .eq("id", memberId)
+      .from("trainer_accounts")
+      .update({ trainer_license: trainer_license ?? null })
+      .eq("id", trainerId)
 
     if (error) {
       console.error("SUPABASE ERROR:", error)
       return new Response(JSON.stringify({ error: true }), { status: 500 })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true }, { status: 200 })
   } catch (error) {
     console.error("API ERROR:", error)
     return new Response(JSON.stringify({ error: true, message: "Serverfehler" }), { status: 500 })

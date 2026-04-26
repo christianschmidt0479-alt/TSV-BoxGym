@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
 import { groupOptions } from "@/lib/boxgymSessions"
 import { buttonPrimary, buttonSecondary, card, cardTitle } from "@/lib/ui"
 
@@ -11,6 +12,7 @@ type ApprovalMember = {
   last_name: string | null
   email: string | null
   base_group: string | null
+  email_verified: boolean
   is_trial: boolean
   is_approved: boolean
   member_phase: "trial" | "extended" | "member"
@@ -42,6 +44,10 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
   const [members, setMembers] = useState<ApprovalMember[]>(initialMembers)
   const [loadingMemberId, setLoadingMemberId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    console.log("freigaben client members:", members.length)
+  }, [members])
 
   const groupByMemberId = useMemo(() => {
     const next = new Map<string, string>()
@@ -84,70 +90,10 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
       })
 
       setMembers((prev) =>
-        prev.map((row) =>
-          row.id === member.id
-            ? {
-                ...row,
-                base_group: baseGroup,
-                is_approved: true,
-                member_phase: "member",
-              }
-            : row
-        )
+        prev.filter((row) => row.id !== member.id)
       )
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Freigabe fehlgeschlagen")
-    } finally {
-      setLoadingMemberId(null)
-    }
-  }
-
-  async function changeGroup(member: ApprovalMember) {
-    const baseGroup = selectedGroups.get(member.id) || member.base_group || ""
-    if (!baseGroup) {
-      setError("Bitte zuerst eine Gruppe auswählen.")
-      return
-    }
-
-    setError(null)
-    setLoadingMemberId(member.id)
-    try {
-      await callAction("/api/admin/member-action", {
-        action: "change_group",
-        memberId: member.id,
-        baseGroup,
-      })
-
-      setMembers((prev) =>
-        prev.map((row) => (row.id === member.id ? { ...row, base_group: baseGroup } : row))
-      )
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Gruppenänderung fehlgeschlagen")
-    } finally {
-      setLoadingMemberId(null)
-    }
-  }
-
-  async function extendTrial(member: ApprovalMember) {
-    setError(null)
-    setLoadingMemberId(member.id)
-    try {
-      await callAction("/api/trainer/extend-member", {
-        memberId: member.id,
-      })
-
-      setMembers((prev) =>
-        prev.map((row) =>
-          row.id === member.id
-            ? {
-                ...row,
-                member_phase: "extended",
-              }
-            : row
-        )
-      )
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Verlängerung fehlgeschlagen")
     } finally {
       setLoadingMemberId(null)
     }
@@ -190,11 +136,16 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
                 <strong>Check-ins:</strong> {member.checkin_count}
               </div>
               <div>
-                <strong>Mitgliedsphase:</strong> {statusLabel(member.member_phase)}
+                <strong>E-Mail:</strong> {member.email_verified ? "bestätigt" : "nicht bestätigt"}
               </div>
-              <div>
-                <strong>Status:</strong> {statusLabel(status)}
-              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 14 }}>
+              {member.email_verified ? (
+                <span style={{ color: "#15803d", fontWeight: 600 }}>E-Mail bestätigt</span>
+              ) : (
+                <span style={{ color: "#dc2626", fontWeight: 600 }}>E-Mail nicht bestätigt</span>
+              )}
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -216,6 +167,12 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
                 ))}
               </select>
 
+              <Link href={`/verwaltung-neu/mitglieder/${member.id}`} style={{ textDecoration: "none" }}>
+                <button type="button" style={buttonSecondary} disabled={isBusy}>
+                  Daten ändern
+                </button>
+              </Link>
+
               <button
                 type="button"
                 style={buttonPrimary}
@@ -223,24 +180,6 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
                 disabled={isBusy}
               >
                 Freigeben
-              </button>
-
-              <button
-                type="button"
-                style={buttonSecondary}
-                onClick={() => changeGroup(member)}
-                disabled={isBusy}
-              >
-                Gruppe ändern
-              </button>
-
-              <button
-                type="button"
-                style={buttonSecondary}
-                onClick={() => extendTrial(member)}
-                disabled={isBusy}
-              >
-                Probemitglied verlängern
               </button>
             </div>
           </div>

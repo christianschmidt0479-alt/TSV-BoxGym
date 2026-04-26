@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     })
   } catch (error) {
     console.error("admin mailbox list failed", error)
-    return jsonError(error instanceof Error ? error.message : "Postfach konnte nicht geladen werden.", 500)
+    return jsonError("Serverfehler", 500)
   }
 }
 
@@ -84,6 +84,6 @@ export async function POST(request: Request) {
     return jsonError("Ungültige Mailbox-Aktion.", 400)
   } catch (error) {
     console.error("admin mailbox action failed", error)
-    return jsonError(error instanceof Error ? error.message : "Mailbox-Aktion fehlgeschlagen.", 500)
+    return jsonError("Serverfehler", 500)
   }
 }

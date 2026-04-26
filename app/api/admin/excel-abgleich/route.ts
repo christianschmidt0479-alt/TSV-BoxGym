@@ -1066,7 +1066,7 @@ export async function GET(request: Request) {
     } satisfies ReconcileResponsePayload)
   } catch (error) {
     console.error("admin excel abgleich fetch failed", error)
-    return new NextResponse(error instanceof Error ? error.message : "Internal server error", { status: 500 })
+    return NextResponse.json({ error: "Serverfehler" }, { status: 500 })
   }
 }
 
@@ -1438,6 +1438,6 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error("admin excel abgleich failed", error)
-    return new NextResponse(error instanceof Error ? error.message : "Internal server error", { status: 500 })
+    return NextResponse.json({ error: "Serverfehler" }, { status: 500 })
   }
 }

@@ -127,7 +127,7 @@ export default function QrPrintClient({ initialScope }: QrPrintClientProps) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button asChild variant="outline" className="rounded-2xl">
-              <Link href="/verwaltung/qr-codes">
+              <Link href="/verwaltung-neu/qr-code">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Zurück
               </Link>

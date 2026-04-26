@@ -4,12 +4,18 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { container, card, pageTitle } from "@/lib/ui"
 
+let fetchCount = 0
+
 export default function DashboardPage() {
   const [totalMembers, setTotalMembers] = useState<number | null>(null)
   const [pendingApprovals, setPendingApprovals] = useState<number | null>(null)
 
   useEffect(() => {
     async function load() {
+      fetchCount++
+      console.log("GET-MEMBERS PAGE:", { page: "verwaltung-neu" })
+      console.log("GET-MEMBERS CALL:", fetchCount)
+
       const res = await fetch("/api/admin/get-members", {
         method: "POST",
         credentials: "include",

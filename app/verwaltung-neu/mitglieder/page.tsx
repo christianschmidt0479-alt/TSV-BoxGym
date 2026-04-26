@@ -1,8 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { container, pageTitle } from "@/lib/ui"
 import MitgliederListClient from "./MitgliederListClient"
+
+let fetchCount = 0
 
 type AdminMemberListRow = {
   id: string
@@ -15,6 +17,7 @@ type AdminMemberListRow = {
   is_trial?: boolean | null
   is_approved?: boolean | null
   email_verified?: boolean | null
+  member_phase?: "trial" | "extended" | "member"
   checkinCount: number
   checkedInToday?: boolean
 }
@@ -28,13 +31,20 @@ export default function MitgliederPage() {
   const PAGE_SIZE = 10
 
   useEffect(() => {
+    const controller = new AbortController()
+
     async function loadMembers() {
       try {
+        fetchCount++
+        console.log("GET-MEMBERS PAGE:", { page: "mitglieder", currentPage })
+        console.log("GET-MEMBERS CALL:", fetchCount)
+
         const res = await fetch("/api/admin/get-members", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
           },
+          signal: controller.signal,
           body: JSON.stringify({
             page: currentPage,
             pageSize: PAGE_SIZE
@@ -50,16 +60,24 @@ export default function MitgliederPage() {
           return
         }
 
+        console.log("members loaded:", Array.isArray(result.data) ? result.data.length : 0)
         setMembers(result.data || [])
         setTotal(result.total || 0)
         setError(null)
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return
+        }
         console.error(err)
         setError("Netzwerkfehler beim Laden der Mitglieder.")
       }
     }
 
     loadMembers()
+
+    return () => {
+      controller.abort()
+    }
   }, [currentPage])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))

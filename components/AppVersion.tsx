@@ -1,3 +1,5 @@
+import { APP_VERSION } from "@/lib/appVersion"
+
 export default function AppVersion() {
   return (
     <div
@@ -12,7 +14,7 @@ export default function AppVersion() {
         zIndex: 9999,
       }}
     >
-      v10.0.0
+      Version {APP_VERSION}
     </div>
   )
 }
