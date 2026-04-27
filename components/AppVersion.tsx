@@ -1,4 +1,4 @@
-import { APP_VERSION } from "@/lib/appVersion"
+import { APP_COMMIT, APP_VERSION } from "@/lib/appVersion"
 
 export default function AppVersion() {
   return (
@@ -14,7 +14,7 @@ export default function AppVersion() {
         zIndex: 9999,
       }}
     >
-      Version {APP_VERSION}
+      Version {APP_VERSION}{APP_COMMIT && ` (${APP_COMMIT.slice(0, 7)})`}
     </div>
   )
 }
