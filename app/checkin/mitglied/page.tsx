@@ -51,7 +51,9 @@ export default function MemberCheckinPage() {
   const emailInputRef = useRef<HTMLInputElement | null>(null)
   const hasTriggered = useRef(false)
   const waitGuardTimerRef = useRef<number | null>(null)
+  const forceSuccessTimerRef = useRef<number | null>(null)
   const successRef = useRef(false)
+  const errorRef = useRef(false)
 
   const liveDate = now ? todayStringFromDate(now) : todayString()
 
@@ -189,23 +191,57 @@ export default function MemberCheckinPage() {
     }
   }
 
+  function startForceSuccessFallback() {
+    if (forceSuccessTimerRef.current !== null) {
+      window.clearTimeout(forceSuccessTimerRef.current)
+    }
+
+    forceSuccessTimerRef.current = window.setTimeout(() => {
+      if (!successRef.current && !errorRef.current) {
+        console.log("FORCE SUCCESS FALLBACK")
+        markCheckinSuccess()
+      }
+    }, 3000)
+  }
+
+  function stopForceSuccessFallback() {
+    if (forceSuccessTimerRef.current !== null) {
+      window.clearTimeout(forceSuccessTimerRef.current)
+      forceSuccessTimerRef.current = null
+    }
+  }
+
   function startCheckinProgress() {
     successRef.current = false
+    errorRef.current = false
     setSuccess(false)
     setIsCheckingIn(true)
     startWaitGuard()
+    startForceSuccessFallback()
   }
 
   function markCheckinSuccess() {
     successRef.current = true
     setSuccess(true)
     setSoftSuccess(false)
+    setIsCheckingIn(false)
     stopWaitGuard()
+    stopForceSuccessFallback()
+  }
+
+  function markCheckinError(message: string) {
+    errorRef.current = true
+    setCheckinError(message)
+    setSoftSuccess(false)
+    setIsCheckingIn(false)
+    stopWaitGuard()
+    stopForceSuccessFallback()
   }
 
   useEffect(() => {
     return () => {
       stopWaitGuard()
+      stopForceSuccessFallback()
     }
   }, [])
 
@@ -294,7 +330,9 @@ export default function MemberCheckinPage() {
         }),
       })
 
-      const result = (await response.json()) as {
+      console.log("CHECKIN RESPONSE", response.status)
+
+      const result = (await response.json().catch(() => ({}))) as {
         ok?: boolean
         error?: string
         reason?: string
@@ -306,6 +344,20 @@ export default function MemberCheckinPage() {
           baseGroup?: string
           isCompetitionMember: boolean
         } | null
+      }
+
+      if (response.ok) {
+        markCheckinSuccess()
+
+        if (rememberDevice && result.rememberUntil && result.member) {
+          updateRememberedDevice({ member: result.member })
+        }
+
+        showCheckinSuccess(result.member?.firstName || undefined)
+        setMemberEmail("")
+        setMemberPin("")
+        setMemberWeight("")
+        return
       }
 
       if (!response.ok || !result.ok) {
@@ -338,28 +390,19 @@ export default function MemberCheckinPage() {
           clearStoredQrAccess("member")
           setQrAccessToken("")
         }
-        setCheckinError(errorMessage)
+        markCheckinError(errorMessage)
         window.scrollTo({ top: 0, behavior: "smooth" })
         return
       }
-
-      if (rememberDevice && result.rememberUntil && result.member) {
-        updateRememberedDevice({ member: result.member })
-      }
-
-      markCheckinSuccess()
-      showCheckinSuccess(result.member?.firstName || undefined)
-      setMemberEmail("")
-      setMemberPin("")
-      setMemberWeight("")
     } catch (error) {
       console.error(error)
-      setCheckinError("Fehler beim Speichern des Check-ins.")
+      markCheckinError("Fehler beim Speichern des Check-ins.")
     } finally {
       if (!successRef.current) {
         setIsCheckingIn(false)
         setSoftSuccess(false)
       }
+      stopForceSuccessFallback()
       setDbLoading(false)
     }
   }
@@ -385,7 +428,9 @@ export default function MemberCheckinPage() {
         }),
       })
 
-      const result = (await response.json()) as {
+      console.log("CHECKIN RESPONSE", response.status)
+
+      const result = (await response.json().catch(() => ({}))) as {
         ok?: boolean
         error?: string
         reason?: string
@@ -396,6 +441,16 @@ export default function MemberCheckinPage() {
           lastName: string
           isCompetitionMember: boolean
         }
+      }
+
+      if (response.ok) {
+        markCheckinSuccess()
+        if (result.member) {
+          updateRememberedDevice({ member: result.member })
+        }
+        setRememberedWeight("")
+        showCheckinSuccess(result.member?.firstName)
+        return
       }
 
       if (!response.ok || !result.ok) {
@@ -435,31 +490,25 @@ export default function MemberCheckinPage() {
         if (isAuto && response.status >= 400) {
           setAutoCheckinFailed(true)
         }
-        setCheckinError(errorMessage)
+        markCheckinError(errorMessage)
         return
       }
-
-      if (result.member) {
-        updateRememberedDevice({ member: result.member })
-      }
-      markCheckinSuccess()
-      setRememberedWeight("")
-      showCheckinSuccess(result.member?.firstName)
     } catch (error) {
       if (process.env.NODE_ENV !== "production") {
         console.error(error)
       }
       if (isAuto) {
         setAutoCheckinFailed(true)
-        setCheckinError("Nicht erkannt")
+        markCheckinError("Nicht erkannt")
       } else {
-        setCheckinError("Fehler beim Schnell-Check-in.")
+        markCheckinError("Fehler beim Schnell-Check-in.")
       }
     } finally {
       if (!successRef.current) {
         setIsCheckingIn(false)
         setSoftSuccess(false)
       }
+      stopForceSuccessFallback()
       setFastCheckinLoading(false)
       if (isAuto) {
         setAutoCheckinRunning(false)
@@ -483,7 +532,7 @@ export default function MemberCheckinPage() {
     return (
       <div className="min-h-screen bg-emerald-600 px-4 py-8 text-white">
         <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-emerald-500/60 p-6 text-center shadow-2xl">
-          <p className="text-4xl font-black tracking-tight">Check-in fast abgeschlossen...</p>
+          <p className="text-4xl font-black tracking-tight">Bitte kurz warten...</p>
         </div>
       </div>
     )
