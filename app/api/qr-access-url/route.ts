@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   const panel = url.searchParams.get("panel") === "trial" ? "trial" : "member"
   const origin = new URL(request.url).origin
   const token = await createQrAccessToken(panel)
-  const path = panel === "trial" ? "/checkin/probetraining" : "/checkin/mitglied"
+  const path = "/checkin/mitglied"
 
   return NextResponse.json({
     ok: true,

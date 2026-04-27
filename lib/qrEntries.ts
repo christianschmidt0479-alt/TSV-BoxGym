@@ -10,6 +10,6 @@ export const qrEntries = [
   },
   {
     title: "Probetraining",
-    url: "/registrieren?type=trial"
+    url: "/registrieren/probe"
   }
 ];

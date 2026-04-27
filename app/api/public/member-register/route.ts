@@ -1,6 +1,7 @@
 
 import { NextResponse } from "next/server"
 import { isAllowedOrigin } from "@/lib/apiSecurity"
+import type { RegisterMemberInput } from "@/lib/memberRegisterService"
 import { parseTrainingGroup } from "@/lib/trainingGroups"
 import { registerMemberService } from "@/lib/memberRegisterService"
 
@@ -20,7 +21,14 @@ export async function POST(request: Request) {
     const normalizedPin = body.pin == null ? "" : String(body.pin).trim()
     const gender = typeof body.gender === "string" ? body.gender.trim() : ""
     const parsedGroup = parseTrainingGroup(baseGroupFinal)
-    const input = {
+    const registrationType = body.registrationType === "member" ? "member" : "trial"
+
+    const registrationConfig =
+      registrationType === "member"
+        ? ({ memberPhase: "member", isTrial: false, isApproved: false } as const)
+        : ({ memberPhase: "trial", isTrial: true, isApproved: false } as const)
+
+    const input: RegisterMemberInput = {
       firstName: body.firstName?.trim() ?? "",
       lastName: body.lastName?.trim() ?? "",
       birthDate: typeof birthDateFinal === "string" ? birthDateFinal.trim() : "",
@@ -30,6 +38,9 @@ export async function POST(request: Request) {
       phone: body.phone?.trim() ?? "",
       baseGroup: typeof parsedGroup === "string" ? parsedGroup : "",
       consent: body.consent === true,
+      memberPhase: registrationConfig.memberPhase,
+      isTrial: registrationConfig.isTrial,
+      isApproved: registrationConfig.isApproved,
     }
 
     if (input.password.length < 6) {

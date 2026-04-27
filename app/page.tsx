@@ -46,7 +46,7 @@ export default async function Home() {
               <span className="text-xs text-white/80">Für bestehende Mitglieder</span>
             </Link>
             <Link
-              href="/checkin/beitritt"
+              href="/registrieren"
               className="flex w-full flex-col items-center justify-center rounded-xl border border-zinc-300 px-4 py-3 text-zinc-800 hover:bg-zinc-50"
             >
               <span className="text-sm font-medium">Registrieren</span>

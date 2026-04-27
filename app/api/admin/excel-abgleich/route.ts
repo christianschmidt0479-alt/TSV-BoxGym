@@ -211,7 +211,7 @@ function isMissingOfficeListColumnError(error: { message?: string; details?: str
 
 function getOfficeListMigrationError() {
   return new Error(
-    "Die Datenbank kennt den GS-Abgleich noch nicht. Bitte fuehre zuerst supabase/member_office_list_fields.sql in Supabase aus."
+    "Die Datenbank kennt den GS-Abgleich noch nicht. Bitte führe zuerst supabase/member_office_list_fields.sql in Supabase aus."
   )
 }
 
@@ -231,7 +231,7 @@ function isMissingTrainerLinkError(error: { message?: string; details?: string; 
 
 function getOfficeRunStorageMigrationError() {
   return new Error(
-    "Die Datenbank kennt den gespeicherten GS-Sammelabgleich noch nicht. Bitte fuehre zuerst supabase/member_office_list_fields.sql in Supabase aus."
+    "Die Datenbank kennt den gespeicherten GS-Sammelabgleich noch nicht. Bitte führe zuerst supabase/member_office_list_fields.sql in Supabase aus."
   )
 }
 

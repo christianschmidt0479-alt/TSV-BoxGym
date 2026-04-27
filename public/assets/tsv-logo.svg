@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Kopiert aus .vercel/output/static/tsv-boxgym-brand-mark.svg -->
+<title id="title">TSV BoxGym</title>
+<desc id="desc">Stacked TSV Box Gym logo in blue and red on white background.</desc>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" fill="#fff"/>
+  <text x="512" y="286" fill="#16518b" font-size="120" font-family="Arial" text-anchor="middle">TSV</text>
+  <text x="512" y="426" fill="#e53935" font-size="80" font-family="Arial" text-anchor="middle">BoxGym</text>
+</svg>

@@ -1,0 +1,10 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="80" fill="#0F2A44"/>
+  <rect x="64" y="64" width="384" height="384" rx="56" fill="#F8FAFC"/>
+  <path d="M171 171C124.6 217.4 124.6 294.6 171 341" stroke="#0F2A44" stroke-width="22" stroke-linecap="round"/>
+  <path d="M341 171C387.4 217.4 387.4 294.6 341 341" stroke="#0F2A44" stroke-width="22" stroke-linecap="round"/>
+  <path d="M214 214C191.9 236.1 191.9 271.9 214 294" stroke="#19A974" stroke-width="18" stroke-linecap="round"/>
+  <path d="M298 214C320.1 236.1 320.1 271.9 298 294" stroke="#19A974" stroke-width="18" stroke-linecap="round"/>
+  <path d="M256 200V312" stroke="#0F2A44" stroke-width="20" stroke-linecap="round"/>
+  <text x="256" y="390" text-anchor="middle" fill="#0F2A44" font-size="72" font-family="Arial, Helvetica, sans-serif" font-weight="700">NFC</text>
+</svg>

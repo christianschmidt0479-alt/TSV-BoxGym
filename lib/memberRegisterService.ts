@@ -15,6 +15,9 @@ export type RegisterMemberInput = {
   phone: string
   baseGroup: string
   consent: boolean
+  memberPhase?: "member" | "trial" | "extended"
+  isTrial?: boolean
+  isApproved?: boolean
 }
 
 export type RegisterMemberResult =
@@ -94,6 +97,13 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
 
   // 3. Neues Mitglied anlegen (nur Kernfelder, keine Altlogik)
   try {
+    const memberPhase =
+      input.memberPhase === "member" || input.memberPhase === "extended" || input.memberPhase === "trial"
+        ? input.memberPhase
+        : "trial"
+    const isTrial = typeof input.isTrial === "boolean" ? input.isTrial : memberPhase !== "member"
+    const isApproved = typeof input.isApproved === "boolean" ? input.isApproved : false
+
     const payload = {
       first_name: input.firstName.trim(),
       last_name: input.lastName.trim(),
@@ -101,8 +111,9 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
       gender: normalizedGender,
       email: input.email.trim().toLowerCase(),
       phone: normalizedPhone,
-      is_trial: true,
-      member_phase: "trial",
+      is_trial: isTrial,
+      member_phase: memberPhase,
+      is_approved: isApproved,
       base_group: input.baseGroup,
       member_pin: input.password, // Minimaler Fix: Passwort als member_pin übergeben
       // Keine guardian_name, keine Alt-/Sonderfelder

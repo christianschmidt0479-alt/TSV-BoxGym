@@ -81,7 +81,7 @@ export default function ProbemitgliederClient({ initialMembers }: { initialMembe
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <Link href={`/verwaltung-neu/probemitglieder/${member.id}`} style={{ textDecoration: "none" }}>
+            <Link href={`/verwaltung-neu/mitglieder/${member.id}`} style={{ textDecoration: "none" }}>
               <button type="button" style={buttonSecondary}>
                 Details anzeigen
               </button>

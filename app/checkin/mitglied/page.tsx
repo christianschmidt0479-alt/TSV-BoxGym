@@ -1,9 +1,8 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { ArrowLeft, Smartphone, Users } from "lucide-react"
+import { Smartphone } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -40,12 +39,14 @@ export default function MemberCheckinPage() {
   const [rememberedWeight, setRememberedWeight] = useState("")
   const [checkinDone, setCheckinDone] = useState("")
   const [checkinError, setCheckinError] = useState("")
+  const [nfcDetected, setNfcDetected] = useState(false)
 
   const liveDate = now ? todayStringFromDate(now) : todayString()
 
   useEffect(() => {
     setNow(new Date())
     const params = new URLSearchParams(window.location.search)
+    setNfcDetected(params.get("source")?.trim().toLowerCase() === "nfc")
     const storedQrAccess = readStoredQrAccess("member")
 
     const qrToken = params.get(QR_ACCESS_PARAM)?.trim() ?? ""
@@ -144,6 +145,9 @@ export default function MemberCheckinPage() {
     })
   }, [checkinMode, now, rememberedBaseGroup, todaysSessions])
   const rememberedNeedsWeight = rememberedCompetitionMember || rememberedAssignment?.groupName === "L-Gruppe"
+  const showRegistrationHint =
+    checkinError.toLowerCase().includes("nicht gefunden") ||
+    checkinError.toLowerCase().includes("mitgliedskonto")
 
   const hasRememberedDevice = Boolean(rememberedMemberId && rememberedFirstName && rememberedLastName)
 
@@ -276,7 +280,7 @@ export default function MemberCheckinPage() {
       setMemberWeight("")
     } catch (error) {
       console.error(error)
-      alert("Fehler beim Speichern des Check-ins.")
+      setCheckinError("Fehler beim Speichern des Check-ins.")
     } finally {
       setDbLoading(false)
     }
@@ -354,81 +358,38 @@ export default function MemberCheckinPage() {
       showCheckinSuccess(result.member?.firstName)
     } catch (error) {
       console.error(error)
-      alert("Fehler beim Schnell-Check-in.")
+      setCheckinError("Fehler beim Schnell-Check-in.")
     } finally {
       setFastCheckinLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-4 py-4 text-zinc-900 md:px-6 md:py-8">
-      <div className="mx-auto max-w-3xl space-y-4 sm:space-y-6">
-        <div className="mb-1 flex flex-wrap items-center justify-between gap-2 rounded-[24px] bg-white p-3 shadow-sm">
-          <div className="rounded-2xl bg-[#154c83] px-3 py-2 text-sm font-semibold text-white">Mitglied Check-in</div>
-        </div>
-
-        <div className="overflow-hidden rounded-[24px] shadow-xl md:rounded-[28px]">
-          <div className="relative bg-[#0f2740] px-4 py-5 text-white sm:px-6 sm:py-8 md:px-8">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(230,51,42,0.25),transparent_35%)]" />
-            <div className="relative grid gap-6 md:grid-cols-[1.4fr_1fr] md:items-center">
-              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-                <Image
-                  src="/boxgym-headline-old.png"
-                  alt="TSV Falkensee BoxGym"
-                  width={192}
-                  height={128}
-                  className="h-10 w-auto rounded-md bg-white/90 p-1 sm:h-32"
-                />
-                <div className="min-w-0">
-                  <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs sm:text-sm">
-                    <Users className="h-4 w-4" />
-                    Mitglieder-Check-in
-                  </div>
-                  <h1 className="text-xl font-bold tracking-tight sm:text-3xl">Mitglied einchecken</h1>
-                  <p className="mt-2 hidden text-sm leading-6 text-blue-50/90 sm:block sm:text-base">
-                    {checkinMode === "ferien"
-                      ? "Ferienbetrieb - freie Zeiten. Der Check-in läuft über die Stammgruppe."
-                      : "Check-in nur während Trainingszeit. Die laufende Gruppe wird automatisch gesetzt."}
-                  </p>
-                  {checkinMode === "ferien" ? (
-                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-200">Ferienmodus aktiv</p>
-                  ) : hasRememberedDevice && isAdultBaseGroup(rememberedBaseGroup) ? (
-                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-200">Ü18 jederzeit möglich</p>
-                  ) : null}
-                </div>
-              </div>
-              <Card className="hidden rounded-[24px] border-white/10 bg-white/5 text-white shadow-none backdrop-blur md:block">
-                <CardContent className="p-5">
-                  <div className="rounded-2xl bg-white/10 p-3 text-sm">
-                    <div className="text-zinc-300">Check-in-Gruppe</div>
-                    <div className="mt-1 font-semibold">
-                      {hasRememberedDevice
-                        ? rememberedAssignment?.groupName || rememberedBaseGroup || "Wird automatisch ermittelt"
-                        : checkinMode === "ferien"
-                          ? "Stammgruppe nach Anmeldung"
-                          : "Laufende Gruppe nach Anmeldung"}
-                    </div>
-                    <div className="mt-1 text-zinc-300">
-                      {hasRememberedDevice && rememberedAssignment?.session
-                        ? `${rememberedAssignment.session.start} – ${rememberedAssignment.session.end}`
-                        : checkinMode === "ferien"
-                          ? "Im Ferienmodus wird immer die Stammgruppe verwendet."
-                          : "Im Normalbetrieb ist Check-in nur im Zeitfenster einer laufenden Gruppe möglich."}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
-
+    <div className="min-h-screen bg-zinc-50 text-zinc-900">
+      <div className="max-w-md mx-auto px-4 py-6 space-y-4">
         <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
           <CardHeader>
-            <CardTitle>Mitglieder-Check-in</CardTitle>
+            <CardTitle className="text-2xl">Check-in</CardTitle>
+            <p className="text-sm text-zinc-600">Bitte E-Mail und PIN eingeben</p>
+            {nfcDetected ? (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
+                NFC erkannt - Check-in starten
+              </div>
+            ) : null}
+            {checkinMode === "ferien" ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                Ferienmodus aktiv
+              </div>
+            ) : null}
+            {hasRememberedDevice && isAdultBaseGroup(rememberedBaseGroup) ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                Ü18 jederzeit möglich
+              </div>
+            ) : null}
           </CardHeader>
           <CardContent>
             {checkinDone ? (
-              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-base font-semibold text-emerald-800">
                 ✓ {checkinDone}
               </div>
             ) : null}
@@ -466,7 +427,7 @@ export default function MemberCheckinPage() {
                       value={rememberedWeight}
                       onChange={(e) => setRememberedWeight(e.target.value)}
                       placeholder="z. B. 72,4"
-                      className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                      className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
                     />
                     <div className="text-xs text-zinc-500">Pflichtfeld für L-Gruppe und Wettkampfsportler.</div>
                   </div>
@@ -475,7 +436,7 @@ export default function MemberCheckinPage() {
                 <div className="mt-4">
                   <Button
                     type="button"
-                    className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]"
+                    className="h-14 w-full rounded-2xl bg-[#154c83] text-lg text-white hover:bg-[#123d69]"
                     disabled={fastCheckinLoading || dbLoading || !rememberedAssignment?.allowed}
                     onClick={() => {
                       void handleFastCheckin()
@@ -508,7 +469,7 @@ export default function MemberCheckinPage() {
                   value={memberEmail}
                   onChange={(e) => setMemberEmail(e.target.value)}
                   placeholder="name@tsv-falkensee.de"
-                  className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                  className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
                   autoFocus
                   inputMode="email"
                   autoComplete="email"
@@ -522,7 +483,7 @@ export default function MemberCheckinPage() {
                   value={memberPin}
                   onChange={(e) => setMemberPin(e.target.value)}
                   placeholder="Passwort"
-                  className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                  className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
                   inputMode="numeric"
                   enterKeyHint="done"
                 />
@@ -535,7 +496,7 @@ export default function MemberCheckinPage() {
                     value={memberWeight}
                     onChange={(e) => setMemberWeight(e.target.value)}
                     placeholder="z. B. 72,4"
-                    className="h-12 rounded-2xl border-zinc-300 bg-white text-zinc-900"
+                    className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
                   />
                   <div className="text-xs text-zinc-500">Pflichtfeld für L-Gruppe und Wettkampfsportler.</div>
                 </div>
@@ -556,11 +517,30 @@ export default function MemberCheckinPage() {
 
               <div className="sticky bottom-3 -mx-1 rounded-[24px] border border-[#d8e3ee] bg-white/95 p-2 shadow-lg backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none">
                 {checkinError ? (
-                  <p className="mb-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 md:mb-3">
+                  <p className="mb-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-base text-red-700 md:mb-3">
                     {checkinError}
                   </p>
                 ) : null}
-                <Button type="submit" className="h-12 w-full rounded-2xl bg-[#154c83] text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading}>
+                {showRegistrationHint ? (
+                  <div className="mb-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-800">
+                    <p className="font-semibold">Kein Zugang? Jetzt registrieren</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <Link
+                        href="/registrieren/mitglied"
+                        className="inline-flex h-11 items-center justify-center rounded-xl border border-[#154c83] bg-white px-3 text-sm font-medium text-[#154c83]"
+                      >
+                        TSV Mitglied
+                      </Link>
+                      <Link
+                        href="/registrieren/probe"
+                        className="inline-flex h-11 items-center justify-center rounded-xl border border-[#154c83] bg-white px-3 text-sm font-medium text-[#154c83]"
+                      >
+                        Probetraining
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
+                <Button type="submit" className="h-14 w-full rounded-2xl bg-[#154c83] text-lg text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading}>
                   {dbLoading ? (
                     <span className="flex items-center justify-center gap-2">
                       <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>

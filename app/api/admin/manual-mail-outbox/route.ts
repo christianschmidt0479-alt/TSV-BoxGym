@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const draftRequest = body.request
 
     if (!draftRequest || draftRequest.kind !== "approval_notice") {
-      return new NextResponse("Nur Freigabe-Mails koennen im manuellen Postausgang gespeichert werden.", { status: 400 })
+      return new NextResponse("Nur Freigabe-Mails können im manuellen Postausgang gespeichert werden.", { status: 400 })
     }
 
     const preview = await buildAdminMailDraftPreview(draftRequest)

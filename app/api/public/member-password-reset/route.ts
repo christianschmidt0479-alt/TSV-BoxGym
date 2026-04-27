@@ -60,7 +60,7 @@ function isMissingPasswordResetColumnError(error: { message?: string; details?: 
 
 function getPasswordResetMigrationError() {
   return new Error(
-    "Die Datenbank kennt den Mitglieder-Passwort-Reset noch nicht. Bitte fuehre zuerst supabase/member_password_reset.sql in Supabase aus."
+    "Die Datenbank kennt den Mitglieder-Passwort-Reset noch nicht. Bitte führe zuerst supabase/member_password_reset.sql in Supabase aus."
   )
 }
 

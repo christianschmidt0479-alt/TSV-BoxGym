@@ -310,7 +310,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ train
     }
 
     if (isSportler && !resolvedLinkedMemberId) {
-      return jsonError("Sportlerkonto konnte nicht verknuepft werden.", 500)
+      return jsonError("Sportlerkonto konnte nicht verknüpft werden.", 500)
     }
 
     const payload: Record<string, unknown> = {

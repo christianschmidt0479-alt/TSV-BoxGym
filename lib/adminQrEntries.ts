@@ -17,6 +17,8 @@ type BuildAdminQrEntriesInput = {
 }
 
 export function buildAdminQrEntries({ baseUrl, memberQrUrl, trialQrUrl }: BuildAdminQrEntriesInput): AdminQrEntry[] {
+  void trialQrUrl
+
   return [
     {
       key: "registration",
@@ -38,10 +40,10 @@ export function buildAdminQrEntries({ baseUrl, memberQrUrl, trialQrUrl }: BuildA
     },
     {
       key: "trial-signup",
-      title: "Probetraining Anmeldung",
+      title: "Probetraining Registrierung",
       description: "Dauerhaft aktiver QR-Code für die Registrierung neuer Probemitglieder am Eingang.",
-      url: trialQrUrl,
-      alt: "QR-Code Probetraining Anmeldung",
+      url: `${baseUrl}/registrieren/probe`,
+      alt: "QR-Code Probetraining Registrierung",
       eyebrow: "Registrierung",
       helper: "Nach der Registrierung erfolgt der weitere Check-in über den normalen Check-in-QR-Code.",
     },

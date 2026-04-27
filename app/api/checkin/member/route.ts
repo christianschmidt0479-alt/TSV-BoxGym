@@ -55,7 +55,7 @@ type MemberCheckinRecord = {
 
 /**
  * POST /api/checkin/member
- * Member Check-in mit zentraler Core-Logik und Sicherheitsüberprüfungen
+ * Legacy Trainer Check-in Route
  *
  * Body: { email?: string, pin?: string, source?: string, entry?: string, deviceToken?: string }
  *
@@ -97,6 +97,16 @@ export async function POST(request: Request) {
       requestedSource === "trainer"
         ? requestedSource
         : "qr"
+
+    if (source !== "trainer") {
+      return NextResponse.json(
+        {
+          error: true,
+          message: "Legacy route disabled",
+        },
+        { status: 410 }
+      )
+    }
 
     // ========================================================================
     // SECURITY: VALIDATE ENTRY (optional, hardening for QR integration)
