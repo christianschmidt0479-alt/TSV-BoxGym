@@ -280,12 +280,6 @@ export default function TrialCheckinPage() {
       <div className="mx-auto max-w-3xl space-y-4 sm:space-y-6">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2 rounded-[24px] bg-white p-3 shadow-sm">
           <div className="rounded-2xl bg-[#154c83] px-3 py-2 text-sm font-semibold text-white">Probetraining</div>
-          <Button asChild variant="outline" className="rounded-2xl">
-            <Link href="/checkin">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Zur Auswahl
-            </Link>
-          </Button>
         </div>
 
         <div className="overflow-hidden rounded-[24px] shadow-xl md:rounded-[28px]">

@@ -215,12 +215,6 @@ export default function CheckinJoinPage() {
   return (
     <div className="min-h-screen bg-gray-50 px-4 pt-8 pb-12 text-zinc-900 md:px-6 md:pt-10">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="text-center">
-          <Link href="/checkin" className="text-sm text-blue-700 underline underline-offset-4">
-            Zur Auswahl
-          </Link>
-        </div>
-
         <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6 text-center">
           <Image src="/logo.png" alt="TSV Falkensee" width={64} height={64} className="h-20 w-auto mx-auto mb-4" />
           <h1 className="text-xl font-semibold">Boxbereich beitreten</h1>
