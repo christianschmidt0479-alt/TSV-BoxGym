@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { container, pageTitle } from "@/lib/ui"
+
 import FreigabenClient from "./FreigabenClient"
 
 type ApprovalMember = {
@@ -79,10 +79,13 @@ export default function FreigabenPage() {
   }, [])
 
   return (
-    <div style={container}>
-      <div style={pageTitle}>Freigaben</div>
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+        <div className="text-base font-semibold text-zinc-900">Freigaben</div>
+        <div className="text-sm text-zinc-600">Neue Mitglieder prüfen und freigeben</div>
+      </div>
       {members === null ? (
-        <p>Lade…</p>
+        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 text-sm text-zinc-600 shadow-sm">Lade…</div>
       ) : (
         <FreigabenClient initialMembers={members} />
       )}

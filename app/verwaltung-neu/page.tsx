@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { container, card, pageTitle } from "@/lib/ui"
+
 
 export default function DashboardPage() {
   const [totalMembers, setTotalMembers] = useState<number | null>(null)
@@ -103,78 +103,73 @@ export default function DashboardPage() {
     }
   }
 
-  const statCard = {
-    ...card,
-    cursor: "pointer" as const,
-    textDecoration: "none" as const,
-    display: "block",
-    marginBottom: 12,
-  }
-
   return (
-    <div style={container}>
-      <div style={pageTitle}>Admin-Übersicht</div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <Link href="/verwaltung-neu/mitglieder" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
+          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Mitglieder gesamt</div>
+          <div className="text-2xl font-extrabold text-zinc-900">{totalMembers ?? "…"}</div>
+          <div className="mt-1 text-sm text-zinc-600">Mitgliederliste öffnen</div>
+        </Link>
 
-      <Link href="/verwaltung-neu/mitglieder" style={{ textDecoration: "none" }}>
-        <div style={statCard}>
-          <div style={{ fontSize: 14, color: "#666" }}>Mitglieder gesamt</div>
-          <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0" }}>
-            {totalMembers ?? "…"}
-          </div>
-        </div>
-      </Link>
-
-      <Link href="/verwaltung-neu/freigaben" style={{ textDecoration: "none" }}>
-        <div style={statCard}>
-          <div style={{ fontSize: 14, color: "#666" }}>Offene Freigaben</div>
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 600,
-              margin: "6px 0",
-              color: pendingApprovals ? "#b45309" : "#15803d",
-            }}
-          >
+        <Link href="/verwaltung-neu/freigaben" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
+          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Offene Freigaben</div>
+          <div className={`text-2xl font-extrabold ${pendingApprovals ? "text-amber-700" : "text-emerald-700"}`}>
             {pendingApprovals ?? "…"}
           </div>
-        </div>
-      </Link>
+          <div className="mt-1 text-sm text-zinc-600">Freigaben prüfen</div>
+        </Link>
 
-      <Link href="/verwaltung-neu/qr-code" style={{ textDecoration: "none" }}>
-        <div style={statCard}>
-          <div style={{ fontSize: 14, color: "#666" }}>QR Code</div>
-          <div style={{ fontSize: 16, fontWeight: 600, margin: "6px 0" }}>Anzeigen →</div>
-        </div>
-      </Link>
+        <Link href="/verwaltung-neu/qr-code" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
+          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">QR Code</div>
+          <div className="text-2xl font-extrabold text-zinc-900">QR</div>
+          <div className="mt-1 text-sm text-zinc-600">Anzeigen und herunterladen</div>
+        </Link>
+      </div>
 
-      <div style={{ ...card, marginBottom: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Check-in Einstellungen</div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Link href="/verwaltung-neu/mitglieder" className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400">
+          <div>Mitglieder</div>
+          <div className="mt-1 text-sm font-medium text-zinc-600">Alle Mitglieder und Check-ins</div>
+        </Link>
+        <Link href="/verwaltung-neu/freigaben" className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400">
+          <div>Freigaben</div>
+          <div className="mt-1 text-sm font-medium text-zinc-600">Neue Mitglieder freigeben</div>
+        </Link>
+        <Link href="/verwaltung-neu/probemitglieder" className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400">
+          <div>Probemitglieder</div>
+          <div className="mt-1 text-sm font-medium text-zinc-600">Probetraining-Übersicht</div>
+        </Link>
+        <Link href="/verwaltung-neu/trainer" className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400">
+          <div>Trainer</div>
+          <div className="mt-1 text-sm font-medium text-zinc-600">Trainerverwaltung</div>
+        </Link>
+      </div>
+
+      <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+        <div className="mb-3 text-base font-semibold text-zinc-900">Check-in Einstellungen</div>
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <div style={{ fontSize: 14, color: "#444" }}>Ferienmodus</div>
-            <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-              {checkinSettingsLoading ? "Lädt..." : disableCheckinTimeWindow ? "ON" : "OFF"}
+            <div className="text-sm font-medium text-zinc-700">Ferienmodus</div>
+            <div className="mt-0.5 text-xs text-zinc-500">
+              {checkinSettingsLoading ? "Lädt..." : disableCheckinTimeWindow ? "Aktiv – Zeitfenster deaktiviert" : "Inaktiv – Zeitfenster aktiv"}
             </div>
           </div>
           <button
             type="button"
             onClick={() => void handleToggleCheckinTimeWindow(!disableCheckinTimeWindow)}
             disabled={checkinSettingsLoading || checkinSettingsSaving}
-            style={{
-              border: "1px solid #d1d5db",
-              borderRadius: 10,
-              background: "#fff",
-              padding: "8px 12px",
-              fontWeight: 600,
-              cursor: checkinSettingsLoading || checkinSettingsSaving ? "not-allowed" : "pointer",
-              opacity: checkinSettingsLoading || checkinSettingsSaving ? 0.6 : 1,
-            }}
+            className={`rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60 ${
+              disableCheckinTimeWindow
+                ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                : "border-zinc-300 bg-white text-zinc-900 hover:border-zinc-400"
+            }`}
           >
-            {disableCheckinTimeWindow ? "ON" : "OFF"}
+            {checkinSettingsSaving ? "Speichern..." : disableCheckinTimeWindow ? "Ferienmodus ON" : "Ferienmodus OFF"}
           </button>
         </div>
         {checkinSettingsError ? (
-          <div style={{ marginTop: 10, fontSize: 13, color: "#b91c1c" }}>{checkinSettingsError}</div>
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{checkinSettingsError}</div>
         ) : null}
       </div>
     </div>

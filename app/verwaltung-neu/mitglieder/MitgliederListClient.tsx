@@ -1,6 +1,5 @@
 "use client"
 import { useEffect, useMemo, useState } from "react"
-import { card, cardTitle, buttonSecondary } from "@/lib/ui"
 import Link from "next/link"
 
 type MemberRow = {
@@ -75,6 +74,79 @@ function sortBucket(member: MemberRow) {
   return 5
 }
 
+function priorityBadge(m: MemberRow) {
+  const p = priority(m)
+  if (p.color === "#dc2626") return "inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-700"
+  if (p.color === "#b45309") return "inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700"
+  return "inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-bold text-zinc-500"
+}
+
+function priorityLabel(m: MemberRow) {
+  const p = priority(m)
+  if (p.color === "#dc2626") return `ROT · ${p.label}`
+  if (p.color === "#b45309") return `GELB · ${p.label}`
+  return p.label
+}
+
+function MemberCard({ m }: { m: MemberRow }) {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-zinc-900">{memberName(m)}</div>
+          <div className="text-xs text-zinc-500">{m.email || "-"}</div>
+          <div className="text-xs text-zinc-600">Gruppe: {m.base_group || "-"}</div>
+        </div>
+        {!m.is_approved ? (
+          <span className={priorityBadge(m)}>{priorityLabel(m)}</span>
+        ) : null}
+      </div>
+
+      <div className="text-xs text-zinc-700"><strong>Status:</strong> {memberStatus(m)}</div>
+
+      <div className="flex flex-wrap gap-2">
+        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${m.checkedInToday ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
+          {m.checkedInToday ? "HEUTE DA" : "nicht da"}
+        </span>
+        <span className={`text-xs font-semibold ${m.email_verified ? "text-emerald-700" : "text-red-700"}`}>
+          {m.email_verified ? "✔ E-Mail bestätigt" : "⚠ E-Mail nicht bestätigt"}
+        </span>
+      </div>
+
+      {!m.email_verified && (
+        <div className="text-xs font-bold text-orange-800">🆕 Neu / Registrierung unvollständig</div>
+      )}
+      {!m.is_approved && (
+        <div className="text-xs font-semibold text-amber-700">⚠ Mitgliederprüfung offen</div>
+      )}
+      {m.email_verified && !m.is_approved && (m.checkinCount ?? 0) >= 5 && (
+        <div className="text-xs font-bold text-blue-700">👉 Empfehlung: Freigabe prüfen</div>
+      )}
+      {m.base_group && m.office_list_group && m.base_group !== m.office_list_group && (
+        <div className="text-xs font-bold text-red-700">⚠ Gruppenabweichung</div>
+      )}
+
+      <div className={`text-xs font-semibold ${isLastTrainingBeforeBlock(m) ? "text-red-700 font-bold" : "text-zinc-700"}`}>
+        {isLastTrainingBeforeBlock(m) ? "🔥" : ""} <strong>Checkins:</strong> {m.checkinCount ?? 0} / {limitFor(m)}{isLastTrainingBeforeBlock(m) ? " Trainings" : ""}
+      </div>
+      {isLastTrainingBeforeBlock(m) && (
+        <div className="text-xs font-bold text-red-700">🔴 Letztes Training vor Sperre</div>
+      )}
+      {hasReachedLimit(m) && (
+        <div className="text-xs font-bold text-red-700">Limit erreicht</div>
+      )}
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Link href={`/verwaltung-neu/mitglieder/${m.id}`}>
+          <button type="button" className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-900 transition hover:border-zinc-400">
+            Daten ändern
+          </button>
+        </Link>
+      </div>
+    </div>
+  )
+}
+
 export default function MitgliederListClient({ members }: { members: MemberRow[] }) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
   const [search, setSearch] = useState("")
@@ -135,40 +207,32 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
 
   return (
     <>
-      <div
-        style={{
-          marginBottom: 12,
-          display: "grid",
-          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-          gap: 8,
-        }}
-      >
-        <div style={{ ...card, marginBottom: 0, padding: 10 }}>
-          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>Teilnehmer heute</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>{totalTodayCount}</div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
+          <div className="text-xs font-semibold text-zinc-500">Teilnehmer heute</div>
+          <div className="text-xl font-extrabold text-zinc-900">{totalTodayCount}</div>
         </div>
-        <div style={{ ...card, marginBottom: 0, padding: 10 }}>
-          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{"kritisch (>=7)"}</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#b91c1c" }}>{totalCriticalCount}</div>
+        <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
+          <div className="text-xs font-semibold text-zinc-500">kritisch (≥7)</div>
+          <div className="text-xl font-extrabold text-red-700">{totalCriticalCount}</div>
         </div>
-        <div style={{ ...card, marginBottom: 0, padding: 10 }}>
-          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>offen (!is_approved)</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#b45309" }}>{totalOpenCount}</div>
+        <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
+          <div className="text-xs font-semibold text-zinc-500">offen</div>
+          <div className="text-xl font-extrabold text-amber-700">{totalOpenCount}</div>
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+      <div className="flex flex-wrap gap-2">
         <input
           placeholder="Name oder E-Mail suchen"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", minWidth: 260 }}
+          className="min-w-[260px] rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
         />
-
         <select
           value={groupFilter}
           onChange={(e) => setGroupFilter(e.target.value)}
-          style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px" }}
+          className="rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
         >
           <option value="all">Alle Gruppen</option>
           <option value="Basic 10 - 14 Jahre">Basic 10 - 14</option>
@@ -176,11 +240,10 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
           <option value="Basic Ü18">Basic Ü18</option>
           <option value="L-Gruppe">L-Gruppe</option>
         </select>
-
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px" }}
+          className="rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
         >
           <option value="all">Alle</option>
           <option value="approved">Freigegeben</option>
@@ -189,246 +252,26 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
       </div>
 
       {criticalTodayMembers.length > 0 && (
-        <div
-          style={{
-            marginBottom: 12,
-            padding: "10px 12px",
-            borderRadius: 10,
-            background: "#fee2e2",
-            color: "#991b1b",
-            fontWeight: 800,
-            fontSize: 14,
-          }}
-        >
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
           🔴 Kritisch heute ({criticalTodayMembers.length})
         </div>
       )}
 
-      <div
-        style={{
-          marginBottom: 12,
-          padding: "8px 12px",
-          borderRadius: 10,
-          background: "#ecfdf5",
-          color: "#065f46",
-          fontWeight: 700,
-          fontSize: 14,
-        }}
-      >
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
         Heute im Training ({todayMembers.length})
       </div>
 
-      {todayMembers.map((m) => (
-        <div key={m.id} style={{ ...card, marginBottom: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
-            <div>
-              <div style={cardTitle}>{memberName(m)}</div>
-              <div style={{ fontSize: 14, color: "#666", marginBottom: 6 }}>{m.email || "-"}</div>
-              <div style={{ fontSize: 14, color: "#334155" }}>Gruppe: {m.base_group || "-"}</div>
-            </div>
-            {!m.is_approved ? (
-              <div
-                style={{
-                  minWidth: 120,
-                  textAlign: "right",
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: 999,
-                    padding: "4px 10px",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: priority(m).color,
-                    background: priority(m).bg,
-                  }}
-                >
-                  {priority(m).color === "#dc2626" ? "ROT" : priority(m).color === "#b45309" ? "GELB" : "GRAU"} {priority(m).label}
-                </span>
-              </div>
-            ) : null}
-          </div>
+      <div className="space-y-3">
+        {todayMembers.map((m) => <MemberCard key={m.id} m={m} />)}
+      </div>
 
-          <div style={{ marginTop: 10, fontSize: 13, color: "#111827" }}>
-            <strong>Status:</strong> {memberStatus(m)}
-          </div>
-
-          <div style={{ marginTop: 6 }}>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                borderRadius: 999,
-                padding: "4px 10px",
-                fontSize: 12,
-                fontWeight: 700,
-                color: m.checkedInToday ? "#166534" : "#4b5563",
-                background: m.checkedInToday ? "#dcfce7" : "#e5e7eb",
-              }}
-            >
-              {m.checkedInToday ? "HEUTE DA" : "nicht da"}
-            </span>
-          </div>
-
-          <div style={{ marginTop: 6, fontSize: 13, color: m.email_verified ? "#15803d" : "#b91c1c", fontWeight: 600 }}>
-            {m.email_verified ? "✔ E-Mail bestätigt" : "⚠ E-Mail nicht bestätigt"}
-          </div>
-
-          {!m.email_verified && (
-            <div style={{ marginTop: 6, fontSize: 13, color: "#7c2d12", fontWeight: 700 }}>
-              🆕 Neu / Registrierung unvollständig
-            </div>
-          )}
-
-          {!m.is_approved && (
-            <div style={{ marginTop: 6, fontSize: 13, color: "#b45309", fontWeight: 600 }}>
-              ⚠ Mitgliederprüfung offen
-            </div>
-          )}
-
-          {m.email_verified && !m.is_approved && (m.checkinCount ?? 0) >= 5 && (
-            <div style={{ marginTop: 6, fontSize: 13, color: "#1d4ed8", fontWeight: 700 }}>
-              👉 Empfehlung: Freigabe prüfen
-            </div>
-          )}
-
-          {m.base_group && m.office_list_group && m.base_group !== m.office_list_group && (
-            <div style={{ marginTop: 6, fontSize: 13, color: "#b91c1c", fontWeight: 700 }}>
-              ⚠ Gruppenabweichung
-            </div>
-          )}
-
-          <div style={{ marginTop: 6, fontSize: 13, color: isLastTrainingBeforeBlock(m) ? "#b91c1c" : "#111827", fontWeight: isLastTrainingBeforeBlock(m) ? 700 : 400 }}>
-            <strong>{isLastTrainingBeforeBlock(m) ? "🔥" : "Checkins:"}</strong> {m.checkinCount ?? 0} / {limitFor(m)}{isLastTrainingBeforeBlock(m) ? " Trainings" : ""}
-          </div>
-
-          {isLastTrainingBeforeBlock(m) && (
-            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
-              🔴 Letztes Training vor Sperre
-            </div>
-          )}
-
-          {hasReachedLimit(m) && (
-            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
-              Limit erreicht
-            </div>
-          )}
-
-          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Link href={`/verwaltung-neu/mitglieder/${m.id}`}>
-              <button style={buttonSecondary}>Daten ändern</button>
-            </Link>
-          </div>
-        </div>
-      ))}
-
-      <div
-        style={{
-          marginTop: 8,
-          marginBottom: 12,
-          padding: "8px 12px",
-          borderRadius: 10,
-          background: "#f3f4f6",
-          color: "#374151",
-          fontWeight: 700,
-          fontSize: 14,
-        }}
-      >
+      <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-bold text-zinc-700">
         Nicht im Training ({notTodayMembers.length})
       </div>
 
-      {notTodayMembers.map((m) => (
-        <div key={m.id} style={{ ...card, marginBottom: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
-            <div>
-              <div style={cardTitle}>{memberName(m)}</div>
-              <div style={{ fontSize: 14, color: "#666", marginBottom: 6 }}>{m.email || "-"}</div>
-              <div style={{ fontSize: 14, color: "#334155" }}>Gruppe: {m.base_group || "-"}</div>
-            </div>
-            {!m.is_approved ? (
-              <div
-                style={{
-                  minWidth: 120,
-                  textAlign: "right",
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: 999,
-                    padding: "4px 10px",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: priority(m).color,
-                    background: priority(m).bg,
-                  }}
-                >
-                  {priority(m).color === "#dc2626" ? "ROT" : priority(m).color === "#b45309" ? "GELB" : "GRAU"} {priority(m).label}
-                </span>
-              </div>
-            ) : null}
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 13, color: "#111827" }}>
-            <strong>Status:</strong> {memberStatus(m)}
-          </div>
-
-          <div style={{ marginTop: 6, fontSize: 13, color: m.email_verified ? "#15803d" : "#b91c1c", fontWeight: 600 }}>
-            {m.email_verified ? "✔ E-Mail bestätigt" : "⚠ E-Mail nicht bestätigt"}
-          </div>
-
-          {!m.email_verified && (
-            <div style={{ marginTop: 6, fontSize: 13, color: "#7c2d12", fontWeight: 700 }}>
-              🆕 Neu / Registrierung unvollständig
-            </div>
-          )}
-
-          {!m.is_approved && (
-            <div style={{ marginTop: 6, fontSize: 13, color: "#b45309", fontWeight: 600 }}>
-              ⚠ Mitgliederprüfung offen
-            </div>
-          )}
-
-          {m.email_verified && !m.is_approved && (m.checkinCount ?? 0) >= 5 && (
-            <div style={{ marginTop: 6, fontSize: 13, color: "#1d4ed8", fontWeight: 700 }}>
-              👉 Empfehlung: Freigabe prüfen
-            </div>
-          )}
-
-          {m.base_group && m.office_list_group && m.base_group !== m.office_list_group && (
-            <div style={{ marginTop: 6, fontSize: 13, color: "#b91c1c", fontWeight: 700 }}>
-              ⚠ Gruppenabweichung
-            </div>
-          )}
-
-          <div style={{ marginTop: 6, fontSize: 13, color: isLastTrainingBeforeBlock(m) ? "#b91c1c" : "#111827", fontWeight: isLastTrainingBeforeBlock(m) ? 700 : 400 }}>
-            <strong>{isLastTrainingBeforeBlock(m) ? "🔥" : "Checkins:"}</strong> {m.checkinCount ?? 0} / {limitFor(m)}{isLastTrainingBeforeBlock(m) ? " Trainings" : ""}
-          </div>
-
-          {isLastTrainingBeforeBlock(m) && (
-            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
-              🔴 Letztes Training vor Sperre
-            </div>
-          )}
-
-          {hasReachedLimit(m) && (
-            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
-              Limit erreicht
-            </div>
-          )}
-
-          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Link href={`/verwaltung-neu/mitglieder/${m.id}`}>
-              <button style={buttonSecondary}>Daten ändern</button>
-            </Link>
-          </div>
-        </div>
-      ))}
+      <div className="space-y-3">
+        {notTodayMembers.map((m) => <MemberCard key={m.id} m={m} />)}
+      </div>
     </>
   )
 }

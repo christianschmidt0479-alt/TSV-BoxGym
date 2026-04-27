@@ -122,7 +122,7 @@ export default function QRCodePage() {
 
   return (
     <>
-      <div className="min-h-screen flex justify-center items-start bg-white p-6">
+      <div className="flex justify-center items-start p-0">
         <div className="w-full max-w-xl mx-auto">
           {/* CHECK-IN */}
           <div className="bg-white p-8 border border-gray-200 rounded-xl text-center">

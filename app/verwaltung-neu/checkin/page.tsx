@@ -19,13 +19,59 @@ type MembersApiResponse = {
   error?: string
 }
 
+type CheckinRow = {
+  id: string
+  member_id?: string | null
+  group_name?: string | null
+  checkin_mode?: string | null
+  date?: string | null
+  time?: string | null
+  created_at?: string | null
+  members?: {
+    first_name?: string | null
+    last_name?: string | null
+    name?: string | null
+  } | null
+}
+
+type CheckinsApiResponse = {
+  rows?: CheckinRow[]
+}
+
 export default function TrainerCheckinPage() {
   const [members, setMembers] = useState<TrainerMember[]>([])
   const [query, setQuery] = useState("")
   const [loadingMembers, setLoadingMembers] = useState(true)
   const [globalError, setGlobalError] = useState("")
+  const [checkins, setCheckins] = useState<CheckinRow[]>([])
+  const [loadingCheckins, setLoadingCheckins] = useState(true)
+  const [checkinsError, setCheckinsError] = useState("")
+  const [deleteLoadingById, setDeleteLoadingById] = useState<Record<string, boolean>>({})
   const [rowLoading, setRowLoading] = useState<Record<string, boolean>>({})
   const [rowMessage, setRowMessage] = useState<Record<string, string>>({})
+
+  async function loadCheckins() {
+    try {
+      setLoadingCheckins(true)
+      setCheckinsError("")
+
+      const response = await fetch("/api/admin/checkins", {
+        method: "GET",
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as CheckinsApiResponse
+      if (!response.ok) {
+        throw new Error("Check-ins konnten nicht geladen werden")
+      }
+
+      const rows = Array.isArray(payload.rows) ? payload.rows : []
+      setCheckins(rows.slice(0, 30))
+    } catch (error) {
+      setCheckinsError(error instanceof Error ? error.message : "Check-ins konnten nicht geladen werden")
+    } finally {
+      setLoadingCheckins(false)
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -68,6 +114,10 @@ export default function TrainerCheckinPage() {
     return () => {
       active = false
     }
+  }, [])
+
+  useEffect(() => {
+    void loadCheckins()
   }, [])
 
   const filteredMembers = useMemo(() => {
@@ -130,12 +180,49 @@ export default function TrainerCheckinPage() {
     }
   }
 
-  return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6">
-      <h1 className="mb-4 text-2xl font-bold text-slate-900">Trainer Check-in</h1>
+  function checkinDisplayName(row: CheckinRow) {
+    const first = row.members?.first_name?.trim() ?? ""
+    const last = row.members?.last_name?.trim() ?? ""
+    const fullName = `${first} ${last}`.trim()
+    return fullName || row.members?.name?.trim() || row.member_id || "Unbekannt"
+  }
 
-      <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
-        <label htmlFor="trainer-search" className="mb-2 block text-sm font-medium text-slate-700">
+  async function handleRemoveCheckin(checkinId: string) {
+    const confirmed = window.confirm("Diesen Check-in wirklich entfernen?")
+    if (!confirmed) return
+
+    setDeleteLoadingById((prev) => ({ ...prev, [checkinId]: true }))
+    setCheckinsError("")
+
+    try {
+      const response = await fetch("/api/admin/checkins", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ checkinId }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Check-in konnte nicht entfernt werden")
+      }
+
+      await loadCheckins()
+    } catch (error) {
+      setCheckinsError(error instanceof Error ? error.message : "Check-in konnte nicht entfernt werden")
+    } finally {
+      setDeleteLoadingById((prev) => ({ ...prev, [checkinId]: false }))
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl bg-[#154c83] px-4 py-4">
+        <div className="text-base font-semibold text-white">Check-in Verwaltung</div>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-zinc-200 bg-white p-4">
+        <label htmlFor="trainer-search" className="mb-2 block text-sm font-medium text-zinc-700">
           Suche (Name oder E-Mail)
         </label>
         <input
@@ -144,7 +231,7 @@ export default function TrainerCheckinPage() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Name oder E-Mail eingeben"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
         />
       </div>
 
@@ -155,7 +242,7 @@ export default function TrainerCheckinPage() {
       )}
 
       {loadingMembers ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
+        <div className="rounded-lg border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
           Mitglieder werden geladen...
         </div>
       ) : (
@@ -169,13 +256,13 @@ export default function TrainerCheckinPage() {
             return (
               <div
                 key={member.id}
-                className="rounded-lg border border-slate-200 bg-white p-4"
+                className="rounded-lg border border-zinc-200 bg-white p-4"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="text-base font-semibold text-slate-900">{displayName(member)}</div>
-                    <div className="text-sm text-slate-600">{member.email || "Keine E-Mail"}</div>
-                    <div className="text-sm text-slate-600">Gruppe: {member.base_group || "-"}</div>
+                    <div className="text-base font-semibold text-zinc-900">{displayName(member)}</div>
+                    <div className="text-sm text-zinc-600">{member.email || "Keine E-Mail"}</div>
+                    <div className="text-sm text-zinc-600">Gruppe: {member.base_group || "-"}</div>
                     <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-medium ${status.className}`}>
                       {status.text}
                     </span>
@@ -186,7 +273,7 @@ export default function TrainerCheckinPage() {
                       type="button"
                       disabled={isLoading}
                       onClick={() => handleCheckin(member)}
-                      className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 sm:w-auto"
+                      className="w-full rounded-md bg-[#154c83] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f3d6b] disabled:opacity-60 sm:w-auto"
                     >
                       {isLoading ? "Prüfe..." : "Einchecken"}
                     </button>
@@ -203,12 +290,50 @@ export default function TrainerCheckinPage() {
           })}
 
           {!filteredMembers.length && (
-            <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
+            <div className="rounded-lg border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
               Keine Mitglieder gefunden.
             </div>
           )}
         </div>
       )}
+
+      <div className="mt-6 rounded-lg border border-zinc-200 bg-white p-4">
+        <h2 className="mb-3 text-lg font-semibold text-zinc-900">Letzte Check-ins</h2>
+
+        {checkinsError ? (
+          <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {checkinsError}
+          </div>
+        ) : null}
+
+        {loadingCheckins ? (
+          <div className="text-sm text-zinc-600">Check-ins werden geladen...</div>
+        ) : checkins.length === 0 ? (
+          <div className="text-sm text-zinc-600">Keine Check-ins vorhanden.</div>
+        ) : (
+          <div className="space-y-2">
+            {checkins.map((row) => (
+              <div key={row.id} className="flex flex-col gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-zinc-900">{checkinDisplayName(row)}</div>
+                  <div className="text-xs text-zinc-600">
+                    {row.date || "-"} {row.time || ""} · {row.group_name || "-"} · {row.checkin_mode || "-"}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveCheckin(row.id)}
+                  disabled={Boolean(deleteLoadingById[row.id])}
+                  className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                >
+                  {deleteLoadingById[row.id] ? "Entferne..." : "Entfernen"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

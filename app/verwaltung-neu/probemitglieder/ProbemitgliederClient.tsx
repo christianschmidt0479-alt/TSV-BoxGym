@@ -2,8 +2,6 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { groupOptions } from "@/lib/boxgymSessions"
-import { buttonSecondary, card, cardTitle } from "@/lib/ui"
 
 type TrialMember = {
   id: string
@@ -29,60 +27,45 @@ function phaseLabel(phase: TrialMember["member_phase"]) {
   return "Probemitglied"
 }
 
-function phaseColor(phase: TrialMember["member_phase"]) {
-  if (phase === "extended") {
-    return { background: "#fef9c3", color: "#854d0e", border: "1px solid #fde047" }
-  }
-  return { background: "#f3f4f6", color: "#374151", border: "1px solid #d1d5db" }
+function phaseBadgeClass(phase: TrialMember["member_phase"]) {
+  if (phase === "extended") return "inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800"
+  return "inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-semibold text-zinc-600"
 }
 
 export default function ProbemitgliederClient({ initialMembers }: { initialMembers: TrialMember[] }) {
   const [members] = useState<TrialMember[]>(initialMembers)
 
   if (members.length === 0) {
-    return <p>Keine Probemitglieder</p>
+    return <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 text-sm text-zinc-600 shadow-sm">Keine Probemitglieder</div>
   }
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="space-y-3">
       {members.map((member) => (
-        <div key={member.id} style={{ ...card, display: "grid", gap: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+        <div key={member.id} className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <div style={cardTitle}>{getDisplayName(member)}</div>
-              <div style={{ color: "#64748b", fontSize: 14 }}>{member.email || "Keine E-Mail"}</div>
+              <div className="text-sm font-semibold text-zinc-900">{getDisplayName(member)}</div>
+              <div className="text-xs text-zinc-500">{member.email || "Keine E-Mail"}</div>
             </div>
-            <span style={{ ...phaseColor(member.member_phase), borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 600 }}>
-              {phaseLabel(member.member_phase)}
-            </span>
+            <span className={phaseBadgeClass(member.member_phase)}>{phaseLabel(member.member_phase)}</span>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 14 }}>
+          <div className="grid grid-cols-2 gap-2 text-xs text-zinc-700">
+            <div><strong>Gruppe:</strong> {member.base_group || "-"}</div>
+            <div><strong>Check-ins:</strong> {member.checkin_count}</div>
+            <div><strong>Phase:</strong> {phaseLabel(member.member_phase)}</div>
             <div>
-              <strong>Gruppe:</strong> {member.base_group || "-"}
-            </div>
-            <div>
-              <strong>Check-ins:</strong> {member.checkin_count}
-            </div>
-            <div>
-              <strong>Phase:</strong> {phaseLabel(member.member_phase)}
-            </div>
-            <div>
-              <strong>E-Mail:</strong> {member.email_verified ? "bestätigt" : "nicht bestätigt"}
+              <strong>E-Mail:</strong>{" "}
+              <span className={member.email_verified ? "text-emerald-700 font-semibold" : "text-red-700 font-semibold"}>
+                {member.email_verified ? "bestätigt" : "nicht bestätigt"}
+              </span>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            {member.email_verified ? (
-              <span style={{ color: "#15803d", fontWeight: 600 }}>E-Mail bestätigt</span>
-            ) : (
-              <span style={{ color: "#dc2626", fontWeight: 600 }}>E-Mail nicht bestätigt</span>
-            )}
-          </div>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <Link href={`/verwaltung-neu/mitglieder/${member.id}`} style={{ textDecoration: "none" }}>
-              <button type="button" style={buttonSecondary}>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Link href={`/verwaltung-neu/mitglieder/${member.id}`}>
+              <button type="button" className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-900 transition hover:border-zinc-400">
                 Details anzeigen
               </button>
             </Link>

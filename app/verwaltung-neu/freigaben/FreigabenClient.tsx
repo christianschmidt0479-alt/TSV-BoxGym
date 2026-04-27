@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { groupOptions } from "@/lib/boxgymSessions"
-import { buttonPrimary, buttonSecondary, card, cardTitle } from "@/lib/ui"
 
 type ApprovalMember = {
   id: string
@@ -24,14 +23,10 @@ function getDisplayName(member: ApprovalMember) {
   return full || member.name || "Unbekannt"
 }
 
-function statusColor(status: ApprovalMember["member_phase"]) {
-  if (status === "member") {
-    return { background: "#dcfce7", color: "#166534", border: "1px solid #86efac" }
-  }
-  if (status === "extended") {
-    return { background: "#fef9c3", color: "#854d0e", border: "1px solid #fde047" }
-  }
-  return { background: "#f3f4f6", color: "#374151", border: "1px solid #d1d5db" }
+function statusBadgeClass(status: ApprovalMember["member_phase"]) {
+  if (status === "member") return "inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700"
+  if (status === "extended") return "inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800"
+  return "inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-semibold text-zinc-600"
 }
 
 function statusLabel(status: ApprovalMember["member_phase"]) {
@@ -96,15 +91,13 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
   }
 
   if (members.length === 0) {
-    return <p>Keine offenen Freigaben</p>
+    return <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 text-sm text-zinc-600 shadow-sm">Keine offenen Freigaben</div>
   }
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="space-y-3">
       {error ? (
-        <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#991b1b", padding: 12, borderRadius: 8 }}>
-          {error}
-        </div>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
       ) : null}
 
       {members.map((member) => {
@@ -113,38 +106,27 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
         const isBusy = loadingMemberId === member.id
 
         return (
-          <div key={member.id} style={{ ...card, display: "grid", gap: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+          <div key={member.id} className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <div style={cardTitle}>{getDisplayName(member)}</div>
-                <div style={{ color: "#64748b", fontSize: 14 }}>{member.email || "Keine E-Mail"}</div>
+                <div className="text-sm font-semibold text-zinc-900">{getDisplayName(member)}</div>
+                <div className="text-xs text-zinc-500">{member.email || "Keine E-Mail"}</div>
               </div>
-              <span style={{ ...statusColor(status), borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 600 }}>
-                {statusLabel(status)}
-              </span>
+              <span className={statusBadgeClass(status)}>{statusLabel(status)}</span>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 14 }}>
+            <div className="grid grid-cols-2 gap-2 text-xs text-zinc-700">
+              <div><strong>Gruppe:</strong> {member.base_group || "-"}</div>
+              <div><strong>Check-ins:</strong> {member.checkin_count}</div>
               <div>
-                <strong>Gruppe:</strong> {member.base_group || "-"}
-              </div>
-              <div>
-                <strong>Check-ins:</strong> {member.checkin_count}
-              </div>
-              <div>
-                <strong>E-Mail:</strong> {member.email_verified ? "bestätigt" : "nicht bestätigt"}
+                <strong>E-Mail:</strong>{" "}
+                <span className={member.email_verified ? "text-emerald-700 font-semibold" : "text-red-700 font-semibold"}>
+                  {member.email_verified ? "bestätigt" : "nicht bestätigt"}
+                </span>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 14 }}>
-              {member.email_verified ? (
-                <span style={{ color: "#15803d", fontWeight: 600 }}>E-Mail bestätigt</span>
-              ) : (
-                <span style={{ color: "#dc2626", fontWeight: 600 }}>E-Mail nicht bestätigt</span>
-              )}
-            </div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={currentGroup}
                 onChange={(event) => {
@@ -153,29 +135,27 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
                   setSelectedGroups(next)
                 }}
                 disabled={isBusy}
-                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", minWidth: 220 }}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none disabled:opacity-60"
               >
                 <option value="">Gruppe wählen</option>
                 {groupOptions.map((group) => (
-                  <option key={group} value={group}>
-                    {group}
-                  </option>
+                  <option key={group} value={group}>{group}</option>
                 ))}
               </select>
 
-              <Link href={`/verwaltung-neu/mitglieder/${member.id}`} style={{ textDecoration: "none" }}>
-                <button type="button" style={buttonSecondary} disabled={isBusy}>
+              <Link href={`/verwaltung-neu/mitglieder/${member.id}`}>
+                <button type="button" disabled={isBusy} className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400 disabled:opacity-60">
                   Daten ändern
                 </button>
               </Link>
 
               <button
                 type="button"
-                style={buttonPrimary}
                 onClick={() => approveMember(member)}
                 disabled={isBusy}
+                className="rounded-md bg-[#154c83] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0f3d6b] disabled:opacity-60"
               >
-                Freigeben
+                {isBusy ? "Freigeben…" : "Freigeben"}
               </button>
             </div>
           </div>

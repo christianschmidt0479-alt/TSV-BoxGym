@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { container, pageTitle } from "@/lib/ui"
+
 import MitgliederListClient from "./MitgliederListClient"
 
 type AdminMemberListRow = {
@@ -83,30 +83,35 @@ export default function MitgliederPage() {
   }, [currentPage, totalPages])
 
   return (
-    <div style={container}>
-      <div style={pageTitle}>Mitglieder</div>
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+        <div className="text-base font-semibold text-zinc-900">Mitglieder</div>
+        <div className="text-sm text-zinc-600">Alle Mitglieder und Check-in-Status</div>
+      </div>
 
       {error && (
-        <div style={{ background: "#fee2e2", color: "#991b1b", padding: 12, borderRadius: 8 }}>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </div>
       )}
 
       <MitgliederListClient members={members} />
 
-      <div style={{ marginTop: 20, display: "flex", gap: 10, alignItems: "center" }}>
+      <div className="flex items-center gap-3">
         <button
           disabled={currentPage <= 1}
           onClick={() => setCurrentPage(safePage - 1)}
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400 disabled:opacity-50"
         >
           Zurück
         </button>
 
-        <span>Seite {safePage} / {totalPages}</span>
+        <span className="text-sm text-zinc-600">Seite {safePage} / {totalPages}</span>
 
         <button
           disabled={currentPage >= totalPages}
           onClick={() => setCurrentPage(safePage + 1)}
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400 disabled:opacity-50"
         >
           Weiter
         </button>

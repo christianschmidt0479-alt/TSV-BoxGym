@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { container, pageTitle, card, cardTitle, buttonSecondary } from "@/lib/ui"
+
 
 type TrainerDetail = {
   id: string
@@ -83,95 +83,77 @@ export default function TrainerDetailPage({ params }: { params: Promise<{ id: st
     setSaving(false)
   }
 
-  if (loading) return <div style={container}><p>Lade Trainer…</p></div>
+  if (loading) return <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 text-sm text-zinc-600 shadow-sm">Lade Trainer…</div>
   if (error || !trainer) return (
-    <div style={container}>
-      <div style={{ color: "#dc2626" }}>{error || "Trainer nicht gefunden."}</div>
-      <a href="/verwaltung-neu/trainer" style={{ color: "#2563eb", fontSize: 14 }}>← Zurück</a>
+    <div className="space-y-3">
+      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error || "Trainer nicht gefunden."}</div>
+      <a href="/verwaltung-neu/trainer" className="text-sm font-semibold text-blue-600 underline hover:text-blue-800">← Zurück</a>
     </div>
   )
 
   const fullName = `${trainer.first_name || ""} ${trainer.last_name || ""}`.trim() || "Unbekannt"
 
   return (
-    <div style={container}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-        <a href="/verwaltung-neu/trainer" style={{ color: "#2563eb", fontSize: 14 }}>← Trainer</a>
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <a href="/verwaltung-neu/trainer" className="text-sm font-semibold text-blue-600 underline hover:text-blue-800">← Trainer</a>
+        <span className="text-base font-semibold text-zinc-900">{fullName}</span>
       </div>
 
-      <div style={pageTitle}>{fullName}</div>
-
-      <div style={{ display: "grid", gap: 16, marginTop: 16 }}>
-        <div style={{ ...card, display: "grid", gap: 12 }}>
-          <div style={cardTitle}>Stammdaten</div>
-
-          <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
-            <div><strong>E-Mail:</strong> {trainer.email || "—"}</div>
-            <div>
-              <strong>E-Mail-Status:</strong>{" "}
-              {trainer.email_verified
-                ? <span style={{ color: "#15803d" }}>bestätigt</span>
-                : <span style={{ color: "#dc2626" }}>nicht bestätigt</span>}
-            </div>
-            <div>
-              <strong>Freigabe:</strong>{" "}
-              {trainer.is_approved
-                ? <span style={{ color: "#15803d" }}>aktiv</span>
-                : <span style={{ color: "#dc2626" }}>nicht freigegeben</span>}
-            </div>
-            <div>
-              <strong>Verknüpftes Mitglied:</strong>{" "}
-              {trainer.linked_member_id
-                ? <span style={{ color: "#15803d" }}>verknüpft ({trainer.linked_member_id.slice(0, 8)}…)</span>
-                : <span style={{ color: "#6b7280" }}>keine Verknüpfung</span>}
-            </div>
-            {trainer.birthdate && (
-              <div>
-                <strong>Geburtsdatum:</strong>{" "}
-                {new Date(trainer.birthdate).toLocaleDateString("de-DE")}
-              </div>
-            )}
+      <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-3">
+        <div className="text-sm font-semibold text-zinc-900">Stammdaten</div>
+        <div className="grid gap-2 text-xs text-zinc-700">
+          <div><strong>E-Mail:</strong> {trainer.email || "—"}</div>
+          <div>
+            <strong>E-Mail-Status:</strong>{" "}
+            {trainer.email_verified
+              ? <span className="font-semibold text-emerald-700">bestätigt</span>
+              : <span className="font-semibold text-red-700">nicht bestätigt</span>}
           </div>
+          <div>
+            <strong>Freigabe:</strong>{" "}
+            {trainer.is_approved
+              ? <span className="font-semibold text-emerald-700">aktiv</span>
+              : <span className="font-semibold text-red-700">nicht freigegeben</span>}
+          </div>
+          <div>
+            <strong>Verknüpftes Mitglied:</strong>{" "}
+            {trainer.linked_member_id
+              ? <span className="font-semibold text-emerald-700">verknüpft ({trainer.linked_member_id.slice(0, 8)}…)</span>
+              : <span className="text-zinc-500">keine Verknüpfung</span>}
+          </div>
+          {trainer.birthdate && (
+            <div>
+              <strong>Geburtsdatum:</strong>{" "}
+              {new Date(trainer.birthdate).toLocaleDateString("de-DE")}
+            </div>
+          )}
         </div>
+      </div>
 
-        <div style={{ ...card, display: "grid", gap: 12 }}>
-          <div style={cardTitle}>Lizenz</div>
-
-          <div style={{ display: "grid", gap: 8 }}>
-            <input
-              type="text"
-              value={license}
-              onChange={(e) => setLicense(e.target.value)}
-              placeholder="z.B. Übungsleiter DOSB C"
-              style={{
-                border: "1px solid #cbd5e1",
-                borderRadius: 6,
-                padding: "8px 12px",
-                fontSize: 14,
-                width: "100%",
-                boxSizing: "border-box",
-              }}
-            />
-
-            {saveError && (
-              <div style={{ color: "#dc2626", fontSize: 13 }}>{saveError}</div>
-            )}
-            {saveSuccess && (
-              <div style={{ color: "#15803d", fontSize: 13, fontWeight: 600 }}>✓ Gespeichert</div>
-            )}
-
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                ...buttonSecondary,
-                opacity: saving ? 0.6 : 1,
-                cursor: saving ? "not-allowed" : "pointer",
-              }}
-            >
-              {saving ? "Speichert…" : "Lizenz speichern"}
-            </button>
-          </div>
+      <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-3">
+        <div className="text-sm font-semibold text-zinc-900">Lizenz</div>
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={license}
+            onChange={(e) => setLicense(e.target.value)}
+            placeholder="z.B. Übungsleiter DOSB C"
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
+          />
+          {saveError && (
+            <div className="text-xs font-semibold text-red-700">{saveError}</div>
+          )}
+          {saveSuccess && (
+            <div className="text-xs font-semibold text-emerald-700">✓ Gespeichert</div>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400 disabled:opacity-60"
+          >
+            {saving ? "Speichert…" : "Lizenz speichern"}
+          </button>
         </div>
       </div>
     </div>

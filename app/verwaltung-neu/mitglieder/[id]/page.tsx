@@ -82,8 +82,10 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
   }
 
   return (
-    <div className="max-w-xl mx-auto py-10 px-4">
-      <h1 className="text-2xl font-bold mb-6">Mitglied</h1>
+    <div className="space-y-4">
+      <div className="rounded-2xl bg-[#154c83] px-4 py-4">
+        <div className="text-base font-semibold text-white">{member.first_name} {member.last_name}</div>
+      </div>
       {errorMsg && (
         <div className="bg-red-100 text-red-700 px-4 py-2 rounded mb-4">
           {errorMsg}
@@ -162,7 +164,7 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
           )}
         </div>
         <div className="flex gap-4 mt-4">
-          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">Speichern</button>
+          <button type="submit" className="rounded-md bg-[#154c83] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f3d6b]">Speichern</button>
         </div>
         <div className="mt-6">
           <div className="text-xs text-zinc-500 mb-1">Status</div>

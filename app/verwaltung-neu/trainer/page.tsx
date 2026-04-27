@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { container, pageTitle } from "@/lib/ui"
+
 import TrainerListClient from "./TrainerListClient"
 
 type TrainerRow = {
@@ -64,17 +64,20 @@ export default function TrainerPage() {
   }, [loadTrainers])
 
   return (
-    <div style={container}>
-      <div style={pageTitle}>Trainer</div>
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+        <div className="text-base font-semibold text-zinc-900">Trainer</div>
+        <div className="text-sm text-zinc-600">Trainerverwaltung und Verknüpfungen</div>
+      </div>
 
       {error && (
-        <div style={{ background: "#fee2e2", color: "#991b1b", padding: 12, borderRadius: 8, marginBottom: 16 }}>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </div>
       )}
 
       {loading ? (
-        <p>Lade Trainer…</p>
+        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 text-sm text-zinc-600 shadow-sm">Lade Trainer…</div>
       ) : (
         <TrainerListClient trainers={trainers} onReload={loadTrainers} />
       )}
