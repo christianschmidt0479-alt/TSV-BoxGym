@@ -1,14 +1,17 @@
 import { createServerSupabaseServiceClient, hasSupabaseServiceRoleKey } from "@/lib/serverSupabase"
 
 const CHECKIN_WINDOW_OVERRIDE_KEY = "disable_checkin_time_window"
+const DISABLE_NORMAL_CHECKIN_WINDOW_KEY = "disable_normal_checkin_time_window"
 
 export type CheckinSettings = {
   disableCheckinTimeWindow: boolean
+  disableNormalCheckinTimeWindow: boolean
 }
 
 function defaultCheckinSettings(): CheckinSettings {
   return {
     disableCheckinTimeWindow: false,
+    disableNormalCheckinTimeWindow: false,
   }
 }
 
@@ -34,26 +37,33 @@ export async function readCheckinSettings() {
   const { data, error } = await supabase
     .from("app_settings")
     .select("key, value_json")
-    .eq("key", CHECKIN_WINDOW_OVERRIDE_KEY)
-    .maybeSingle()
+    .in("key", [CHECKIN_WINDOW_OVERRIDE_KEY, DISABLE_NORMAL_CHECKIN_WINDOW_KEY])
 
   if (error) {
     if (isMissingSettingsTableError(error)) return defaultCheckinSettings()
     throw error
   }
 
+  const settingsByKey = new Map((data ?? []).map((entry) => [entry.key, entry.value_json]))
+
   return {
-    disableCheckinTimeWindow: parseBooleanSetting(data?.value_json),
+    disableCheckinTimeWindow: parseBooleanSetting(settingsByKey.get(CHECKIN_WINDOW_OVERRIDE_KEY)),
+    disableNormalCheckinTimeWindow: parseBooleanSetting(settingsByKey.get(DISABLE_NORMAL_CHECKIN_WINDOW_KEY)),
   }
 }
 
-export async function writeCheckinWindowOverride(disableCheckinTimeWindow: boolean) {
+export async function writeCheckinSettings(settings: CheckinSettings) {
   const supabase = createServerSupabaseServiceClient()
   const { error } = await supabase.from("app_settings").upsert(
     [
       {
         key: CHECKIN_WINDOW_OVERRIDE_KEY,
-        value_json: { enabled: disableCheckinTimeWindow },
+        value_json: { enabled: settings.disableCheckinTimeWindow },
+        updated_at: new Date().toISOString(),
+      },
+      {
+        key: DISABLE_NORMAL_CHECKIN_WINDOW_KEY,
+        value_json: { enabled: settings.disableNormalCheckinTimeWindow },
         updated_at: new Date().toISOString(),
       },
     ],
@@ -62,7 +72,5 @@ export async function writeCheckinWindowOverride(disableCheckinTimeWindow: boole
 
   if (error) throw error
 
-  return {
-    disableCheckinTimeWindow,
-  }
+  return settings
 }

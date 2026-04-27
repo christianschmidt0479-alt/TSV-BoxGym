@@ -2,10 +2,11 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
-import { readCheckinSettings, writeCheckinWindowOverride } from "@/lib/checkinSettingsDb"
+import { readCheckinSettings, writeCheckinSettings } from "@/lib/checkinSettingsDb"
 
 type CheckinSettingsBody = {
   disableCheckinTimeWindow?: boolean
+  disableNormalCheckinTimeWindow?: boolean
 }
 
 export async function GET(request: Request) {
@@ -49,20 +50,30 @@ export async function PUT(request: Request) {
     }
 
     const body = (await request.json()) as CheckinSettingsBody
-    if (typeof body.disableCheckinTimeWindow !== "boolean") {
+    if (
+      typeof body.disableCheckinTimeWindow !== "boolean" ||
+      typeof body.disableNormalCheckinTimeWindow !== "boolean"
+    ) {
       return new NextResponse("Invalid settings payload", { status: 400 })
     }
 
     const previousSettings = await readCheckinSettings()
-    const nextSettings = await writeCheckinWindowOverride(body.disableCheckinTimeWindow)
+    const nextSettings = await writeCheckinSettings({
+      disableCheckinTimeWindow: body.disableCheckinTimeWindow,
+      disableNormalCheckinTimeWindow: body.disableNormalCheckinTimeWindow,
+    })
 
     await writeAdminAuditLog({
       session,
       action: "checkin_window_override_changed",
       targetType: "setting",
-      targetId: "disable_checkin_time_window",
-      targetName: "Check-in-Zeitfenster",
-      details: `Vorher: ${previousSettings.disableCheckinTimeWindow ? "deaktiviert" : "aktiv"}, Neu: ${nextSettings.disableCheckinTimeWindow ? "deaktiviert" : "aktiv"}`,
+      targetId: "checkin_settings",
+      targetName: "Check-in-Einstellungen",
+      details:
+        `Ferienmodus vorher: ${previousSettings.disableCheckinTimeWindow ? "deaktiviert" : "aktiv"}, ` +
+        `Ferienmodus neu: ${nextSettings.disableCheckinTimeWindow ? "deaktiviert" : "aktiv"}; ` +
+        `Normalmodus-Zeitfenster vorher deaktiviert: ${previousSettings.disableNormalCheckinTimeWindow ? "ja" : "nein"}, ` +
+        `neu deaktiviert: ${nextSettings.disableNormalCheckinTimeWindow ? "ja" : "nein"}`,
     })
 
     return NextResponse.json(nextSettings)

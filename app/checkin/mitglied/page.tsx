@@ -28,6 +28,7 @@ export default function MemberCheckinPage() {
   const [skipAutoCheckin, setSkipAutoCheckin] = useState(false)
   const [now, setNow] = useState<Date | null>(null)
   const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
+  const [disableNormalCheckinTimeWindow, setDisableNormalCheckinTimeWindow] = useState(false)
   const [dbLoading, setDbLoading] = useState(false)
   const [fastCheckinLoading, setFastCheckinLoading] = useState(false)
   const [isCheckingIn, setIsCheckingIn] = useState(false)
@@ -118,8 +119,12 @@ export default function MemberCheckinPage() {
       try {
         const response = await fetch("/api/public/checkin-settings", { cache: "no-store" })
         if (response.ok) {
-          const result = (await response.json()) as { disableCheckinTimeWindow?: boolean }
+          const result = (await response.json()) as {
+            disableCheckinTimeWindow?: boolean
+            disableNormalCheckinTimeWindow?: boolean
+          }
           setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
+          setDisableNormalCheckinTimeWindow(Boolean(result.disableNormalCheckinTimeWindow))
         }
       } catch (error) {
         if (process.env.NODE_ENV !== "production") {
@@ -166,6 +171,7 @@ export default function MemberCheckinPage() {
 
   const todaysSessions = useMemo(() => getSessionsForDate(liveDate), [liveDate])
   const checkinMode = useMemo(() => getMemberCheckinMode(disableCheckinTimeWindow), [disableCheckinTimeWindow])
+  const useWindowBypassInNormalMode = !disableCheckinTimeWindow && disableNormalCheckinTimeWindow
 
   const rememberedAssignment = useMemo(() => {
     if (!now || !rememberedBaseGroup) return null
@@ -173,9 +179,9 @@ export default function MemberCheckinPage() {
       dailySessions: todaysSessions,
       now,
       baseGroup: rememberedBaseGroup,
-      mode: checkinMode,
+      mode: useWindowBypassInNormalMode ? "ferien" : checkinMode,
     })
-  }, [checkinMode, now, rememberedBaseGroup, todaysSessions])
+  }, [checkinMode, now, rememberedBaseGroup, todaysSessions, useWindowBypassInNormalMode])
   const rememberedNeedsWeight = rememberedCompetitionMember || isWeightRequiredGroup(rememberedAssignment?.groupName)
   const showRegistrationHint =
     autoCheckinFailed ||

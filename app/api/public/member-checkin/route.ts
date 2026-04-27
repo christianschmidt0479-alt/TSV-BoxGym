@@ -119,6 +119,8 @@ export async function POST(request: Request) {
 
     const checkinSettings = await readCheckinSettings()
     const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
+    const disableNormalWindowForTest =
+      !checkinSettings.disableCheckinTimeWindow && checkinSettings.disableNormalCheckinTimeWindow
 
     const rateLimit = await checkRateLimitAsync(
       `public-member-checkin:${getRequestIp(request)}:${email || "__email__"}`,
@@ -162,7 +164,7 @@ export async function POST(request: Request) {
       dailySessions: todaysSessions,
       now,
       baseGroup: resolvedMember.base_group,
-      mode: checkinMode,
+      mode: disableNormalWindowForTest ? "ferien" : checkinMode,
     })
     console.log("CHECKIN ASSIGNMENT", {
       groupName: checkinAssignment?.groupName,
@@ -170,6 +172,8 @@ export async function POST(request: Request) {
     })
     console.log("CHECKIN SETTINGS", {
       disableCheckinTimeWindow: checkinSettings?.disableCheckinTimeWindow,
+      disableNormalCheckinTimeWindow: checkinSettings?.disableNormalCheckinTimeWindow,
+      disableNormalWindowForTest,
     })
     console.log("GROUP CHECK", {
       groupName: checkinAssignment.groupName,
@@ -179,10 +183,11 @@ export async function POST(request: Request) {
     // Eligibility-Prüfung (zentral)
     const eligibility = checkMemberEligibility({
       member: resolvedMember,
-      groupAllowed: checkinSettings.disableCheckinTimeWindow
-        ? true
-        : Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
-      timeAllowed: Boolean(checkinAssignment.allowed && checkinAssignment.groupName), // Zeitfenster ist in groupAllowed enthalten
+      groupAllowed: Boolean(checkinAssignment.groupName),
+      timeAllowed:
+        checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest
+          ? true
+          : Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
     })
 
     if (!eligibility.eligible) {
@@ -246,10 +251,8 @@ export async function POST(request: Request) {
       hasCheckedInToday,
       {
         activeSession: checkinAssignment.session,
-        disableCheckinTimeWindow: Boolean(checkinSettings.disableCheckinTimeWindow),
-        groupAllowed: checkinSettings.disableCheckinTimeWindow
-          ? true
-          : Boolean(checkinAssignment.groupName),
+        disableCheckinTimeWindow: Boolean(checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest),
+        groupAllowed: Boolean(checkinAssignment.groupName),
       }
     )
     console.log("CHECKIN CORE RESULT", checkinResult)

@@ -118,20 +118,25 @@ export async function POST(request: Request) {
     const todaysSessions = getSessionsForDate(liveDate)
     const checkinSettings = await readCheckinSettings()
     const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
+    const disableNormalWindowForTest =
+      !checkinSettings.disableCheckinTimeWindow && checkinSettings.disableNormalCheckinTimeWindow
 
 
     const checkinAssignment = resolveMemberCheckinAssignment({
       dailySessions: todaysSessions,
       now,
       baseGroup: member.base_group,
-      mode: checkinMode,
+      mode: disableNormalWindowForTest ? "ferien" : checkinMode,
     })
 
     // Eligibility-Prüfung (zentral, produktiv)
     const eligibility = checkMemberEligibility({
       member,
-      groupAllowed: Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
-      timeAllowed: Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
+      groupAllowed: Boolean(checkinAssignment.groupName),
+      timeAllowed:
+        checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest
+          ? true
+          : Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
     })
     if (!eligibility.eligible) {
       // Minimal Logging
@@ -194,10 +199,8 @@ export async function POST(request: Request) {
       hasCheckedInToday,
       {
         activeSession: checkinAssignment.session,
-        disableCheckinTimeWindow: Boolean(checkinSettings.disableCheckinTimeWindow),
-        groupAllowed: checkinSettings.disableCheckinTimeWindow
-          ? true
-          : Boolean(checkinAssignment.groupName),
+        disableCheckinTimeWindow: Boolean(checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest),
+        groupAllowed: Boolean(checkinAssignment.groupName),
       }
     )
 

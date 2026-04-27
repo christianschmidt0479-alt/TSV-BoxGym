@@ -8,6 +8,7 @@ export default function DashboardPage() {
   const [totalMembers, setTotalMembers] = useState<number | null>(null)
   const [pendingApprovals, setPendingApprovals] = useState<number | null>(null)
   const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
+  const [disableNormalCheckinTimeWindow, setDisableNormalCheckinTimeWindow] = useState(false)
   const [checkinSettingsLoading, setCheckinSettingsLoading] = useState(true)
   const [checkinSettingsSaving, setCheckinSettingsSaving] = useState(false)
   const [checkinSettingsError, setCheckinSettingsError] = useState("")
@@ -58,8 +59,12 @@ export default function DashboardPage() {
           return
         }
 
-        const result = (await response.json()) as { disableCheckinTimeWindow?: boolean }
+        const result = (await response.json()) as {
+          disableCheckinTimeWindow?: boolean
+          disableNormalCheckinTimeWindow?: boolean
+        }
         setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
+        setDisableNormalCheckinTimeWindow(Boolean(result.disableNormalCheckinTimeWindow))
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           return
@@ -77,7 +82,10 @@ export default function DashboardPage() {
     }
   }, [])
 
-  async function handleToggleCheckinTimeWindow(nextValue: boolean) {
+  async function saveCheckinSettings(nextValues: {
+    disableCheckinTimeWindow: boolean
+    disableNormalCheckinTimeWindow: boolean
+  }) {
     setCheckinSettingsSaving(true)
     setCheckinSettingsError("")
 
@@ -86,7 +94,7 @@ export default function DashboardPage() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disableCheckinTimeWindow: nextValue }),
+        body: JSON.stringify(nextValues),
       })
 
       if (!response.ok) {
@@ -94,10 +102,14 @@ export default function DashboardPage() {
         return
       }
 
-      const result = (await response.json()) as { disableCheckinTimeWindow?: boolean }
+      const result = (await response.json()) as {
+        disableCheckinTimeWindow?: boolean
+        disableNormalCheckinTimeWindow?: boolean
+      }
       setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
+      setDisableNormalCheckinTimeWindow(Boolean(result.disableNormalCheckinTimeWindow))
     } catch {
-      setCheckinSettingsError("Ferienmodus konnte nicht gespeichert werden.")
+      setCheckinSettingsError("Check-in Einstellungen konnten nicht gespeichert werden.")
     } finally {
       setCheckinSettingsSaving(false)
     }
@@ -157,7 +169,12 @@ export default function DashboardPage() {
           </div>
           <button
             type="button"
-            onClick={() => void handleToggleCheckinTimeWindow(!disableCheckinTimeWindow)}
+            onClick={() =>
+              void saveCheckinSettings({
+                disableCheckinTimeWindow: !disableCheckinTimeWindow,
+                disableNormalCheckinTimeWindow,
+              })
+            }
             disabled={checkinSettingsLoading || checkinSettingsSaving}
             className={`rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60 ${
               disableCheckinTimeWindow
@@ -166,6 +183,36 @@ export default function DashboardPage() {
             }`}
           >
             {checkinSettingsSaving ? "Speichern..." : disableCheckinTimeWindow ? "Ferienmodus ON" : "Ferienmodus OFF"}
+          </button>
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-zinc-700">Zeitfenster im Normalmodus deaktivieren</div>
+            <div className="mt-0.5 text-xs text-zinc-500">
+              Testmodus: Mitglieder können außerhalb des normalen Check-in-Zeitfensters einchecken. Gilt nur, wenn der
+              Ferienmodus ausgeschaltet ist.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              void saveCheckinSettings({
+                disableCheckinTimeWindow,
+                disableNormalCheckinTimeWindow: !disableNormalCheckinTimeWindow,
+              })
+            }
+            disabled={checkinSettingsLoading || checkinSettingsSaving}
+            className={`rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60 ${
+              disableNormalCheckinTimeWindow
+                ? "border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100"
+                : "border-zinc-300 bg-white text-zinc-900 hover:border-zinc-400"
+            }`}
+          >
+            {checkinSettingsSaving
+              ? "Speichern..."
+              : disableNormalCheckinTimeWindow
+                ? "Testmodus ON"
+                : "Testmodus OFF"}
           </button>
         </div>
         {checkinSettingsError ? (
