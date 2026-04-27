@@ -28,7 +28,8 @@ export default function MemberCheckinPage() {
   const [fastCheckinLoading, setFastCheckinLoading] = useState(false)
   const [isCheckingIn, setIsCheckingIn] = useState(false)
   const [success, setSuccess] = useState(false)
-  const [softSuccess, setSoftSuccess] = useState(false)
+  const [softProgress, setSoftProgress] = useState(false)
+  const [error, setError] = useState(false)
   const [qrAccessToken, setQrAccessToken] = useState("")
   const [memberEmail, setMemberEmail] = useState("")
   const [memberPin, setMemberPin] = useState("")
@@ -51,7 +52,7 @@ export default function MemberCheckinPage() {
   const emailInputRef = useRef<HTMLInputElement | null>(null)
   const hasTriggered = useRef(false)
   const waitGuardTimerRef = useRef<number | null>(null)
-  const forceSuccessTimerRef = useRef<number | null>(null)
+  const timeoutTimerRef = useRef<number | null>(null)
   const successRef = useRef(false)
   const errorRef = useRef(false)
 
@@ -176,10 +177,10 @@ export default function MemberCheckinPage() {
     if (waitGuardTimerRef.current !== null) {
       window.clearTimeout(waitGuardTimerRef.current)
     }
-    setSoftSuccess(false)
+    setSoftProgress(false)
     waitGuardTimerRef.current = window.setTimeout(() => {
       if (!successRef.current) {
-        setSoftSuccess(true)
+        setSoftProgress(true)
       }
     }, 1200)
   }
@@ -191,23 +192,23 @@ export default function MemberCheckinPage() {
     }
   }
 
-  function startForceSuccessFallback() {
-    if (forceSuccessTimerRef.current !== null) {
-      window.clearTimeout(forceSuccessTimerRef.current)
+  function startTimeoutGuard() {
+    if (timeoutTimerRef.current !== null) {
+      window.clearTimeout(timeoutTimerRef.current)
     }
 
-    forceSuccessTimerRef.current = window.setTimeout(() => {
+    timeoutTimerRef.current = window.setTimeout(() => {
       if (!successRef.current && !errorRef.current) {
-        console.log("FORCE SUCCESS FALLBACK")
-        markCheckinSuccess()
+        console.log("TIMEOUT ERROR")
+        markCheckinError("Zeitüberschreitung beim Check-in. Bitte erneut versuchen.")
       }
-    }, 3000)
+    }, 6000)
   }
 
-  function stopForceSuccessFallback() {
-    if (forceSuccessTimerRef.current !== null) {
-      window.clearTimeout(forceSuccessTimerRef.current)
-      forceSuccessTimerRef.current = null
+  function stopTimeoutGuard() {
+    if (timeoutTimerRef.current !== null) {
+      window.clearTimeout(timeoutTimerRef.current)
+      timeoutTimerRef.current = null
     }
   }
 
@@ -215,33 +216,43 @@ export default function MemberCheckinPage() {
     successRef.current = false
     errorRef.current = false
     setSuccess(false)
+    setError(false)
+    setCheckinError("")
     setIsCheckingIn(true)
     startWaitGuard()
-    startForceSuccessFallback()
+    startTimeoutGuard()
   }
 
   function markCheckinSuccess() {
     successRef.current = true
     setSuccess(true)
-    setSoftSuccess(false)
+    setError(false)
+    setSoftProgress(false)
     setIsCheckingIn(false)
     stopWaitGuard()
-    stopForceSuccessFallback()
+    stopTimeoutGuard()
   }
 
   function markCheckinError(message: string) {
     errorRef.current = true
+    setError(true)
     setCheckinError(message)
-    setSoftSuccess(false)
+    setSoftProgress(false)
     setIsCheckingIn(false)
     stopWaitGuard()
-    stopForceSuccessFallback()
+    stopTimeoutGuard()
+  }
+
+  function resetErrorState() {
+    errorRef.current = false
+    setError(false)
+    setCheckinError("")
   }
 
   useEffect(() => {
     return () => {
       stopWaitGuard()
-      stopForceSuccessFallback()
+      stopTimeoutGuard()
     }
   }, [])
 
@@ -400,9 +411,9 @@ export default function MemberCheckinPage() {
     } finally {
       if (!successRef.current) {
         setIsCheckingIn(false)
-        setSoftSuccess(false)
+        setSoftProgress(false)
       }
-      stopForceSuccessFallback()
+      stopTimeoutGuard()
       setDbLoading(false)
     }
   }
@@ -506,9 +517,9 @@ export default function MemberCheckinPage() {
     } finally {
       if (!successRef.current) {
         setIsCheckingIn(false)
-        setSoftSuccess(false)
+        setSoftProgress(false)
       }
-      stopForceSuccessFallback()
+      stopTimeoutGuard()
       setFastCheckinLoading(false)
       if (isAuto) {
         setAutoCheckinRunning(false)
@@ -528,11 +539,19 @@ export default function MemberCheckinPage() {
     )
   }
 
-  if (softSuccess) {
+  if (error) {
     return (
-      <div className="min-h-screen bg-emerald-600 px-4 py-8 text-white">
-        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-emerald-500/60 p-6 text-center shadow-2xl">
-          <p className="text-4xl font-black tracking-tight">Bitte kurz warten...</p>
+      <div className="min-h-screen bg-red-600 px-4 py-8 text-white">
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-red-500/70 p-6 text-center shadow-2xl">
+          <p className="text-4xl font-black tracking-tight">Check-in fehlgeschlagen</p>
+          <p className="mt-4 text-base text-red-50">{checkinError || "Bitte erneut versuchen."}</p>
+          <Button
+            type="button"
+            className="mt-6 h-14 w-full rounded-2xl bg-white text-lg font-semibold text-red-700 hover:bg-red-50"
+            onClick={resetErrorState}
+          >
+            Erneut versuchen
+          </Button>
         </div>
       </div>
     )
@@ -540,9 +559,9 @@ export default function MemberCheckinPage() {
 
   if (isCheckingIn) {
     return (
-      <div className="min-h-screen bg-zinc-950 px-4 py-8 text-white">
-        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-zinc-900 p-6 text-center shadow-2xl">
-          <p className="text-4xl font-black tracking-tight">Check-in läuft...</p>
+      <div className="min-h-screen bg-emerald-600 px-4 py-8 text-white">
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-emerald-500/60 p-6 text-center shadow-2xl">
+          <p className="text-4xl font-black tracking-tight">{softProgress ? "Check-in wird gespeichert..." : "Check-in läuft..."}</p>
         </div>
       </div>
     )

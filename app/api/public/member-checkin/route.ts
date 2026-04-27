@@ -219,7 +219,9 @@ export async function POST(request: Request) {
       {
         activeSession: checkinAssignment.session,
         disableCheckinTimeWindow: Boolean(checkinSettings.disableCheckinTimeWindow),
-        groupAllowed: Boolean(checkinAssignment.groupName),
+        groupAllowed: checkinSettings.disableCheckinTimeWindow
+          ? true
+          : Boolean(checkinAssignment.groupName),
       }
     )
 
