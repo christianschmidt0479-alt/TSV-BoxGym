@@ -5,7 +5,7 @@ export const DEFAULT_APP_BASE_URL =
   process.env.NEXT_PUBLIC_APP_BASE_URL ||
   process.env.APP_BASE_URL ||
   (process.env.NODE_ENV === "production" ? PRODUCTION_APP_BASE_URL : LOCAL_APP_BASE_URL)
-export const DEFAULT_MAIL_FROM = "TSV BoxGym <noreply@tsvboxgym.de>"
+export const DEFAULT_MAIL_FROM = "TSV BoxGym <info@tsvboxgym.de>"
 
 export function getAppBaseUrl() {
   return (

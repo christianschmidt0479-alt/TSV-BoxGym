@@ -25,6 +25,7 @@ function todayString() {
 
 export default function MemberCheckinPage() {
   const router = useRouter()
+  const [skipAutoCheckin, setSkipAutoCheckin] = useState(false)
   const [now, setNow] = useState<Date | null>(null)
   const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
   const [dbLoading, setDbLoading] = useState(false)
@@ -65,6 +66,14 @@ export default function MemberCheckinPage() {
   useEffect(() => {
     setNow(new Date())
     const params = new URLSearchParams(window.location.search)
+    const skipAuto = params.get("skipAutoCheckin") === "1"
+    if (skipAuto) {
+      setSkipAutoCheckin(true)
+      hasTriggered.current = true
+      params.delete("skipAutoCheckin")
+      const nextQuery = params.toString()
+      window.history.replaceState(null, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`)
+    }
     setNfcDetected(params.get("source")?.trim().toLowerCase() === "nfc")
     const storedQrAccess = readStoredQrAccess("member")
 
@@ -279,6 +288,7 @@ export default function MemberCheckinPage() {
   }, [success, member])
 
   useEffect(() => {
+    if (skipAutoCheckin) return
     if (!initialFastCheckinResolved) return
     if (!hasRememberedDevice) return
     if (hasTriggered.current) return
@@ -290,7 +300,7 @@ export default function MemberCheckinPage() {
     setAutoCheckinFailed(false)
     setCheckinError("")
     void handleFastCheckin({ auto: true })
-  }, [hasRememberedDevice, initialFastCheckinResolved])
+  }, [hasRememberedDevice, initialFastCheckinResolved, skipAutoCheckin])
 
   function showCheckinSuccess(name?: string) {
     setCheckinSuccessName(name || "")

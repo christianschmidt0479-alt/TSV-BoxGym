@@ -3,7 +3,6 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 
 import { ErrorBox } from "@/components/ErrorBox"
 import { InfoHint } from "@/components/ui/info-hint"
@@ -41,7 +40,6 @@ function getAgeFromBirthdate(dateString: string): number | null {
 }
 
 export default function CheckinJoinPage() {
-  const router = useRouter()
   const [isClient, setIsClient] = useState(false)
   const [dbLoading, setDbLoading] = useState(false)
   const [registerFirstName, setRegisterFirstName] = useState("")
@@ -56,6 +54,7 @@ export default function CheckinJoinPage() {
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [privacyError, setPrivacyError] = useState("")
   const [apiError, setApiError] = useState("")
+  const [registrationSuccessMessage, setRegistrationSuccessMessage] = useState("")
 
   useEffect(() => {
     setIsClient(true)
@@ -67,8 +66,8 @@ export default function CheckinJoinPage() {
     setRegisterEmail(getStoredString("tsv_register_email"))
     setRegisterPhone(getStoredString("tsv_register_phone"))
     setRegisterGuardianName(getStoredString("tsv_register_guardian_name"))
-    const savedGroup = normalizeTrainingGroup(getStoredString("tsv_register_base_group"))
-    if (savedGroup) setRegisterBaseGroup(savedGroup)
+    setRegisterBaseGroup("")
+    window.localStorage.removeItem("tsv_register_base_group")
   }, [])
 
   useEffect(() => {
@@ -191,8 +190,8 @@ export default function CheckinJoinPage() {
         return
       }
 
-      alert("Registrierung gespeichert. Bitte jetzt zuerst die E-Mail bestätigen.")
-      router.push("/checkin")
+      setApiError("")
+      setRegistrationSuccessMessage("Registrierung erfolgreich. Bitte bestätige jetzt deine E-Mail-Adresse über den Link, den wir dir gesendet haben. Danach kann dein Zugang freigegeben werden.")
     } catch (error) {
       if (process.env.NODE_ENV !== "production") {
         console.error(error)
@@ -228,6 +227,25 @@ export default function CheckinJoinPage() {
         </div>
 
         <div className="bg-white rounded-xl p-6 space-y-4 border border-gray-200">
+          {registrationSuccessMessage ? (
+            <div className="space-y-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-4">
+              <p className="text-sm font-semibold text-emerald-900">{registrationSuccessMessage}</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Link
+                  href="/mein-bereich/login"
+                  className="inline-flex h-11 items-center justify-center rounded-md bg-[#154c83] px-4 text-sm font-semibold text-white transition hover:bg-[#123f6e]"
+                >
+                  Zum Login
+                </Link>
+                <Link
+                  href="/checkin"
+                  className="inline-flex h-11 items-center justify-center rounded-md border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50"
+                >
+                  Zurück zum Check-in
+                </Link>
+              </div>
+            </div>
+          ) : (
           <form
             className="space-y-4"
             onSubmit={(event) => {
@@ -364,6 +382,7 @@ export default function CheckinJoinPage() {
               </div>
             </div>
           </form>
+          )}
 
           <div className="text-xs text-gray-500 text-center mt-6">Noch kein TSV-Mitglied?</div>
           <a

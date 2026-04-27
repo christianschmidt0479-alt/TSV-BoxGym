@@ -20,6 +20,7 @@ export default function GewichtPage() {
   const [weight, setWeight] = useState("")
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
+  const [successMessage, setSuccessMessage] = useState("")
   const [member, setMember] = useState<WeightMember | null>(null)
   const router = useRouter()
 
@@ -65,7 +66,7 @@ export default function GewichtPage() {
       }
 
       sessionStorage.removeItem("checkin-weight-member")
-      router.push("/checkin/mitglied")
+      setSuccessMessage("Gewicht gespeichert. Check-in abgeschlossen.")
     } catch (e) {
       console.error("weight save error", e)
       setErrorMessage("Gewicht konnte nicht gespeichert werden. Bitte erneut versuchen.")
@@ -85,6 +86,19 @@ export default function GewichtPage() {
           </CardHeader>
 
           <CardContent className="space-y-4">
+            {successMessage ? (
+              <div className="space-y-3 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-center">
+                <p className="text-base font-semibold text-emerald-800">{successMessage}</p>
+                <Button
+                  type="button"
+                  onClick={() => router.push("/checkin/mitglied?skipAutoCheckin=1")}
+                  className="h-12 w-full rounded-2xl bg-[#154c83] text-base font-semibold text-white hover:bg-[#123d69]"
+                >
+                  Zurück zum Check-in
+                </Button>
+              </div>
+            ) : null}
+
             <div className="space-y-2 text-left">
               <Label className="text-zinc-100">Aktuelles Gewicht in kg</Label>
               <Input
@@ -92,6 +106,7 @@ export default function GewichtPage() {
                 value={weight}
                 onChange={(e) => setWeight(e.target.value)}
                 placeholder="z. B. 80"
+                disabled={Boolean(successMessage)}
                 className="h-14 rounded-2xl border-zinc-700 bg-zinc-950 text-lg text-white"
               />
             </div>
@@ -102,7 +117,7 @@ export default function GewichtPage() {
 
             <Button
               onClick={handleSave}
-              disabled={loading}
+              disabled={loading || Boolean(successMessage)}
               className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]"
             >
               {loading ? "Speichern..." : "Speichern & weiter"}
