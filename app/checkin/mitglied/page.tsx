@@ -377,7 +377,29 @@ export default function MemberCheckinPage() {
 
       console.log("CHECKIN RESPONSE", response.status)
 
-      const result = (await response.json().catch(() => ({}))) as {
+      const rawBody = await response.text()
+      const result = (() => {
+        try {
+          return JSON.parse(rawBody) as {
+            ok?: boolean
+            error?: string
+            reason?: string
+            requires_weight_entry_today?: boolean
+            rememberUntil?: number | null
+            member?: {
+              id: string
+              firstName: string
+              lastName: string
+              baseGroup?: string
+              isCompetitionMember: boolean
+            } | null
+          }
+        } catch {
+          return { error: rawBody?.trim() || undefined }
+        }
+      })()
+
+      const typedResult = result as {
         ok?: boolean
         error?: string
         reason?: string
@@ -395,28 +417,28 @@ export default function MemberCheckinPage() {
       if (response.ok) {
         const submittedWeight = memberWeight.trim()
         setMember({
-          id: result.member?.id || email,
-          base_group: result.member?.baseGroup?.trim() || null,
-          is_wettkaempfer: Boolean(result.member?.isCompetitionMember || result.requires_weight_entry_today),
+          id: typedResult.member?.id || email,
+          base_group: typedResult.member?.baseGroup?.trim() || null,
+          is_wettkaempfer: Boolean(typedResult.member?.isCompetitionMember || typedResult.requires_weight_entry_today),
           weight: submittedWeight || null,
         })
         markCheckinSuccess()
 
-        if (rememberDevice && result.rememberUntil && result.member) {
-          updateRememberedDevice({ member: result.member })
+        if (rememberDevice && typedResult.rememberUntil && typedResult.member) {
+          updateRememberedDevice({ member: typedResult.member })
         }
 
-        showCheckinSuccess(result.member?.firstName || undefined)
+        showCheckinSuccess(typedResult.member?.firstName || undefined)
         setMemberEmail("")
         setMemberPin("")
         setMemberWeight("")
         return
       }
 
-      if (!response.ok || !result.ok) {
+      if (!response.ok || !typedResult.ok) {
         let errorMessage = "Fehler beim Speichern des Check-ins."
-        if (typeof result.reason === "string") {
-          switch (result.reason) {
+        if (typeof typedResult.reason === "string") {
+          switch (typedResult.reason) {
             case "email_not_verified":
               errorMessage = "Deine E-Mail-Adresse ist noch nicht bestätigt. Bitte bestätige zuerst den Link aus der E-Mail."
               break
@@ -433,10 +455,10 @@ export default function MemberCheckinPage() {
               errorMessage = "Du hast die maximale Anzahl an Probetrainings erreicht."
               break
             default:
-              errorMessage = result.error || "Fehler beim Speichern des Check-ins."
+              errorMessage = typedResult.error || "Fehler beim Speichern des Check-ins."
           }
-        } else if (result.error) {
-          errorMessage = result.error
+        } else if (typedResult.error) {
+          errorMessage = typedResult.error
         }
 
         if (response.status === 403) {
@@ -483,7 +505,27 @@ export default function MemberCheckinPage() {
 
       console.log("CHECKIN RESPONSE", response.status)
 
-      const result = (await response.json().catch(() => ({}))) as {
+      const rawBody = await response.text()
+      const result = (() => {
+        try {
+          return JSON.parse(rawBody) as {
+            ok?: boolean
+            error?: string
+            reason?: string
+            rememberUntil?: number
+            member?: {
+              id: string
+              firstName: string
+              lastName: string
+              isCompetitionMember: boolean
+            }
+          }
+        } catch {
+          return { error: rawBody?.trim() || undefined }
+        }
+      })()
+
+      const typedResult = result as {
         ok?: boolean
         error?: string
         reason?: string
@@ -499,24 +541,24 @@ export default function MemberCheckinPage() {
       if (response.ok) {
         const submittedWeight = rememberedWeight.trim()
         setMember({
-          id: result.member?.id || rememberedMemberId,
+          id: typedResult.member?.id || rememberedMemberId,
           base_group: rememberedAssignment?.groupName || rememberedBaseGroup || null,
-          is_wettkaempfer: Boolean(result.member?.isCompetitionMember || rememberedCompetitionMember),
+          is_wettkaempfer: Boolean(typedResult.member?.isCompetitionMember || rememberedCompetitionMember),
           weight: submittedWeight || null,
         })
         markCheckinSuccess()
-        if (result.member) {
-          updateRememberedDevice({ member: result.member })
+        if (typedResult.member) {
+          updateRememberedDevice({ member: typedResult.member })
         }
         setRememberedWeight("")
-        showCheckinSuccess(result.member?.firstName)
+        showCheckinSuccess(typedResult.member?.firstName)
         return
       }
 
-      if (!response.ok || !result.ok) {
+      if (!response.ok || !typedResult.ok) {
         let errorMessage = "Fehler beim Schnell-Check-in."
-        if (typeof result.reason === "string") {
-          switch (result.reason) {
+        if (typeof typedResult.reason === "string") {
+          switch (typedResult.reason) {
             case "email_not_verified":
               errorMessage = "Deine E-Mail-Adresse ist noch nicht bestätigt. Bitte bestätige zuerst den Link aus der E-Mail."
               break
@@ -533,10 +575,10 @@ export default function MemberCheckinPage() {
               errorMessage = "Du hast die maximale Anzahl an Probetrainings erreicht."
               break
             default:
-              errorMessage = result.error || "Fehler beim Schnell-Check-in."
+              errorMessage = typedResult.error || "Fehler beim Schnell-Check-in."
           }
-        } else if (result.error) {
-          errorMessage = result.error
+        } else if (typedResult.error) {
+          errorMessage = typedResult.error
         }
 
         if (response.status === 401 || response.status === 404) {
