@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/internal/keep-warm",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 */12 * * *"
     }
   ]
 }
