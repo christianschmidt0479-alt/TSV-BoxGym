@@ -1,1 +1,6 @@
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "11.1.0"
+import pkg from "../package.json"
+
+// IMPORTANT:
+// NEXT_PUBLIC_APP_VERSION should NOT be set in production
+// Version comes from package.json to avoid build cache issues
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || pkg.version
