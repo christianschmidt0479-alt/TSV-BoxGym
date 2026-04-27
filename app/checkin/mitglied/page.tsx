@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Smartphone } from "lucide-react"
 
@@ -10,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
 import { getMemberCheckinMode, getSessionsForDate, isAdultBaseGroup, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
+import { isWeightRequiredGroup, needsWeight } from "@/lib/memberUtils"
 import { buildQrAccessHeaders, clearStoredQrAccess, readStoredQrAccess, storeQrAccess } from "@/lib/qrAccessClient"
 import { QR_ACCESS_PARAM } from "@/lib/qrAccess"
 
@@ -22,6 +24,7 @@ function todayString() {
 }
 
 export default function MemberCheckinPage() {
+  const router = useRouter()
   const [now, setNow] = useState<Date | null>(null)
   const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
   const [dbLoading, setDbLoading] = useState(false)
@@ -48,6 +51,7 @@ export default function MemberCheckinPage() {
   const [initialFastCheckinResolved, setInitialFastCheckinResolved] = useState(false)
   const [autoCheckinRunning, setAutoCheckinRunning] = useState(false)
   const [autoCheckinFailed, setAutoCheckinFailed] = useState(false)
+  const [member, setMember] = useState<{ id: string; base_group: string | null; is_wettkaempfer: boolean; weight: string | null } | null>(null)
 
   const emailInputRef = useRef<HTMLInputElement | null>(null)
   const hasTriggered = useRef(false)
@@ -163,7 +167,7 @@ export default function MemberCheckinPage() {
       mode: checkinMode,
     })
   }, [checkinMode, now, rememberedBaseGroup, todaysSessions])
-  const rememberedNeedsWeight = rememberedCompetitionMember || rememberedAssignment?.groupName === "L-Gruppe"
+  const rememberedNeedsWeight = rememberedCompetitionMember || isWeightRequiredGroup(rememberedAssignment?.groupName)
   const showRegistrationHint =
     autoCheckinFailed ||
     checkinError.toLowerCase().includes("nicht gefunden") ||
@@ -257,6 +261,24 @@ export default function MemberCheckinPage() {
   }, [])
 
   useEffect(() => {
+    if (!success || !member) return
+
+    const shouldAskWeight =
+      needsWeight(member) && !member.weight
+
+    if (shouldAskWeight) {
+      const timer = window.setTimeout(() => {
+        sessionStorage.setItem("checkin-weight-member", JSON.stringify(member))
+        router.push("/checkin/gewicht")
+      }, 1200)
+
+      return () => {
+        window.clearTimeout(timer)
+      }
+    }
+  }, [success, member])
+
+  useEffect(() => {
     if (!initialFastCheckinResolved) return
     if (!hasRememberedDevice) return
     if (hasTriggered.current) return
@@ -317,10 +339,12 @@ export default function MemberCheckinPage() {
       return
     }
     // Gewicht nur prüfen, wenn relevant
-    if ((rememberedCompetitionMember || rememberedAssignment?.groupName === "L-Gruppe") && memberWeight && isNaN(Number(memberWeight))) {
+    if ((rememberedCompetitionMember || isWeightRequiredGroup(rememberedAssignment?.groupName)) && memberWeight && isNaN(Number(memberWeight))) {
       setCheckinError("Gewicht muss eine Zahl sein")
       return
     }
+    // Manual form check-in must not trigger the remembered-device auto fast-checkin effect afterward.
+    hasTriggered.current = true
     setCheckinError("")
     startCheckinProgress()
 
@@ -347,6 +371,7 @@ export default function MemberCheckinPage() {
         ok?: boolean
         error?: string
         reason?: string
+        requires_weight_entry_today?: boolean
         rememberUntil?: number | null
         member?: {
           id: string
@@ -358,6 +383,13 @@ export default function MemberCheckinPage() {
       }
 
       if (response.ok) {
+        const submittedWeight = memberWeight.trim()
+        setMember({
+          id: result.member?.id || email,
+          base_group: result.member?.baseGroup?.trim() || null,
+          is_wettkaempfer: Boolean(result.member?.isCompetitionMember || result.requires_weight_entry_today),
+          weight: submittedWeight || null,
+        })
         markCheckinSuccess()
 
         if (rememberDevice && result.rememberUntil && result.member) {
@@ -455,6 +487,13 @@ export default function MemberCheckinPage() {
       }
 
       if (response.ok) {
+        const submittedWeight = rememberedWeight.trim()
+        setMember({
+          id: result.member?.id || rememberedMemberId,
+          base_group: rememberedAssignment?.groupName || rememberedBaseGroup || null,
+          is_wettkaempfer: Boolean(result.member?.isCompetitionMember || rememberedCompetitionMember),
+          weight: submittedWeight || null,
+        })
         markCheckinSuccess()
         if (result.member) {
           updateRememberedDevice({ member: result.member })
@@ -727,7 +766,7 @@ export default function MemberCheckinPage() {
                 />
               </div>
 
-              {(rememberedCompetitionMember || rememberedAssignment?.groupName === "L-Gruppe") && (
+              {(rememberedCompetitionMember || isWeightRequiredGroup(rememberedAssignment?.groupName)) && (
                 <div className="space-y-2">
                   <Label>Gewicht in kg</Label>
                   <Input

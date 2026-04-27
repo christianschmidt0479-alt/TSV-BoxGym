@@ -12,6 +12,7 @@ import {
   verifyMemberDeviceToken,
 } from "@/lib/memberDeviceSession"
 import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility } from "@/lib/memberCheckin"
+import { isWeightRequiredGroup } from "@/lib/memberUtils"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
@@ -147,11 +148,11 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    const requiresWeight = member.is_competition_member || checkinAssignment.groupName === "L-Gruppe"
+    const requiresWeight = member.is_competition_member || isWeightRequiredGroup(checkinAssignment.groupName)
     if (requiresWeight) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
-        return new NextResponse("Bitte für die L-Gruppe ein aktuelles Gewicht über 30 kg angeben.", { status: 400 })
+        console.log("Missing weight for member", member.id)
       }
     }
 

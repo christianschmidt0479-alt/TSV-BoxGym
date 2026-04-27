@@ -16,6 +16,7 @@ import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { handleCheckin } from "@/lib/checkinCore"
 import { applyMemberDeviceCookie, clearMemberDeviceCookie, createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
 import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility } from "@/lib/memberCheckin"
+import { isWeightRequiredGroup } from "@/lib/memberUtils"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
@@ -89,16 +90,33 @@ function parseWeightInput(value: string) {
 
 export async function POST(request: Request) {
   try {
+    const logResponseStatus = (statusCode: number) => {
+      console.log("CHECKIN RESPONSE STATUS", statusCode)
+    }
+    const textResponse = (body: string, statusCode: number) => {
+      logResponseStatus(statusCode)
+      return new NextResponse(body, { status: statusCode })
+    }
+    const jsonResponse = (body: unknown, statusCode: number) => {
+      logResponseStatus(statusCode)
+      return NextResponse.json(body, { status: statusCode })
+    }
+
     if (!isAllowedOrigin(request)) {
       if (process.env.NODE_ENV !== "production") {
         console.warn('[member-flow][checkin][error] reason=forbidden')
       }
-      return new NextResponse("Forbidden", { status: 403 })
+      return textResponse("Forbidden", 403)
     }
 
     const body = (await request.json()) as MemberCheckinBody
     const email = body.email?.trim().toLowerCase() ?? ""
     const password = body.password?.trim() ?? body.pin?.trim() ?? ""
+    console.log("CHECKIN INPUT", {
+      email,
+      hasPin: Boolean(password),
+    })
+
     const checkinSettings = await readCheckinSettings()
     const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
 
@@ -108,7 +126,7 @@ export async function POST(request: Request) {
       10 * 60 * 1000
     )
     if (!rateLimit.ok) {
-      return new NextResponse("Too many requests", { status: 429 })
+      return textResponse("Too many requests", 429)
     }
 
     const now = new Date()
@@ -120,7 +138,7 @@ export async function POST(request: Request) {
       if (process.env.NODE_ENV !== "production") {
         console.warn('[member-flow][checkin][error] reason=missing_credentials email=' + maskEmail(email))
       }
-      return new NextResponse("Bitte E-Mail und Passwort eingeben.", { status: 400 })
+      return textResponse("Bitte E-Mail und Passwort eingeben.", 400)
     }
 
     const memberMatch = await findMemberByEmailAndPin(email, password)
@@ -128,7 +146,7 @@ export async function POST(request: Request) {
       if (process.env.NODE_ENV !== "production") {
         console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
       }
-      return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
+      return textResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", 401)
     }
     const resolvedMember = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
 
@@ -136,7 +154,7 @@ export async function POST(request: Request) {
       if (process.env.NODE_ENV !== "production") {
         console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
       }
-      return new NextResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", { status: 401 })
+      return textResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", 401)
     }
 
 
@@ -146,11 +164,24 @@ export async function POST(request: Request) {
       baseGroup: resolvedMember.base_group,
       mode: checkinMode,
     })
+    console.log("CHECKIN ASSIGNMENT", {
+      groupName: checkinAssignment?.groupName,
+      session: checkinAssignment?.session,
+    })
+    console.log("CHECKIN SETTINGS", {
+      disableCheckinTimeWindow: checkinSettings?.disableCheckinTimeWindow,
+    })
+    console.log("GROUP CHECK", {
+      groupName: checkinAssignment.groupName,
+      ferienmodus: checkinSettings.disableCheckinTimeWindow,
+    })
 
     // Eligibility-Prüfung (zentral)
     const eligibility = checkMemberEligibility({
       member: resolvedMember,
-      groupAllowed: Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
+      groupAllowed: checkinSettings.disableCheckinTimeWindow
+        ? true
+        : Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
       timeAllowed: Boolean(checkinAssignment.allowed && checkinAssignment.groupName), // Zeitfenster ist in groupAllowed enthalten
     })
 
@@ -160,23 +191,20 @@ export async function POST(request: Request) {
       }
       // Minimalfix C: Fehlertext für fehlende Verifizierung explizit
       if (eligibility.reason === "email_not_verified") {
-        return new NextResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink aus der E-Mail öffnen.", { status: 400 })
+        return textResponse("E-Mail noch nicht bestätigt. Bitte zuerst den Bestätigungslink aus der E-Mail öffnen.", 400)
       }
-      return NextResponse.json({
+      return jsonResponse({
         ok: false,
         reason: eligibility.reason,
-      }, { status: 400 })
+      }, 400)
     }
 
 
-    const requiresWeight = resolvedMember.is_competition_member || checkinAssignment.groupName === "L-Gruppe"
+    const requiresWeight = resolvedMember.is_competition_member || isWeightRequiredGroup(checkinAssignment.groupName)
     if (requiresWeight) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
-        if (process.env.NODE_ENV !== "production") {
-          console.warn('[member-flow][checkin][error] reason=invalid_weight id=' + resolvedMember.id)
-        }
-        return new NextResponse("Bitte für die L-Gruppe ein aktuelles Gewicht über 30 kg angeben.", { status: 400 })
+        console.log("Missing weight for member", resolvedMember.id)
       }
     }
 
@@ -224,48 +252,68 @@ export async function POST(request: Request) {
           : Boolean(checkinAssignment.groupName),
       }
     )
+    console.log("CHECKIN CORE RESULT", checkinResult)
 
     // TEMP LIVE MONITORING
     if (!checkinResult.ok) {
       if (process.env.NODE_ENV !== "production") {
         console.warn('[member-flow][checkin][blocked] reason=' + (checkinResult.reason || 'unknown') + ' id=' + resolvedMember.id)
       }
-      return NextResponse.json(
+      return jsonResponse(
         {
           ok: false,
           error: checkinResult.error || "Check-in fehlgeschlagen",
           reason: checkinResult.reason,
         },
-        { status: 400 }
+        400
       )
     }
 
     if (hasCheckedInToday) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           ok: false,
           error: "Heute bereits eingecheckt",
           reason: "DUPLICATE",
         },
-        { status: 400 }
+        400
       )
     }
 
-    await createCheckin({
-      member_id: resolvedMember.id,
-      group_name: checkinAssignment.groupName ?? "",
-      checkin_mode: checkinMode,
-      weight: requiresWeight ? body.weight?.trim() : undefined,
-      date: liveDate,
-      time: timeString(now),
-      year: currentYear,
-      month_key: currentMonthKey,
+    console.log("CHECKIN INSERT DATA", {
+      memberId: resolvedMember.id,
+      groupName: checkinAssignment?.groupName,
+      session: checkinAssignment?.session,
     })
+
+    try {
+      await createCheckin({
+        member_id: resolvedMember.id,
+        group_name: checkinAssignment.groupName ?? "",
+        checkin_mode: checkinMode,
+        weight: requiresWeight ? body.weight?.trim() : undefined,
+        date: liveDate,
+        time: timeString(now),
+        year: currentYear,
+        month_key: currentMonthKey,
+      })
+    } catch (error: any) {
+      if (error) {
+        console.error("DB INSERT ERROR FULL", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        })
+      }
+      console.error("CHECKIN INSERT ERROR", error)
+      throw error
+    }
 
     // Gewichtspflicht-Logik nach erfolgreichem Check-in
     let requires_weight_entry_today = false
     let weight_already_recorded_today = false
-    if (resolvedMember.is_competition_member || checkinAssignment.groupName === "L-Gruppe") {
+    if (resolvedMember.is_competition_member || isWeightRequiredGroup(checkinAssignment.groupName)) {
       requires_weight_entry_today = true
       // Prüfe, ob heute ein Check-in mit Gewicht existiert
       const { data: todayWeightRows, error: todayWeightError } = await supabase
@@ -305,6 +353,7 @@ export async function POST(request: Request) {
       requires_weight_entry_today,
       weight_already_recorded_today,
     })
+    logResponseStatus(response.status)
 
     // TEMP LIVE MONITORING
     if (process.env.NODE_ENV !== "production") {
@@ -323,6 +372,7 @@ export async function POST(request: Request) {
     if (process.env.NODE_ENV !== "production") {
       console.error('[member-flow][checkin][error] reason=exception' + masked, error)
     }
+    console.log("CHECKIN RESPONSE STATUS", 500)
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }

@@ -173,7 +173,7 @@ export default async function TrainerPage() {
 
   const todayCount = rows.filter((row) => row.isTodayCheckedIn).length
   const trialCount = rows.filter((row) => row.phase === "trial").length
-  const extendedCount = rows.filter((row) => row.phase === "extended").length
+  const trialTodayCount = rows.filter((row) => (row.phase === "trial" || row.phase === "extended") && row.isTodayCheckedIn).length
 
   function attendanceBadgeStyle(isTodayCheckedIn: boolean) {
     return isTodayCheckedIn
@@ -202,21 +202,24 @@ export default async function TrainerPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+          <Link href="/trainer/heute-da" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Heute da</div>
             <div className="text-2xl font-extrabold text-zinc-900">{todayCount}</div>
-          </div>
-          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+            <div className="mt-1 text-sm text-zinc-600">Anwesenheit heute oeffnen</div>
+          </Link>
+          <Link href="/trainer/probemitglieder" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Probemitglieder</div>
             <div className="text-2xl font-extrabold text-zinc-900">{trialCount}</div>
-          </div>
-          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Probemitglieder (verlängert)</div>
-            <div className="text-2xl font-extrabold text-zinc-900">{extendedCount}</div>
-          </div>
+            <div className="mt-1 text-sm text-zinc-600">Probemitglieder oeffnen</div>
+          </Link>
+          <Link href="/trainer/probemitglieder" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Probemitglieder heute</div>
+            <div className="text-2xl font-extrabold text-zinc-900">{trialTodayCount}</div>
+            <div className="mt-1 text-sm text-zinc-600">Probetrainings und aktuelle Anwesenheit pruefen</div>
+          </Link>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Link
             href="/verwaltung-neu/checkin"
             className="rounded-2xl border border-[#154c83] bg-[#154c83] px-5 py-5 text-lg font-semibold text-white shadow-sm transition hover:bg-[#0f3d6b]"
@@ -234,11 +237,19 @@ export default async function TrainerPage() {
           </Link>
 
           <Link
-            href="/trainer/heute"
+            href="/trainer/heute-da"
             className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
           >
-            <div>Heute im Training</div>
-            <div className="mt-1 text-sm font-medium text-zinc-600">Anwesenheit kompakt</div>
+            <div>Heute da</div>
+            <div className="mt-1 text-sm font-medium text-zinc-600">Anwesenheit und Auschecken</div>
+          </Link>
+
+          <Link
+            href="/trainer/probemitglieder"
+            className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
+          >
+            <div>Probemitglieder heute</div>
+            <div className="mt-1 text-sm font-medium text-zinc-600">Probetrainings und aktuelle Anwesenheit pruefen</div>
           </Link>
         </div>
 

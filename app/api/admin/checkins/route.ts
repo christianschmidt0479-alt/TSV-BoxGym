@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     }
 
     const session = await readTrainerSessionFromHeaders(request)
-    if (!session || session.accountRole !== "admin") {
+    if (!session || (session.accountRole !== "admin" && session.accountRole !== "trainer")) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
@@ -32,6 +32,7 @@ export async function GET(request: Request) {
         member_id,
         group_name,
         checkin_mode,
+        weight,
         date,
         time,
         created_at,
@@ -66,7 +67,7 @@ export async function DELETE(request: Request) {
     }
 
     const session = await readTrainerSessionFromHeaders(request)
-    if (!session || session.accountRole !== "admin") {
+    if (!session || (session.accountRole !== "admin" && session.accountRole !== "trainer")) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
