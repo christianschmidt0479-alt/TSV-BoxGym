@@ -4,8 +4,6 @@ import { useEffect, useState } from "react"
 import { container, pageTitle } from "@/lib/ui"
 import ProbemitgliederClient from "./ProbemitgliederClient"
 
-let fetchCount = 0
-
 type TrialMember = {
   id: string
   name: string | null
@@ -44,10 +42,6 @@ export default function ProbemitgliederPage() {
     const controller = new AbortController()
 
     async function load() {
-      fetchCount++
-      console.log("GET-MEMBERS PAGE:", { page: "probemitglieder" })
-      console.log("GET-MEMBERS CALL:", fetchCount)
-
       const res = await fetch("/api/admin/get-members", {
         method: "POST",
         credentials: "include",
@@ -62,8 +56,6 @@ export default function ProbemitgliederPage() {
       const result = await res.json()
       const all: Record<string, unknown>[] = result.data ?? []
       const trial = all.filter((m) => m.member_phase === "trial" || m.member_phase === "extended")
-
-      console.log("probemitglieder loaded:", trial.length)
 
       setMembers(trial.map(toTrialMember))
     }

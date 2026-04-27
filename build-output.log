@@ -1,0 +1,187 @@
+
+> tsv-boxgym-app@10.9.1 build
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.4s
+  Running TypeScript ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/144) ...
+  Generating static pages using 7 workers (36/144) 
+⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+  Generating static pages using 7 workers (72/144) 
+  Generating static pages using 7 workers (108/144) 
+✓ Generating static pages using 7 workers (144/144) in 381.9ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /api/admin-auth
+├ ƒ /api/admin-digest
+├ ƒ /api/admin/account-password
+├ ƒ /api/admin/ai-security-actions
+├ ƒ /api/admin/ai-security-blocks
+├ ƒ /api/admin/ai-security-overview
+├ ƒ /api/admin/ai-settings
+├ ƒ /api/admin/app-errors
+├ ƒ /api/admin/audit-log
+├ ƒ /api/admin/birthdays
+├ ƒ /api/admin/checkin-settings
+├ ƒ /api/admin/checkins
+├ ƒ /api/admin/competition-overview
+├ ƒ /api/admin/delete-member
+├ ƒ /api/admin/excel-abgleich
+├ ƒ /api/admin/excel-abgleich/create-member
+├ ƒ /api/admin/get-member
+├ ƒ /api/admin/get-members
+├ ƒ /api/admin/get-trainers
+├ ƒ /api/admin/group-detail
+├ ƒ /api/admin/groups
+├ ƒ /api/admin/inbound-emails
+├ ƒ /api/admin/inbound-emails/[id]
+├ ƒ /api/admin/inbound-emails/sync
+├ ƒ /api/admin/inbound-emails/unread-count
+├ ƒ /api/admin/inbox
+├ ƒ /api/admin/ki-analytics
+├ ƒ /api/admin/link-trainer-member
+├ ƒ /api/admin/mail-ai
+├ ƒ /api/admin/mail-compose
+├ ƒ /api/admin/mail-gs-anfrage
+├ ƒ /api/admin/mail-overview
+├ ƒ /api/admin/mailbox
+├ ƒ /api/admin/mailbox/[mailId]
+├ ƒ /api/admin/mailbox/[mailId]/send
+├ ƒ /api/admin/manual-mail-outbox
+├ ƒ /api/admin/member-action
+├ ƒ /api/admin/member-deletion-request
+├ ƒ /api/admin/member-profile
+├ ƒ /api/admin/member-resend-verification
+├ ƒ /api/admin/member-verification-token
+├ ƒ /api/admin/members-overview
+├ ƒ /api/admin/nav-badges
+├ ƒ /api/admin/nav-badges/seen
+├ ƒ /api/admin/overview
+├ ƒ /api/admin/parent-mail-outbox
+├ ƒ /api/admin/pending-overview
+├ ƒ /api/admin/person-roles
+├ ƒ /api/admin/today
+├ ƒ /api/admin/trainer-account
+├ ƒ /api/admin/trainer-account/[trainerId]
+├ ƒ /api/admin/trainer-ki-profiles
+├ ƒ /api/admin/trainer-preview/thomas-plans
+├ ƒ /api/admin/trainer-profiles/[trainerId]
+├ ƒ /api/admin/training-ai-context
+├ ƒ /api/admin/training-plans
+├ ƒ /api/admin/training-plans/[id]
+├ ƒ /api/admin/training-plans/[id]/assign
+├ ƒ /api/admin/training-plans/[id]/quality
+├ ƒ /api/admin/training-plans/generate
+├ ƒ /api/admin/unlink-trainer-member
+├ ƒ /api/admin/update-member
+├ ƒ /api/admin/update-trainer
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/checkin/member
+├ ƒ /api/checkin/scan-member-qr
+├ ƒ /api/checkin/trial
+├ ƒ /api/inbound-email/imap
+├ ƒ /api/member/[id]/create-verification-token
+├ ƒ /api/member/change-password
+├ ƒ /api/member/request-deletion
+├ ƒ /api/member/request-email-change
+├ ƒ /api/member/update-link
+├ ƒ /api/member/update-profile
+├ ƒ /api/public/checkin-settings
+├ ƒ /api/public/gs-membership-confirm
+├ ƒ /api/public/member-area
+├ ƒ /api/public/member-area/delete-request
+├ ƒ /api/public/member-checkin
+├ ƒ /api/public/member-fast-checkin
+├ ƒ /api/public/member-password-reset
+├ ƒ /api/public/member-register
+├ ƒ /api/public/sessions-today
+├ ƒ /api/public/today-checkins
+├ ƒ /api/public/trainer-access
+├ ƒ /api/public/trainer-password-reset
+├ ƒ /api/public/trial-checkin
+├ ƒ /api/qr-access
+├ ƒ /api/qr-access-url
+├ ƒ /api/send-verification
+├ ƒ /api/trainer-auth
+├ ƒ /api/trainer-login
+├ ƒ /api/trainer-session
+├ ƒ /api/trainer/boxzwerge
+├ ƒ /api/trainer/boxzwerge-checkin
+├ ƒ /api/trainer/change-password
+├ ƒ /api/trainer/competition
+├ ƒ /api/trainer/competition-profile
+├ ƒ /api/trainer/extend-member
+├ ƒ /api/trainer/members
+├ ƒ /api/trainer/overview
+├ ƒ /api/trainer/today
+├ ƒ /api/trainer/training-plans
+├ ƒ /api/trainer/training-plans/[id]/notes
+├ ƒ /api/v2/admin/members
+├ ƒ /api/v2/auth/login
+├ ƒ /api/v2/auth/reset-password
+├ ƒ /api/v2/checkin/member
+├ ƒ /api/v2/member/update-missing
+├ ƒ /api/v2/upgrade/trial-to-regular
+├ ƒ /checkin
+├ ƒ /checkin/beitritt
+├ ƒ /checkin/erfolg
+├ ƒ /checkin/mitglied
+├ ƒ /checkin/probetraining
+├ ƒ /datenschutz
+├ ƒ /impressum
+├ ƒ /login
+├ ○ /manifest.webmanifest
+├ ƒ /mein-bereich
+├ ƒ /mein-bereich/dashboard
+├ ƒ /mein-bereich/einstellungen
+├ ƒ /mein-bereich/einstellungen/daten
+├ ƒ /mein-bereich/einstellungen/loeschen
+├ ƒ /mein-bereich/einstellungen/passwort
+├ ƒ /mein-bereich/login
+├ ƒ /mein-bereich/passwort-aendern
+├ ƒ /mein-bereich/passwort-vergessen
+├ ƒ /mein-bereich/passwort-zuruecksetzen
+├ ƒ /mein-bereich/verifizieren
+├ ƒ /mein-bereich/zugang-einrichten
+├ ƒ /mitglied/daten-aendern
+├ ƒ /mitgliedschaft-bestaetigen
+├ ƒ /mitgliedschaft-bestaetigen/[decision]/[token]
+├ ○ /opengraph-image
+├ ƒ /qr-druck
+├ ƒ /registrieren
+├ ƒ /trainer
+├ ƒ /trainer-zugang
+├ ƒ /trainer/heute
+├ ƒ /tsv-mitglied-registrieren
+├ ○ /twitter-image
+├ ƒ /verwaltung-neu
+├ ƒ /verwaltung-neu/checkin
+├ ƒ /verwaltung-neu/freigaben
+├ ƒ /verwaltung-neu/freigaben/delete
+├ ƒ /verwaltung-neu/mitglieder
+├ ƒ /verwaltung-neu/mitglieder/[id]
+├ ƒ /verwaltung-neu/mitglieder/[id]/demo
+├ ƒ /verwaltung-neu/mitglieder/delete
+├ ƒ /verwaltung-neu/probemitglieder
+├ ƒ /verwaltung-neu/qr-code
+├ ƒ /verwaltung-neu/qr-code/print
+├ ƒ /verwaltung-neu/trainer
+└ ƒ /verwaltung-neu/trainer/[id]
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

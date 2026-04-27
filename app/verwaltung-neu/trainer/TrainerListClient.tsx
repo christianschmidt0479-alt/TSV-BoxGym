@@ -72,11 +72,7 @@ export default function TrainerListClient({
               <div style={cardTitle}>{trainerName(trainer)}</div>
               <div style={{ fontSize: 14, color: "#64748b" }}>{trainer.email || "Keine E-Mail"}</div>
               <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
-                {(() => {
-                  const fullName = `${trainer.first_name || ""} ${trainer.last_name || ""}`.trim()
-                  console.log("TRAINER LINK:", { name: fullName, linked_member_id: trainer.linked_member_id })
-                  return trainer.linked_member_id ? "Trainer + Mitglied" : "Nur Trainer"
-                })()}
+                {trainer.linked_member_id ? "Trainer + Mitglied" : "Nur Trainer"}
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>

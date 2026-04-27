@@ -21,12 +21,13 @@ export default function TrainerPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const loadTrainers = useCallback(async () => {
+  const loadTrainers = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     try {
       const res = await fetch("/api/admin/get-trainers", {
         method: "POST",
         credentials: "include",
+        signal,
       })
 
       const result = await res.json()
@@ -53,9 +54,12 @@ export default function TrainerPage() {
   }, [])
 
   useEffect(() => {
-    void loadTrainers()
+    const controller = new AbortController()
+
+    void loadTrainers(controller.signal)
 
     return () => {
+      controller.abort()
     }
   }, [loadTrainers])
 

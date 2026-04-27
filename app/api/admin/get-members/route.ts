@@ -3,8 +3,6 @@ import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
 import { verifyTrainerSessionToken } from "@/lib/authSession"
 
-let requestCount = 0
-
 function berlinDayKey(date: Date) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Berlin",
@@ -16,9 +14,6 @@ function berlinDayKey(date: Date) {
 
 export async function POST(req: Request) {
   try {
-    requestCount++
-    console.log("GET-MEMBERS API CALL:", requestCount)
-
     const session = (await cookies()).get("trainer_session")
 
     if (!session) {
@@ -42,10 +37,6 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: "Invalid request" }), { status: 400 })
     }
 
-    if (Object.keys(body).length === 0) {
-      console.log("WARN: empty body in get-members")
-    }
-
     const { page = 1, pageSize = 10 } = body as { page?: number; pageSize?: number }
 
     const supabase = createClient(
@@ -60,10 +51,6 @@ export async function POST(req: Request) {
     if (error) {
       console.error("SUPABASE ERROR:", error)
       return new Response(JSON.stringify({ error: true }), { status: 500 })
-    }
-
-    if (process.env.NODE_ENV !== "production") {
-      console.log("GET-MEMBERS rows:", (members ?? []).length)
     }
 
     const { data: checkins, error: checkinsError } = await supabase

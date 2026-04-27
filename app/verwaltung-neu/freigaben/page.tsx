@@ -4,8 +4,6 @@ import { useEffect, useState } from "react"
 import { container, pageTitle } from "@/lib/ui"
 import FreigabenClient from "./FreigabenClient"
 
-let fetchCount = 0
-
 type ApprovalMember = {
   id: string
   name: string | null
@@ -48,10 +46,6 @@ export default function FreigabenPage() {
     const controller = new AbortController()
 
     async function load() {
-      fetchCount++
-      console.log("GET-MEMBERS PAGE:", { page: "freigaben" })
-      console.log("GET-MEMBERS CALL:", fetchCount)
-
       const res = await fetch("/api/admin/get-members", {
         method: "POST",
         credentials: "include",
@@ -66,8 +60,6 @@ export default function FreigabenPage() {
       const result = await res.json()
       const all: Record<string, unknown>[] = result.data ?? []
       const pending = all.filter((m) => !m.is_approved && m.member_phase === "member")
-
-      console.log("freigaben loaded:", pending.length)
 
       setMembers(pending.map(toApprovalMember))
     }

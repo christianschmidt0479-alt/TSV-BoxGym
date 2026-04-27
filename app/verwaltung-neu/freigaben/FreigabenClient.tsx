@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { groupOptions } from "@/lib/boxgymSessions"
 import { buttonPrimary, buttonSecondary, card, cardTitle } from "@/lib/ui"
 
@@ -44,10 +44,6 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
   const [members, setMembers] = useState<ApprovalMember[]>(initialMembers)
   const [loadingMemberId, setLoadingMemberId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    console.log("freigaben client members:", members.length)
-  }, [members])
 
   const groupByMemberId = useMemo(() => {
     const next = new Map<string, string>()

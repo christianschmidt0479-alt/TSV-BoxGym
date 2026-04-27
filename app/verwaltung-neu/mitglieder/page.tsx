@@ -4,8 +4,6 @@ import { useEffect, useState } from "react"
 import { container, pageTitle } from "@/lib/ui"
 import MitgliederListClient from "./MitgliederListClient"
 
-let fetchCount = 0
-
 type AdminMemberListRow = {
   id: string
   name?: string | null
@@ -35,10 +33,6 @@ export default function MitgliederPage() {
 
     async function loadMembers() {
       try {
-        fetchCount++
-        console.log("GET-MEMBERS PAGE:", { page: "mitglieder", currentPage })
-        console.log("GET-MEMBERS CALL:", fetchCount)
-
         const res = await fetch("/api/admin/get-members", {
           method: "POST",
           headers: {
@@ -60,7 +54,6 @@ export default function MitgliederPage() {
           return
         }
 
-        console.log("members loaded:", Array.isArray(result.data) ? result.data.length : 0)
         setMembers(result.data || [])
         setTotal(result.total || 0)
         setError(null)
