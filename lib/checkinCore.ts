@@ -50,6 +50,12 @@ export type CheckinResult = {
   checkinId?: string
 }
 
+export type CheckinConstraints = {
+  activeSession?: unknown | null
+  disableCheckinTimeWindow?: boolean
+  groupAllowed?: boolean
+}
+
 /**
  * Central check-in eligibility logic
  * 
@@ -72,7 +78,8 @@ export async function handleCheckin(
   member: Member,
   context: Context,
   memberCheckinCount: number,
-  hasCheckedInToday: boolean
+  hasCheckedInToday: boolean,
+  constraints?: CheckinConstraints
 ): Promise<CheckinResult> {
   // ============================================================================
   // A) MEMBER EXISTS CHECK
@@ -104,6 +111,31 @@ export async function handleCheckin(
       ok: false,
       error: "Keine Trainingsgruppe zugewiesen",
       reason: "NO_GROUP",
+    }
+  }
+
+  // Optional Gruppenprüfung aus aufrufender Logik (z. B. Session-/Ferienzuordnung)
+  if (constraints?.groupAllowed === false) {
+    return {
+      ok: false,
+      error: "Für dich wurde aktuell keine passende Trainingseinheit gefunden.",
+      reason: "group_not_allowed",
+    }
+  }
+
+  // Optional Zeitfenster-/Session-Prüfung:
+  // - im Ferienmodus (disableCheckinTimeWindow=true) kein Session-Zwang
+  // - im Normalmodus außerhalb aktiver Session blockieren
+  if (
+    constraints &&
+    constraints.activeSession !== undefined &&
+    !constraints.activeSession &&
+    !Boolean(constraints.disableCheckinTimeWindow)
+  ) {
+    return {
+      ok: false,
+      error: "Check-in ist nur im freigegebenen Zeitfenster möglich.",
+      reason: "outside_time_window",
     }
   }
 

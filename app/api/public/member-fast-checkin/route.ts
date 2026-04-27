@@ -190,7 +190,12 @@ export async function POST(request: Request) {
         mode: checkinMode,
       },
       existingCheckinCount,
-      hasCheckedInToday
+      hasCheckedInToday,
+      {
+        activeSession: checkinAssignment.session,
+        disableCheckinTimeWindow: Boolean(checkinSettings.disableCheckinTimeWindow),
+        groupAllowed: Boolean(checkinAssignment.groupName),
+      }
     )
 
     if (!checkinResult.ok) {

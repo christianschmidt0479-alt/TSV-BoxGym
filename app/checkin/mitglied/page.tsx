@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Smartphone } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,9 @@ export default function MemberCheckinPage() {
   const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
   const [dbLoading, setDbLoading] = useState(false)
   const [fastCheckinLoading, setFastCheckinLoading] = useState(false)
+  const [isCheckingIn, setIsCheckingIn] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [softSuccess, setSoftSuccess] = useState(false)
   const [qrAccessToken, setQrAccessToken] = useState("")
   const [memberEmail, setMemberEmail] = useState("")
   const [memberPin, setMemberPin] = useState("")
@@ -38,8 +41,17 @@ export default function MemberCheckinPage() {
   const [rememberedCompetitionMember, setRememberedCompetitionMember] = useState(false)
   const [rememberedWeight, setRememberedWeight] = useState("")
   const [checkinDone, setCheckinDone] = useState("")
+  const [checkinSuccessName, setCheckinSuccessName] = useState("")
   const [checkinError, setCheckinError] = useState("")
   const [nfcDetected, setNfcDetected] = useState(false)
+  const [initialFastCheckinResolved, setInitialFastCheckinResolved] = useState(false)
+  const [autoCheckinRunning, setAutoCheckinRunning] = useState(false)
+  const [autoCheckinFailed, setAutoCheckinFailed] = useState(false)
+
+  const emailInputRef = useRef<HTMLInputElement | null>(null)
+  const hasTriggered = useRef(false)
+  const waitGuardTimerRef = useRef<number | null>(null)
+  const successRef = useRef(false)
 
   const liveDate = now ? todayStringFromDate(now) : todayString()
 
@@ -127,7 +139,11 @@ export default function MemberCheckinPage() {
         setRememberedBaseGroup(result.member.baseGroup?.trim() ?? "")
         setRememberedCompetitionMember(result.member.isCompetitionMember)
       } catch (error) {
-        console.error("remembered device restore failed", error)
+        if (process.env.NODE_ENV !== "production") {
+          console.error("remembered device restore failed", error)
+        }
+      } finally {
+        setInitialFastCheckinResolved(true)
       }
     })()
   }, [])
@@ -146,14 +162,70 @@ export default function MemberCheckinPage() {
   }, [checkinMode, now, rememberedBaseGroup, todaysSessions])
   const rememberedNeedsWeight = rememberedCompetitionMember || rememberedAssignment?.groupName === "L-Gruppe"
   const showRegistrationHint =
+    autoCheckinFailed ||
     checkinError.toLowerCase().includes("nicht gefunden") ||
-    checkinError.toLowerCase().includes("mitgliedskonto")
+    checkinError.toLowerCase().includes("mitgliedskonto") ||
+    checkinError.toLowerCase().includes("nicht erkannt")
 
   const hasRememberedDevice = Boolean(rememberedMemberId && rememberedFirstName && rememberedLastName)
+  const showManualForm = !hasRememberedDevice
+
+  function startWaitGuard() {
+    if (waitGuardTimerRef.current !== null) {
+      window.clearTimeout(waitGuardTimerRef.current)
+    }
+    setSoftSuccess(false)
+    waitGuardTimerRef.current = window.setTimeout(() => {
+      if (!successRef.current) {
+        setSoftSuccess(true)
+      }
+    }, 1200)
+  }
+
+  function stopWaitGuard() {
+    if (waitGuardTimerRef.current !== null) {
+      window.clearTimeout(waitGuardTimerRef.current)
+      waitGuardTimerRef.current = null
+    }
+  }
+
+  function startCheckinProgress() {
+    successRef.current = false
+    setSuccess(false)
+    setIsCheckingIn(true)
+    startWaitGuard()
+  }
+
+  function markCheckinSuccess() {
+    successRef.current = true
+    setSuccess(true)
+    setSoftSuccess(false)
+    stopWaitGuard()
+  }
+
+  useEffect(() => {
+    return () => {
+      stopWaitGuard()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!initialFastCheckinResolved) return
+    if (!hasRememberedDevice) return
+    if (hasTriggered.current) return
+
+    hasTriggered.current = true
+    console.log("AUTO CHECKIN TRIGGERED")
+    startCheckinProgress()
+    setAutoCheckinRunning(true)
+    setAutoCheckinFailed(false)
+    setCheckinError("")
+    void handleFastCheckin({ auto: true })
+  }, [hasRememberedDevice, initialFastCheckinResolved])
 
   function showCheckinSuccess(name?: string) {
+    setCheckinSuccessName(name || "")
     setCheckinDone(name ? `Geschafft! ${name} ist eingecheckt.` : "Geschafft! Check-in eingetragen.")
-    // Erfolgsmeldung bleibt 6 Sekunden sichtbar
     window.setTimeout(() => setCheckinDone(""), 6000)
   }
 
@@ -203,6 +275,7 @@ export default function MemberCheckinPage() {
       return
     }
     setCheckinError("")
+    startCheckinProgress()
 
     try {
       setDbLoading(true)
@@ -274,6 +347,7 @@ export default function MemberCheckinPage() {
         updateRememberedDevice({ member: result.member })
       }
 
+      markCheckinSuccess()
       showCheckinSuccess(result.member?.firstName || undefined)
       setMemberEmail("")
       setMemberPin("")
@@ -282,12 +356,22 @@ export default function MemberCheckinPage() {
       console.error(error)
       setCheckinError("Fehler beim Speichern des Check-ins.")
     } finally {
+      if (!successRef.current) {
+        setIsCheckingIn(false)
+        setSoftSuccess(false)
+      }
       setDbLoading(false)
     }
   }
 
-  async function handleFastCheckin() {
+  async function handleFastCheckin(options?: { auto?: boolean }) {
+    const isAuto = Boolean(options?.auto)
     try {
+      startCheckinProgress()
+      if (isAuto) {
+        setAutoCheckinRunning(true)
+        setAutoCheckinFailed(false)
+      }
       setFastCheckinLoading(true)
       const response = await fetch("/api/public/member-fast-checkin", {
         method: "POST",
@@ -342,10 +426,14 @@ export default function MemberCheckinPage() {
 
         if (response.status === 401 || response.status === 404) {
           forgetRememberedDevice()
+          errorMessage = "Nicht erkannt"
         }
         if (response.status === 403) {
           clearStoredQrAccess("member")
           setQrAccessToken("")
+        }
+        if (isAuto && response.status >= 400) {
+          setAutoCheckinFailed(true)
         }
         setCheckinError(errorMessage)
         return
@@ -354,14 +442,61 @@ export default function MemberCheckinPage() {
       if (result.member) {
         updateRememberedDevice({ member: result.member })
       }
+      markCheckinSuccess()
       setRememberedWeight("")
       showCheckinSuccess(result.member?.firstName)
     } catch (error) {
-      console.error(error)
-      setCheckinError("Fehler beim Schnell-Check-in.")
+      if (process.env.NODE_ENV !== "production") {
+        console.error(error)
+      }
+      if (isAuto) {
+        setAutoCheckinFailed(true)
+        setCheckinError("Nicht erkannt")
+      } else {
+        setCheckinError("Fehler beim Schnell-Check-in.")
+      }
     } finally {
+      if (!successRef.current) {
+        setIsCheckingIn(false)
+        setSoftSuccess(false)
+      }
       setFastCheckinLoading(false)
+      if (isAuto) {
+        setAutoCheckinRunning(false)
+      }
     }
+  }
+
+  if (success || checkinDone) {
+    return (
+      <div className="min-h-screen bg-emerald-600 px-4 py-8 text-white">
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-emerald-500/60 p-6 text-center shadow-2xl">
+          <p className="text-4xl font-black tracking-tight">Check-in erfolgreich</p>
+          {checkinSuccessName ? <p className="mt-3 text-2xl font-semibold">{checkinSuccessName}</p> : null}
+          <p className="mt-5 text-base text-emerald-50">Du bist eingecheckt.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (softSuccess) {
+    return (
+      <div className="min-h-screen bg-emerald-600 px-4 py-8 text-white">
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-emerald-500/60 p-6 text-center shadow-2xl">
+          <p className="text-4xl font-black tracking-tight">Check-in fast abgeschlossen...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (isCheckingIn) {
+    return (
+      <div className="min-h-screen bg-zinc-950 px-4 py-8 text-white">
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-zinc-900 p-6 text-center shadow-2xl">
+          <p className="text-4xl font-black tracking-tight">Check-in läuft...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -370,7 +505,13 @@ export default function MemberCheckinPage() {
         <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
           <CardHeader>
             <CardTitle className="text-2xl">Check-in</CardTitle>
-            <p className="text-sm text-zinc-600">Bitte E-Mail und PIN eingeben</p>
+            <p className="text-sm text-zinc-600">Schnell einchecken ohne extra Klick</p>
+            {!initialFastCheckinResolved || autoCheckinRunning ? (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-center">
+                <p className="text-2xl font-extrabold text-blue-900">Check-in läuft...</p>
+                <p className="mt-1 text-sm text-blue-700">Bitte kurz warten.</p>
+              </div>
+            ) : null}
             {nfcDetected ? (
               <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
                 NFC erkannt - Check-in starten
@@ -388,11 +529,6 @@ export default function MemberCheckinPage() {
             ) : null}
           </CardHeader>
           <CardContent>
-            {checkinDone ? (
-              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-base font-semibold text-emerald-800">
-                ✓ {checkinDone}
-              </div>
-            ) : null}
             {hasRememberedDevice ? (
               <div className="mb-5 rounded-[24px] border border-[#cfe0ef] bg-[#f4f9ff] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -436,13 +572,13 @@ export default function MemberCheckinPage() {
                 <div className="mt-4">
                   <Button
                     type="button"
-                    className="h-14 w-full rounded-2xl bg-[#154c83] text-lg text-white hover:bg-[#123d69]"
+                    className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]"
                     disabled={fastCheckinLoading || dbLoading || !rememberedAssignment?.allowed}
                     onClick={() => {
                       void handleFastCheckin()
                     }}
                   >
-                    {fastCheckinLoading ? "Speichert..." : `Schnell einchecken als ${rememberedFirstName}`}
+                    {fastCheckinLoading ? "Check-in läuft..." : `Jetzt einchecken`}
                   </Button>
                   {!rememberedAssignment?.allowed ? (
                     <p className="mt-2 text-center text-xs text-zinc-400">
@@ -455,16 +591,50 @@ export default function MemberCheckinPage() {
               </div>
             ) : null}
 
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void handleMemberCheckin()
-              }}
-            >
+            {showManualForm ? (
+              <div className="mb-4">
+                <Button
+                  type="button"
+                  className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]"
+                  onClick={() => emailInputRef.current?.focus()}
+                >
+                  Jetzt einchecken
+                </Button>
+              </div>
+            ) : null}
+
+            {checkinError ? (
+              <p className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-base text-red-700">
+                {checkinError}
+              </p>
+            ) : null}
+            {showRegistrationHint ? (
+              <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-800">
+                <p className="text-base font-bold">Nicht erkannt</p>
+                <p className="mt-1">Jetzt registrieren und direkt loslegen.</p>
+                <div className="mt-3">
+                  <Link
+                    href="/registrieren/mitglied"
+                    className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-[#154c83] bg-white px-3 text-base font-semibold text-[#154c83]"
+                  >
+                    Jetzt registrieren
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+
+            {showManualForm ? (
+              <form
+                className="space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void handleMemberCheckin()
+                }}
+              >
               <div className="space-y-2">
                 <Label>E-Mail</Label>
                 <Input
+                  ref={emailInputRef}
                   type="email"
                   value={memberEmail}
                   onChange={(e) => setMemberEmail(e.target.value)}
@@ -516,40 +686,17 @@ export default function MemberCheckinPage() {
               </label>
 
               <div className="sticky bottom-3 -mx-1 rounded-[24px] border border-[#d8e3ee] bg-white/95 p-2 shadow-lg backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none">
-                {checkinError ? (
-                  <p className="mb-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-base text-red-700 md:mb-3">
-                    {checkinError}
-                  </p>
-                ) : null}
-                {showRegistrationHint ? (
-                  <div className="mb-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-800">
-                    <p className="font-semibold">Kein Zugang? Jetzt registrieren</p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <Link
-                        href="/registrieren/mitglied"
-                        className="inline-flex h-11 items-center justify-center rounded-xl border border-[#154c83] bg-white px-3 text-sm font-medium text-[#154c83]"
-                      >
-                        TSV Mitglied
-                      </Link>
-                      <Link
-                        href="/registrieren/probe"
-                        className="inline-flex h-11 items-center justify-center rounded-xl border border-[#154c83] bg-white px-3 text-sm font-medium text-[#154c83]"
-                      >
-                        Probetraining
-                      </Link>
-                    </div>
-                  </div>
-                ) : null}
-                <Button type="submit" className="h-14 w-full rounded-2xl bg-[#154c83] text-lg text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading}>
+                <Button type="submit" className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]" disabled={dbLoading || fastCheckinLoading}>
                   {dbLoading ? (
                     <span className="flex items-center justify-center gap-2">
                       <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
-                      Speichert...
+                      Check-in läuft...
                     </span>
-                  ) : "Mitglied einchecken"}
+                  ) : "Jetzt einchecken"}
                 </Button>
               </div>
-            </form>
+              </form>
+            ) : null}
           </CardContent>
         </Card>
       </div>
