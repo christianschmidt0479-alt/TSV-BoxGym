@@ -3,6 +3,11 @@
     {
       "path": "/api/admin-digest",
       "schedule": "0 8 * * 1-5"
+    },
+    {
+      "path": "/api/internal/keep-warm",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
+
