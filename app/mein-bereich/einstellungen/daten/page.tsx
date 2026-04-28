@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
 import { FormContainer } from "@/components/ui/form-container"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -205,21 +206,24 @@ export default function DatenPage() {
     <FormContainer
       title="Meine Daten"
       description={`${member.name || "Mitglied"} · ${member.email}`}
-      headerSlot={
-        <div className="flex items-center justify-end">
-          <Link
-            href="/mein-bereich/einstellungen"
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 hover:border-zinc-400"
-          >
-            Zurück
-          </Link>
-        </div>
-      }
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
+        <MemberAreaBrandHeader
+          title="Meine Daten"
+          subtitle="Halte deine Kontaktdaten aktuell"
+          actionSlot={
+            <Link
+              href="/mein-bereich/einstellungen"
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-white/40 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20"
+            >
+              Zurück
+            </Link>
+          }
+        />
+
         {message ? (
           <div
-            className={`rounded-lg px-3 py-2 text-sm ${
+            className={`rounded-xl px-3 py-3 text-sm ${
               message.includes("fehlgeschlagen")
                 ? "border border-red-200 bg-red-50 text-red-700"
                 : "border border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -230,14 +234,14 @@ export default function DatenPage() {
         ) : null}
 
         {error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800">
             {error}
           </div>
         ) : null}
 
         {!editMode ? (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 space-y-3 text-sm">
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 space-y-3 text-sm">
               <div>
                 <p className="text-zinc-500">Vorname</p>
                 <p className="font-medium text-zinc-900">{viewFirstName || "-"}</p>
@@ -265,49 +269,57 @@ export default function DatenPage() {
                 </p>
               </div>
             </div>
-            <Button type="button" className="w-full" onClick={() => setEditMode(true)}>
+            <Button type="button" className="h-14 w-full rounded-2xl bg-[#154c83] text-base font-semibold text-white hover:bg-[#123d69]" onClick={() => setEditMode(true)}>
               Bearbeiten
             </Button>
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4">
+              <p className="text-sm font-semibold text-zinc-900">Daten bearbeiten</p>
+              <p className="mt-1 text-xs text-zinc-600">Änderungen gelten direkt nach dem Speichern.</p>
+            </div>
+
+            <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-700">Vorname</label>
-              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Vorname" />
+              <Input className="h-12 rounded-xl border-zinc-300 bg-white" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Vorname" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-700">Nachname</label>
-              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Nachname" />
+              <Input className="h-12 rounded-xl border-zinc-300 bg-white" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Nachname" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-700">Telefon</label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Telefon" />
+              <Input className="h-12 rounded-xl border-zinc-300 bg-white" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Telefon" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-700">Geburtsdatum</label>
-              <Input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
+              <Input className="h-12 rounded-xl border-zinc-300 bg-white" type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-700">E-Mail</label>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input className="h-12 rounded-xl border-zinc-300 bg-white" value={email} onChange={(e) => setEmail(e.target.value)} />
               <p className="text-xs text-zinc-500">Änderungen der E-Mail erfordern eine erneute Bestätigung.</p>
             </div>
-            <Button
-              type="button"
-              className="w-full"
-              onClick={() => void handleSave()}
-              disabled={saving}
-            >
-              {saving ? "Speichert..." : "Speichern"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => setEditMode(false)}
-            >
-              Abbrechen
-            </Button>
+
+            <div className="space-y-3 pt-1">
+              <Button
+                type="button"
+                className="h-14 w-full rounded-2xl bg-[#154c83] text-base font-semibold text-white hover:bg-[#123d69]"
+                onClick={() => void handleSave()}
+                disabled={saving}
+              >
+                {saving ? "Speichert..." : "Speichern"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-14 w-full rounded-2xl"
+                onClick={() => setEditMode(false)}
+              >
+                Abbrechen
+              </Button>
+            </div>
           </div>
         )}
       </div>

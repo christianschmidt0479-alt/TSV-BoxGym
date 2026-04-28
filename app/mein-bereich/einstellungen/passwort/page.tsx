@@ -1,6 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
+import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
+import { FormContainer } from "@/components/ui/form-container"
+import { Button } from "@/components/ui/button"
 
 export default function PasswortPage() {
   const [email, setEmail] = useState("")
@@ -63,39 +67,49 @@ export default function PasswortPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center px-4 pt-10">
-      <div className="w-full max-w-md space-y-6 text-center">
+    <FormContainer
+      title="Passwort zurücksetzen"
+      description="Du erhältst eine E-Mail zum Zurücksetzen deines Passworts."
+    >
+      <div className="space-y-5">
+        <MemberAreaBrandHeader
+          title="Passwort ändern"
+          subtitle="Sende dir einen sicheren Reset-Link per E-Mail"
+          actionSlot={
+            <Link
+              href="/mein-bereich/einstellungen"
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-white/40 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20"
+            >
+              Zurück
+            </Link>
+          }
+        />
 
-        <h1 className="text-xl font-semibold">
-          Passwort zurücksetzen
-        </h1>
-
-        <p className="text-sm text-gray-600">
-          Du erhältst eine E-Mail zum Zurücksetzen deines Passworts.
-        </p>
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+          Wir senden den Reset-Link an die E-Mail-Adresse deines Mitgliederkontos.
+        </div>
 
         {message ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 text-left">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800 text-left">
             {message}
           </div>
         ) : null}
 
         {error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 text-left">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800 text-left">
             {error}
           </div>
         ) : null}
 
-        <button
-          className="w-full bg-[#0f2a44] text-white py-2 rounded-md text-sm disabled:opacity-60"
+        <Button
+          className="h-14 w-full rounded-2xl bg-[#154c83] text-base font-semibold text-white hover:bg-[#123d69] disabled:opacity-60"
           type="button"
           onClick={() => void handleSendResetMail()}
           disabled={loading}
         >
           {loading ? "Sendet..." : "E-Mail senden"}
-        </button>
-
+        </Button>
       </div>
-    </div>
+    </FormContainer>
   )
 }

@@ -236,7 +236,7 @@ export default function TrainerHeuteDaClient() {
             href="/trainer"
             className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
           >
-            Zurueck zum Dashboard
+            Zurück zum Dashboard
           </Link>
         </div>
 

@@ -1,6 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
+import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
+import { FormContainer } from "@/components/ui/form-container"
+import { Button } from "@/components/ui/button"
 
 export default function LoeschenPage() {
   const [loading, setLoading] = useState(false)
@@ -31,40 +35,49 @@ export default function LoeschenPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center px-4 pt-10">
-      <div className="w-full max-w-md space-y-6 text-center">
+    <FormContainer
+      title="Account löschen"
+      description="Dein Account wird nicht sofort gelöscht. Der Verein prüft deine Anfrage."
+    >
+      <div className="space-y-5">
+        <MemberAreaBrandHeader
+          title="Konto löschen"
+          subtitle="Sende eine Anfrage zur Prüfung durch den Verein"
+          actionSlot={
+            <Link
+              href="/mein-bereich/einstellungen"
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-white/40 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20"
+            >
+              Zurück
+            </Link>
+          }
+        />
 
-        <h1 className="text-xl font-semibold text-red-600">
-          Account löschen
-        </h1>
-
-        <p className="text-sm text-gray-600">
-          Dein Account wird nicht sofort gelöscht.
-          Der Verein prüft deine Anfrage.
-        </p>
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Die Löschung wird als Antrag verarbeitet und manuell geprüft.
+        </div>
 
         {message ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
             {message}
           </div>
         ) : null}
 
         {error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800">
             {error}
           </div>
         ) : null}
 
-        <button
-          className="w-full border border-red-300 text-red-600 py-2 rounded-md text-sm disabled:opacity-60"
+        <Button
+          className="h-14 w-full rounded-2xl border border-red-300 bg-white text-base font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
           type="button"
           onClick={() => void handleDeletionRequest()}
           disabled={loading}
         >
           {loading ? "Wird gesendet..." : "Löschung beantragen"}
-        </button>
-
+        </Button>
       </div>
-    </div>
+    </FormContainer>
   )
 }

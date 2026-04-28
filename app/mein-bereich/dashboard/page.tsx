@@ -8,6 +8,7 @@ import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { getUserContext } from "@/lib/getUserContext"
 import { MEMBER_AREA_SESSION_COOKIE } from "@/lib/publicAreaSession"
 import { resolveUserContext } from "@/lib/resolveUserContext"
+import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
 import { FormContainer } from "@/components/ui/form-container"
 
 export default async function DashboardPage() {
@@ -133,75 +134,77 @@ export default async function DashboardPage() {
     <FormContainer
       title="Mein Bereich"
       description="Deine Trainingsdaten und dein Kontostatus"
-      headerSlot={
-        <div className="flex items-center justify-end">
-          <Link
-            href="/mein-bereich/einstellungen"
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 hover:border-zinc-400"
-          >
-            Einstellungen
-          </Link>
-        </div>
-      }
     >
-      <div className="space-y-4">
-        <div className="rounded-xl border border-[#154c83] bg-[#154c83] px-4 py-4 text-white">
-          <p className="text-sm text-blue-100">Willkommen zurück</p>
-          <p className="text-lg font-semibold">{memberName}</p>
-        </div>
+      <div className="space-y-5">
+        <MemberAreaBrandHeader
+          title="Mein Bereich"
+          subtitle="Deine Übersicht für Training und Kontostatus"
+        />
 
-        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4">
-          <p className="text-sm text-zinc-600">Trainings diesen Monat</p>
-          <p className="mt-1 text-3xl font-extrabold text-zinc-900">{stats?.monthCount || 0}</p>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-lg bg-zinc-50 px-3 py-2">
-              <p className="text-zinc-500">Check-ins gesamt</p>
-              <p className="font-semibold text-zinc-900">{stats?.streak || 0}</p>
+        <div className="rounded-2xl border border-[#154c83] bg-[#154c83] px-4 py-4 text-white">
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-100">Status</p>
+          <p className="mt-1 text-lg font-semibold leading-tight">{memberName}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:text-sm">
+            <div className="rounded-xl bg-white/10 px-3 py-2">
+              <p className="text-blue-100">Gruppe</p>
+              <p className="mt-0.5 font-semibold text-white">{memberGroup || "-"}</p>
             </div>
-            <div className="rounded-lg bg-zinc-50 px-3 py-2">
-              <p className="text-zinc-500">Letztes Training</p>
-              <p className="font-semibold text-zinc-900">{stats?.lastCheckin || "-"}</p>
+            <div className="rounded-xl bg-white/10 px-3 py-2">
+              <p className="text-blue-100">Freigabe</p>
+              <p className="mt-0.5 font-semibold text-white">{member?.is_approved ? "Aktiv" : "Nicht freigegeben"}</p>
             </div>
           </div>
-        </div>
-
-        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4">
-          <p className="text-sm text-zinc-600">Gruppe</p>
-          <p className="font-semibold text-zinc-900">{memberGroup || "-"}</p>
-
-          <p className="mt-2 text-sm text-zinc-600">Status</p>
-          <p className={`font-semibold ${member?.is_approved ? "text-emerald-700" : "text-amber-700"}`}>
-            {member?.is_approved ? "Aktiv" : "Nicht freigegeben"}
-          </p>
 
           {!member?.is_approved ? (
-            <p className="mt-2 text-xs text-zinc-500">
+            <p className="mt-3 text-xs text-blue-100">
               Verbleibende Trainings ohne Freigabe: {Math.max(MAX_TRAININGS_WITHOUT_APPROVAL - trainingsWithoutApprovalUsed, 0)}
             </p>
           ) : null}
 
           {hasCheckedInToday ? (
-            <p className="mt-2 text-xs font-semibold text-emerald-700">Heute bereits eingecheckt</p>
+            <p className="mt-2 text-xs font-semibold text-emerald-200">Heute bereits eingecheckt</p>
           ) : null}
         </div>
 
-        <div className="grid grid-cols-1 gap-2">
+        <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Training</p>
+          <p className="mt-1 text-3xl font-extrabold text-zinc-900">{stats?.monthCount || 0}</p>
+          <p className="text-sm text-zinc-600">diesen Monat</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-xl bg-zinc-50 px-3 py-2">
+              <p className="text-zinc-500">Check-ins gesamt</p>
+              <p className="mt-0.5 font-semibold text-zinc-900">{stats?.streak || 0}</p>
+            </div>
+            <div className="rounded-xl bg-zinc-50 px-3 py-2">
+              <p className="text-zinc-500">Letztes Training</p>
+              <p className="mt-0.5 font-semibold text-zinc-900">{stats?.lastCheckin || "-"}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
           <Link
             href="/mein-bereich/einstellungen/daten"
-            className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
+            className="inline-flex h-14 items-center justify-center rounded-2xl border border-[#154c83] bg-white px-4 text-base font-semibold text-[#154c83] hover:bg-[#f4f9ff]"
           >
             Meine Daten bearbeiten
           </Link>
           <Link
             href="/mein-bereich/einstellungen/passwort"
-            className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
+            className="inline-flex h-14 items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 text-base font-semibold text-zinc-900 hover:border-zinc-400"
           >
             Passwort zurücksetzen
+          </Link>
+          <Link
+            href="/mein-bereich/einstellungen"
+            className="inline-flex h-14 items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 text-base font-semibold text-zinc-900 hover:border-zinc-400"
+          >
+            Alle Einstellungen
           </Link>
         </div>
 
         {isAdmin ? (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-800">
             Du bist als Admin eingeloggt.
           </div>
         ) : null}

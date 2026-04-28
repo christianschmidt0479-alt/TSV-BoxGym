@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ErrorBox } from "@/components/ErrorBox"
+import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
 import { Button } from "@/components/ui/button"
 import { FormContainer } from "@/components/ui/form-container"
 import { Input } from "@/components/ui/input"
@@ -56,8 +57,14 @@ export default function MemberLoginForm() {
   }
 
   return (
-    <FormContainer title="Mein Bereich" description="Bitte melde dich an">
-      <form onSubmit={handleLogin} className="space-y-4">
+    <FormContainer title="Mein TSV BoxGym" description="Melde dich mit E-Mail und PIN an.">
+      <div className="space-y-5">
+        <MemberAreaBrandHeader
+          title="Willkommen zurück"
+          subtitle="Sicherer Zugang zu deinen Trainingsdaten"
+        />
+
+        <form onSubmit={handleLogin} className="space-y-4">
         <ErrorBox message={error} />
 
         {showSessionExpired ? (
@@ -87,22 +94,25 @@ export default function MemberLoginForm() {
           />
         </div>
 
-        <Button
-          type="submit"
-          className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]"
-        >
-          Einloggen
-        </Button>
-
-        <p className="text-center text-sm text-zinc-500">
-          <Link
-            href="/mein-bereich/passwort-vergessen"
-            className="text-[#154c83] hover:underline"
+          <Button
+            type="submit"
+            className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]"
           >
-            Passwort vergessen?
-          </Link>
-        </p>
-      </form>
+            Einloggen
+          </Button>
+
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-center">
+            <p className="text-sm text-zinc-600">
+              <Link
+                href="/mein-bereich/passwort-vergessen"
+                className="font-medium text-[#154c83] hover:underline"
+              >
+                Passwort vergessen?
+              </Link>
+            </p>
+          </div>
+        </form>
+      </div>
     </FormContainer>
   )
 }

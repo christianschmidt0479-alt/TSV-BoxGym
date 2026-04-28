@@ -4,8 +4,6 @@ export default function RegistrierenProbePage() {
   return (
     <MemberRegistrationForm
       registrationType="trial"
-      heading="Probemitglied registrieren"
-      description="Registrierung für ein Probetraining im Bereich Boxen."
     />
   )
 }

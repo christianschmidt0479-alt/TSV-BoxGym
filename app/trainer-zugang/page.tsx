@@ -3,6 +3,10 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import LoginCard from "@/components/LoginCard"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/ui/password-input"
 
 export default function TrainerLoginPage() {
   const [email, setEmail] = useState("")
@@ -58,38 +62,37 @@ export default function TrainerLoginPage() {
   return (
     <LoginCard title="Trainer / Admin Login" error={error}>
       <form onSubmit={handleLogin} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-zinc-900">
+        <div className="space-y-2">
+          <Label>
             E-Mail
-          </label>
-          <input
+          </Label>
+          <Input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full h-12 rounded-xl border border-zinc-300 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
             required
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-zinc-900">
+        <div className="space-y-2">
+          <Label>
             Passwort
-          </label>
-          <input
-            type="password"
+          </Label>
+          <PasswordInput
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full h-12 rounded-xl border border-zinc-300 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
             required
           />
         </div>
 
-        <button
+        <Button
           type="submit"
-          className="w-full h-12 rounded-xl bg-[#154c83] hover:bg-[#123d69] transition text-white font-medium"
+          className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]"
         >
           Einloggen
-        </button>
+        </Button>
       </form>
     </LoginCard>
   )

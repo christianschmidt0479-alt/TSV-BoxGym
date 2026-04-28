@@ -8,25 +8,23 @@ type Props = {
 
 export default function LoginCard({ title, children, error }: Props) {
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl border border-[#d8e3ee] p-5 space-y-4 [&_button[type=submit]]:h-11">
-
-        <div className="flex justify-center mb-2">
-          <img src="/logo.png" className="h-10" alt="TSV BoxGym" />
+    <div className="min-h-screen bg-zinc-50 px-4 py-6 text-zinc-900 md:px-6 md:py-8">
+      <div className="mx-auto w-full max-w-md rounded-[24px] border border-[#d8e3ee] bg-white px-5 py-5 shadow-sm space-y-4 [&_button[type=submit]]:h-16 [&_button[type=submit]]:rounded-2xl">
+        <div className="flex justify-center pb-1">
+          <img src="/logo.png" className="h-12 w-auto" alt="TSV BoxGym" />
         </div>
 
-        <h1 className="text-xl font-semibold text-zinc-900">
+        <h1 className="text-2xl font-semibold text-zinc-900">
           {title}
         </h1>
 
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-zinc-600">
           Bitte melde dich an
         </p>
 
         <ErrorBox message={error} />
 
         {children}
-
       </div>
     </div>
   )

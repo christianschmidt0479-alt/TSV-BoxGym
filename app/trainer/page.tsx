@@ -205,12 +205,12 @@ export default async function TrainerPage() {
           <Link href="/trainer/heute-da" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Heute da</div>
             <div className="text-2xl font-extrabold text-zinc-900">{todayCount}</div>
-            <div className="mt-1 text-sm text-zinc-600">Anwesenheit heute oeffnen</div>
+            <div className="mt-1 text-sm text-zinc-600">Anwesenheit heute öffnen</div>
           </Link>
           <Link href="/trainer/probemitglieder" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Probemitglieder</div>
             <div className="text-2xl font-extrabold text-zinc-900">{trialCount}</div>
-            <div className="mt-1 text-sm text-zinc-600">Probemitglieder oeffnen</div>
+            <div className="mt-1 text-sm text-zinc-600">Probemitglieder öffnen</div>
           </Link>
           <Link href="/trainer/probemitglieder" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Probemitglieder heute</div>

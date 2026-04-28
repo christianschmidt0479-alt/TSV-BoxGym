@@ -1,10 +1,10 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
 import { ErrorBox } from "@/components/ErrorBox"
+import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
 import { Button } from "@/components/ui/button"
 import { FormContainer } from "@/components/ui/form-container"
 import { InfoHint } from "@/components/ui/info-hint"
@@ -18,8 +18,8 @@ export type RegistrationType = "member" | "trial"
 
 type MemberRegistrationFormProps = {
   registrationType?: RegistrationType
-  heading: string
-  description: string
+  heading?: string
+  description?: string
 }
 
 function getStoredString(key: string) {
@@ -70,13 +70,18 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
     setRegisterFirstName(getStoredString("tsv_register_first_name"))
     setRegisterLastName(getStoredString("tsv_register_last_name"))
     setRegisterBirthDate(getStoredString("tsv_register_birthdate"))
-    const savedGender = getStoredString("tsv_register_gender")
-    if (savedGender) setRegisterGender(savedGender)
+    if (registrationType === "member") {
+      const savedGender = getStoredString("tsv_register_gender")
+      if (savedGender) setRegisterGender(savedGender)
+    } else {
+      setRegisterGender("")
+      window.localStorage.removeItem("tsv_register_gender")
+    }
     setRegisterEmail(getStoredString("tsv_register_email"))
     setRegisterPhone(getStoredString("tsv_register_phone"))
     setRegisterBaseGroup("")
     window.localStorage.removeItem("tsv_register_base_group")
-  }, [])
+  }, [registrationType])
 
   useEffect(() => {
     if (!isClient) return
@@ -95,8 +100,12 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
 
   useEffect(() => {
     if (!isClient) return
+    if (registrationType !== "member") {
+      localStorage.removeItem("tsv_register_gender")
+      return
+    }
     localStorage.setItem("tsv_register_gender", JSON.stringify(registerGender))
-  }, [isClient, registerGender])
+  }, [isClient, registerGender, registrationType])
 
   useEffect(() => {
     if (!isClient) return
@@ -229,10 +238,12 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
     <FormContainer
       title={heading}
       description={description}
-      headerSlot={<Image src="/logo.png" alt="TSV Falkensee" width={64} height={64} className="mx-auto h-16 w-auto" />}
     >
       <div className="space-y-4">
-        <p className="text-sm text-zinc-600">Bitte fülle die folgenden Angaben vollständig aus.</p>
+        <MemberAreaBrandHeader
+          title={registrationType === "member" ? "Mitglied registrieren" : "Probetraining registrieren"}
+          subtitle="Bitte fülle die folgenden Angaben vollständig aus."
+        />
 
         {registrationSuccessMessage ? (
           <div className="space-y-4 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-4">
@@ -367,7 +378,7 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
               {privacyError ? <p className="text-sm text-red-600">{privacyError}</p> : null}
             </div>
 
-            <Button type="submit" disabled={dbLoading} className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69] disabled:opacity-60">
+            <Button type="submit" disabled={dbLoading} className="mt-4 h-14 w-full rounded-2xl bg-[#154c83] text-base font-semibold text-white hover:bg-[#123d69] disabled:opacity-60">
               {dbLoading ? "Speichere..." : "Registrieren"}
             </Button>
           </form>
