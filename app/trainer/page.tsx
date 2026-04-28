@@ -221,6 +221,14 @@ export default async function TrainerPage() {
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Link
+            href="/trainer/checkin"
+            className="rounded-2xl border border-[#154c83] bg-white px-5 py-5 text-lg font-semibold text-[#154c83] shadow-sm transition hover:bg-[#f2f7fb]"
+          >
+            <div>Quick Check-in</div>
+            <div className="mt-1 text-sm font-medium text-zinc-600">Mitglied suchen und direkt einchecken</div>
+          </Link>
+
+          <Link
             href="/verwaltung-neu/checkin"
             className="rounded-2xl border border-[#154c83] bg-[#154c83] px-5 py-5 text-lg font-semibold text-white shadow-sm transition hover:bg-[#0f3d6b]"
           >

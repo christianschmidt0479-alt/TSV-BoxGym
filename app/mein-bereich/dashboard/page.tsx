@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
+import Link from "next/link"
 import { findMemberById } from "@/lib/boxgymDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { MAX_TRAININGS_WITHOUT_APPROVAL } from "@/lib/memberCheckin"
@@ -7,6 +8,7 @@ import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { getUserContext } from "@/lib/getUserContext"
 import { MEMBER_AREA_SESSION_COOKIE } from "@/lib/publicAreaSession"
 import { resolveUserContext } from "@/lib/resolveUserContext"
+import { FormContainer } from "@/components/ui/form-container"
 
 export default async function DashboardPage() {
   const cookieStore = await cookies()
@@ -128,78 +130,82 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 pt-8 flex justify-center">
-      <div className="w-full max-w-md space-y-6">
-        {/* HEADER */}
-        <div>
-          <h1 className="text-xl font-semibold">
-            Willkommen zurück 👋
-          </h1>
-          <p className="text-sm text-gray-500">
-            {memberName}
-          </p>
+    <FormContainer
+      title="Mein Bereich"
+      description="Deine Trainingsdaten und dein Kontostatus"
+      headerSlot={
+        <div className="flex items-center justify-end">
+          <Link
+            href="/mein-bereich/einstellungen"
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 hover:border-zinc-400"
+          >
+            Einstellungen
+          </Link>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="rounded-xl border border-[#154c83] bg-[#154c83] px-4 py-4 text-white">
+          <p className="text-sm text-blue-100">Willkommen zurück</p>
+          <p className="text-lg font-semibold">{memberName}</p>
         </div>
 
-        {/* HERO CARD */}
-        <div className="bg-[#0f2a44] text-white rounded-xl p-5">
-          <p className="text-sm opacity-80">
-            Trainings diesen Monat
-          </p>
-
-          <p className="text-3xl font-bold">
-            {stats?.monthCount || 0}
-          </p>
-
-          <div className="mt-4 flex justify-between text-sm">
-            <div>
-              <p className="opacity-70">Check-ins gesamt</p>
-              <p className="font-semibold">
-                {stats?.streak || 0}
-              </p>
+        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4">
+          <p className="text-sm text-zinc-600">Trainings diesen Monat</p>
+          <p className="mt-1 text-3xl font-extrabold text-zinc-900">{stats?.monthCount || 0}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-lg bg-zinc-50 px-3 py-2">
+              <p className="text-zinc-500">Check-ins gesamt</p>
+              <p className="font-semibold text-zinc-900">{stats?.streak || 0}</p>
             </div>
-
-            <div>
-              <p className="opacity-70">Letztes Training</p>
-              <p className="font-semibold">
-                {stats?.lastCheckin || "-"}
-              </p>
+            <div className="rounded-lg bg-zinc-50 px-3 py-2">
+              <p className="text-zinc-500">Letztes Training</p>
+              <p className="font-semibold text-zinc-900">{stats?.lastCheckin || "-"}</p>
             </div>
           </div>
         </div>
 
-        {/* STATUS */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm text-gray-600">
-            Gruppe
-          </p>
-          <p className="font-semibold">
-            {memberGroup || "-"}
-          </p>
+        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4">
+          <p className="text-sm text-zinc-600">Gruppe</p>
+          <p className="font-semibold text-zinc-900">{memberGroup || "-"}</p>
 
-          <p className="text-sm text-gray-600 mt-2">
-            Status
-          </p>
-          <p className="font-semibold text-green-600">
+          <p className="mt-2 text-sm text-zinc-600">Status</p>
+          <p className={`font-semibold ${member?.is_approved ? "text-emerald-700" : "text-amber-700"}`}>
             {member?.is_approved ? "Aktiv" : "Nicht freigegeben"}
           </p>
+
+          {!member?.is_approved ? (
+            <p className="mt-2 text-xs text-zinc-500">
+              Verbleibende Trainings ohne Freigabe: {Math.max(MAX_TRAININGS_WITHOUT_APPROVAL - trainingsWithoutApprovalUsed, 0)}
+            </p>
+          ) : null}
+
+          {hasCheckedInToday ? (
+            <p className="mt-2 text-xs font-semibold text-emerald-700">Heute bereits eingecheckt</p>
+          ) : null}
         </div>
 
-        {/* MOTIVATION */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm font-semibold mb-1">
-            🔥 Bleib dran!
-          </p>
-          <p className="text-sm text-gray-600">
-            Halte deine Trainingsserie aufrecht.
-          </p>
+        <div className="grid grid-cols-1 gap-2">
+          <Link
+            href="/mein-bereich/einstellungen/daten"
+            className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
+          >
+            Meine Daten bearbeiten
+          </Link>
+          <Link
+            href="/mein-bereich/einstellungen/passwort"
+            className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
+          >
+            Passwort zurücksetzen
+          </Link>
         </div>
 
-        {isAdmin && (
-          <div className="p-3 rounded-lg bg-blue-50 text-blue-800 text-sm">
-            Du bist als Admin eingeloggt
+        {isAdmin ? (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            Du bist als Admin eingeloggt.
           </div>
-        )}
+        ) : null}
       </div>
-    </div>
+    </FormContainer>
   )
 }

@@ -10,8 +10,10 @@ function maskEmail(email: string | undefined | null): string {
   return `${userMasked}@${domainMasked}${tld ? "." + tld : ""}`
 }
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { createCheckin, findMemberByEmailAndPin } from "@/lib/boxgymDb"
+import { verifyTrainerSessionToken } from "@/lib/authSession"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { handleCheckin } from "@/lib/checkinCore"
 import { applyMemberDeviceCookie, clearMemberDeviceCookie, createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
@@ -31,6 +33,9 @@ type MemberCheckinBody = {
   sessionId?: string
   selectedGroup?: string
   rememberDevice?: boolean
+  // Trainer path
+  memberId?: string
+  source?: string
 }
 
 type MemberRecord = {
@@ -110,6 +115,11 @@ export async function POST(request: Request) {
       return textResponse("Forbidden", 403)
     }
 
+    // SECURITY: Explicitly require POST method
+    if (request.method !== "POST") {
+      return new NextResponse("Method not allowed", { status: 405 })
+    }
+
     const body = (await request.json()) as MemberCheckinBody
     const email = body.email?.trim().toLowerCase() ?? ""
     const password = body.password?.trim() ?? body.pin?.trim() ?? ""
@@ -124,7 +134,7 @@ export async function POST(request: Request) {
       !checkinSettings.disableCheckinTimeWindow && checkinSettings.disableNormalCheckinTimeWindow
 
     const rateLimit = await checkRateLimitAsync(
-      `public-member-checkin:${getRequestIp(request)}:${email || "__email__"}`,
+      `public-member-checkin:${getRequestIp(request)}:${email || body.memberId || "__fallback__"}`,
       25,
       10 * 60 * 1000
     )
@@ -139,27 +149,72 @@ export async function POST(request: Request) {
     const todaysSessions = getSessionsForDate(liveDate)
     const availableGroups = getAvailableSessionsForToday(liveDate)
     const availableGroupNames = availableGroups.map((session) => session.group)
-    if (!email || !password) {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn('[member-flow][checkin][error] reason=missing_credentials email=' + maskEmail(email))
-      }
-      return textResponse("Bitte E-Mail und Passwort eingeben.", 400)
-    }
+    // ========================================================================
+    // MEMBER RESOLUTION — trainer path (memberId + session) or member path (email+pin)
+    // ========================================================================
+    // SECURITY: source="trainer" is a privileged path. Any request claiming
+    // source="trainer" MUST go through trainer-session validation only.
+    // It must NEVER fall back to the email+pin path.
+    // ========================================================================
+    let resolvedMember: MemberRecord | null = null
 
-    const memberMatch = await findMemberByEmailAndPin(email, password)
-    if (memberMatch?.status === "missing_email") {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
+    if (body.source === "trainer") {
+      // SECURITY: memberId is mandatory for trainer path — no fallback allowed
+      const trainerMemberId = body.memberId?.trim() ?? ""
+      if (!trainerMemberId) {
+        return textResponse("memberId erforderlich", 400)
       }
-      return textResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", 401)
-    }
-    const resolvedMember = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
+      // SECURITY: valid trainer session required — hard fail if missing or invalid
+      const cookieStore = await cookies()
+      const session = cookieStore.get("trainer_session")
+      if (!session) {
+        return textResponse("Nicht autorisiert", 401)
+      }
+      const trainer = await verifyTrainerSessionToken(session.value)
+      if (!trainer) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn('[checkin][trainer][invalid_session]')
+        }
+        return textResponse("Session ungültig", 401)
+      }
+      if (process.env.NODE_ENV !== "production") {
+        console.info('[checkin][trainer][session_ok]')
+      }
+      // Mitglied per ID laden
+      const { data: trainerMember, error: trainerMemberError } = await supabase
+        .from("members")
+        .select("id, first_name, last_name, base_group, email_verified, is_approved, is_trial, is_competition_member, member_phase")
+        .eq("id", trainerMemberId)
+        .maybeSingle()
+      if (trainerMemberError) throw trainerMemberError
+      if (!trainerMember) {
+        return textResponse("Mitglied nicht gefunden.", 404)
+      }
+      resolvedMember = trainerMember as MemberRecord
+    } else {
+      // Standard Member-Pfad (email + pin) — never reached when source="trainer"
+      if (!email || !password) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn('[member-flow][checkin][error] reason=missing_credentials email=' + maskEmail(email))
+        }
+        return textResponse("Bitte E-Mail und Passwort eingeben.", 400)
+      }
 
-    if (!resolvedMember) {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
+      const memberMatch = await findMemberByEmailAndPin(email, password)
+      if (memberMatch?.status === "missing_email") {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
+        }
+        return textResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", 401)
       }
-      return textResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", 401)
+      resolvedMember = (memberMatch?.status === "success" ? memberMatch.member : null) as MemberRecord | null
+
+      if (!resolvedMember) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn('[member-flow][checkin][error] reason=not_found email=' + maskEmail(email))
+        }
+        return textResponse("Mitglied nicht gefunden oder Passwort nicht korrekt.", 401)
+      }
     }
 
 

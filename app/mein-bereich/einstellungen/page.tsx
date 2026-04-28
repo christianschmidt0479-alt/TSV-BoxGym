@@ -1,34 +1,34 @@
 import Link from "next/link"
+import { FormContainer } from "@/components/ui/form-container"
 
 export default function EinstellungenPage() {
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center px-4 pt-10">
-      <div className="w-full max-w-md space-y-6">
+    <FormContainer title="Einstellungen" description="Kontodaten und Sicherheit verwalten">
+      <div className="space-y-3">
+        <Link
+          href="/mein-bereich/einstellungen/daten"
+          className="block rounded-xl border border-zinc-300 bg-white px-4 py-3 hover:border-zinc-400"
+        >
+          <p className="text-sm font-semibold text-zinc-900">Meine Daten</p>
+          <p className="text-xs text-zinc-600">Name, Kontakt und persönliche Daten</p>
+        </Link>
 
-        <h1 className="text-xl font-semibold text-center">
-          Einstellungen
-        </h1>
+        <Link
+          href="/mein-bereich/einstellungen/passwort"
+          className="block rounded-xl border border-zinc-300 bg-white px-4 py-3 hover:border-zinc-400"
+        >
+          <p className="text-sm font-semibold text-zinc-900">Passwort zurücksetzen</p>
+          <p className="text-xs text-zinc-600">Per E-Mail-Link</p>
+        </Link>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-
-          <Link href="/mein-bereich/einstellungen/daten" className="block border rounded-md p-3">
-            <p className="font-medium text-sm">Meine Daten</p>
-          </Link>
-
-          <Link href="/mein-bereich/einstellungen/passwort" className="block border rounded-md p-3">
-            <p className="font-medium text-sm">Passwort zurücksetzen</p>
-            <p className="text-xs text-gray-500">Per E-Mail</p>
-          </Link>
-
-        </div>
-
-        <div className="bg-white border border-red-200 rounded-xl p-4">
-          <Link href="/mein-bereich/einstellungen/loeschen" className="text-red-600 text-sm">
-            Account löschen beantragen
-          </Link>
-        </div>
-
+        <Link
+          href="/mein-bereich/einstellungen/loeschen"
+          className="block rounded-xl border border-red-200 bg-red-50 px-4 py-3 hover:border-red-300"
+        >
+          <p className="text-sm font-semibold text-red-700">Account löschen beantragen</p>
+          <p className="text-xs text-red-600">Anfrage wird vom Verein geprüft</p>
+        </Link>
       </div>
-    </div>
+    </FormContainer>
   )
 }

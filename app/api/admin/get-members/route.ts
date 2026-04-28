@@ -39,6 +39,10 @@ export async function POST(req: Request) {
     }
 
     const { page = 1, pageSize = 10 } = body as { page?: number; pageSize?: number }
+    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
+    const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : 10
+    const from = (safePage - 1) * safePageSize
+    const to = from + safePageSize - 1
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -48,32 +52,48 @@ export async function POST(req: Request) {
     const { data: members, error, count } = await supabase
       .from("members")
       .select("id, name, first_name, last_name, email, base_group, office_list_group, is_trial, is_approved, email_verified, member_phase, created_at", { count: "exact" })
+      .range(from, to)
 
     if (error) {
       console.error("SUPABASE ERROR:", error)
       return new Response(JSON.stringify({ error: true }), { status: 500 })
     }
 
-    const { data: checkins, error: checkinsError } = await supabase
-      .from("checkins")
-      .select("member_id, date, created_at")
-
-    if (checkinsError) {
-      console.error("SUPABASE ERROR:", checkinsError)
-      return new Response(JSON.stringify({ error: true }), { status: 500 })
-    }
+    const memberIds = (members ?? []).map((member) => member.id).filter((id) => typeof id === "string" && id.length > 0)
 
     const checkinCountByMemberId = new Map<string, number>()
     const checkedInTodayByMemberId = new Set<string>()
     const todayBerlin = berlinDayKey(new Date())
 
-    for (const row of checkins ?? []) {
-      if (!row.member_id) continue
-      checkinCountByMemberId.set(row.member_id, (checkinCountByMemberId.get(row.member_id) ?? 0) + 1)
+    if (memberIds.length > 0) {
+      const { data: pageCheckins, error: pageCheckinsError } = await supabase
+        .from("checkins")
+        .select("member_id, date, created_at")
+        .in("member_id", memberIds)
 
-      if (isTodayCheckinInBerlin(row, todayBerlin)) {
-        checkedInTodayByMemberId.add(row.member_id)
+      if (pageCheckinsError) {
+        console.error("SUPABASE ERROR:", pageCheckinsError)
+        return new Response(JSON.stringify({ error: true }), { status: 500 })
       }
+
+      for (const row of pageCheckins ?? []) {
+        if (!row.member_id) continue
+        checkinCountByMemberId.set(row.member_id, (checkinCountByMemberId.get(row.member_id) ?? 0) + 1)
+
+        if (isTodayCheckinInBerlin(row, todayBerlin)) {
+          checkedInTodayByMemberId.add(row.member_id)
+        }
+      }
+    }
+
+    const { data: todayCheckins, error: todayCheckinsError } = await supabase
+      .from("checkins")
+      .select("member_id")
+      .eq("date", todayBerlin)
+
+    if (todayCheckinsError) {
+      console.error("SUPABASE ERROR:", todayCheckinsError)
+      return new Response(JSON.stringify({ error: true }), { status: 500 })
     }
 
     const withCheckinCounts = (members ?? []).map((member) => ({
@@ -82,30 +102,14 @@ export async function POST(req: Request) {
       checkedInToday: checkedInTodayByMemberId.has(member.id),
     }))
 
-    const totalTodayCount = withCheckinCounts.filter((member) => member.checkedInToday).length
-
-    withCheckinCounts.sort((a, b) => {
-      const aNotApprovedRank = a.is_approved ? 1 : 0
-      const bNotApprovedRank = b.is_approved ? 1 : 0
-      if (aNotApprovedRank !== bNotApprovedRank) {
-        return aNotApprovedRank - bNotApprovedRank
-      }
-
-      if (a.checkinCount !== b.checkinCount) {
-        return b.checkinCount - a.checkinCount
-      }
-
-      const aName = (a.name || `${a.first_name || ""} ${a.last_name || ""}`).trim()
-      const bName = (b.name || `${b.first_name || ""} ${b.last_name || ""}`).trim()
-      return aName.localeCompare(bName, "de")
-    })
-
-    const from = (page - 1) * pageSize
-    const to = from + pageSize
-    const pagedMembers = withCheckinCounts.slice(from, to)
+    const totalTodayCount = new Set(
+      (todayCheckins ?? [])
+        .map((row) => row.member_id)
+        .filter((memberId): memberId is string => typeof memberId === "string" && memberId.length > 0)
+    ).size
 
     return new Response(JSON.stringify({
-      data: pagedMembers,
+      data: withCheckinCounts,
       total: count,
       totalTodayCount,
     }), { status: 200 })

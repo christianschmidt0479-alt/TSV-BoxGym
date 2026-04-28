@@ -1,6 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
+import { FormContainer } from "@/components/ui/form-container"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 
 type MemberView = {
   name: string
@@ -184,36 +188,45 @@ export default function DatenPage() {
     }
   }
 
-  if (!member) {
-    return <p>Lade Daten...</p>
-  }
-
   const fullName = member?.name || ""
   const nameParts = fullName.split(" ")
   const viewFirstName = nameParts[0] || ""
   const viewLastName = nameParts.slice(1).join(" ")
 
+  if (!member) {
+    return (
+      <FormContainer title="Meine Daten" description="Lade Daten...">
+        <div className="py-4 text-sm text-zinc-500">Bitte warten...</div>
+      </FormContainer>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center px-4 pt-10">
-      <div className="w-full max-w-md space-y-4">
-
-        <div className="bg-[#0f2a44] text-white rounded-xl p-5">
-          <p className="text-lg font-semibold">
-            {member?.name || "Mitglied"}
-          </p>
-          <p className="text-sm opacity-80">
-            {member?.email}
-          </p>
+    <FormContainer
+      title="Meine Daten"
+      description={`${member.name || "Mitglied"} · ${member.email}`}
+      headerSlot={
+        <div className="flex items-center justify-end">
+          <Link
+            href="/mein-bereich/einstellungen"
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 hover:border-zinc-400"
+          >
+            Zurück
+          </Link>
         </div>
-
+      }
+    >
+      <div className="space-y-4">
         {message ? (
-          <p className={`text-sm ${
-            message.includes("fehlgeschlagen")
-              ? "text-red-600"
-              : "text-green-600"
-          }`}>
+          <div
+            className={`rounded-lg px-3 py-2 text-sm ${
+              message.includes("fehlgeschlagen")
+                ? "border border-red-200 bg-red-50 text-red-700"
+                : "border border-emerald-200 bg-emerald-50 text-emerald-700"
+            }`}
+          >
             {message}
-          </p>
+          </div>
         ) : null}
 
         {error ? (
@@ -222,116 +235,82 @@ export default function DatenPage() {
           </div>
         ) : null}
 
-        {!editMode && (
-          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4 text-sm">
-
-            <div>
-              <p className="text-gray-500">Vorname</p>
-              <p className="font-medium">{viewFirstName || "-"}</p>
+        {!editMode ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 space-y-3 text-sm">
+              <div>
+                <p className="text-zinc-500">Vorname</p>
+                <p className="font-medium text-zinc-900">{viewFirstName || "-"}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500">Nachname</p>
+                <p className="font-medium text-zinc-900">{viewLastName || "-"}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500">Telefon</p>
+                <p className="font-medium text-zinc-900">{member.phone || "-"}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500">Geburtsdatum</p>
+                <p className="font-medium text-zinc-900">{formatDate(member.birthdate)}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500">Gruppe</p>
+                <p className="font-medium text-zinc-900">{member.group}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500">Status</p>
+                <p className={`font-medium ${member.is_approved ? "text-emerald-700" : "text-amber-700"}`}>
+                  {member.is_approved ? "Aktiv" : "Nicht freigegeben"}
+                </p>
+              </div>
             </div>
-
-            <div>
-              <p className="text-gray-500">Nachname</p>
-              <p className="font-medium">{viewLastName || "-"}</p>
-            </div>
-
-            <div>
-              <p className="text-gray-500">Telefon</p>
-              <p className="font-medium">{member?.phone || "-"}</p>
-            </div>
-
-            <div>
-              <p className="text-gray-500">Geburtsdatum</p>
-              <p className="font-medium">
-                {formatDate(member?.birthdate)}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-gray-500">Gruppe</p>
-              <p className="font-medium">{member?.group}</p>
-            </div>
-
-            <div>
-              <p className="text-gray-500">Status</p>
-              <p className="font-medium text-green-600">
-                {member?.is_approved ? "Aktiv" : "Nicht freigegeben"}
-              </p>
-            </div>
-
-            <button
-              onClick={() => setEditMode(true)}
-              className="mt-3 w-full bg-[#0f2a44] text-white py-2 rounded-md text-sm"
-              type="button"
-            >
+            <Button type="button" className="w-full" onClick={() => setEditMode(true)}>
               Bearbeiten
-            </button>
-
+            </Button>
           </div>
-        )}
-
-        {editMode && (
-          <div className="bg-white border rounded-xl p-4 space-y-4">
-
-            <input
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              className="w-full border px-3 py-2 rounded-md text-sm"
-              placeholder="Vorname"
-            />
-
-            <input
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              className="w-full border px-3 py-2 rounded-md text-sm"
-              placeholder="Nachname"
-            />
-
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full border px-3 py-2 rounded-md text-sm"
-              placeholder="Telefon"
-            />
-
-            <input
-              type="date"
-              value={birthdate}
-              onChange={(e) => setBirthdate(e.target.value)}
-              className="w-full border px-3 py-2 rounded-md text-sm"
-            />
-
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border px-3 py-2 rounded-md text-sm"
-            />
-
-            <p className="text-xs text-gray-500">
-              Änderungen der E-Mail erfordern eine erneute Bestätigung.
-            </p>
-
-            <button
-              className="w-full bg-[#0f2a44] text-white py-2 rounded-md text-sm disabled:opacity-60"
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-700">Vorname</label>
+              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Vorname" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-700">Nachname</label>
+              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Nachname" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-700">Telefon</label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Telefon" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-700">Geburtsdatum</label>
+              <Input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-700">E-Mail</label>
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+              <p className="text-xs text-zinc-500">Änderungen der E-Mail erfordern eine erneute Bestätigung.</p>
+            </div>
+            <Button
               type="button"
+              className="w-full"
               onClick={() => void handleSave()}
               disabled={saving}
             >
               {saving ? "Speichert..." : "Speichern"}
-            </button>
-
-            <button
-              onClick={() => setEditMode(false)}
-              className="w-full border py-2 rounded-md text-sm"
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setEditMode(false)}
             >
               Abbrechen
-            </button>
-
+            </Button>
           </div>
         )}
-
       </div>
-    </div>
+    </FormContainer>
   )
 }
