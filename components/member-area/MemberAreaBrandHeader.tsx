@@ -3,7 +3,7 @@ import type { ReactNode } from "react"
 
 type MemberAreaBrandHeaderProps = {
   title: string
-  subtitle: string
+  subtitle?: string
   actionSlot?: ReactNode
 }
 
@@ -18,7 +18,7 @@ export function MemberAreaBrandHeader({ title, subtitle, actionSlot }: MemberAre
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-100">TSV Falkensee BoxGym</p>
             <h2 className="text-base font-semibold leading-tight sm:text-lg">{title}</h2>
-            <p className="mt-1 text-xs text-blue-100 sm:text-sm">{subtitle}</p>
+            {subtitle ? <p className="mt-1 text-xs text-blue-100 sm:text-sm">{subtitle}</p> : null}
           </div>
         </div>
 

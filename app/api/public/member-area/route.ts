@@ -481,7 +481,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, code: "forbidden", message: "Forbidden" }, { status: 403 })
     }
 
-    const body = (await request.json()) as MemberAreaBody
+    let parsedBody: unknown
+    try {
+      parsedBody = await request.json()
+    } catch {
+      return NextResponse.json({ ok: false, error: "Ungültige Anfrage" }, { status: 400 })
+    }
+
+    if (!parsedBody || typeof parsedBody !== "object") {
+      return NextResponse.json({ ok: false, error: "Ungültige Anfrage" }, { status: 400 })
+    }
+
+    const body = parsedBody as MemberAreaBody
     if (process.env.NODE_ENV !== "production") {
       console.log("ACTION:", body.action)
     }

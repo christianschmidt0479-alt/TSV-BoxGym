@@ -2,8 +2,10 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import LoginCard from "@/components/LoginCard"
+import { ErrorBox } from "@/components/ErrorBox"
+import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
 import { Button } from "@/components/ui/button"
+import { FormContainer } from "@/components/ui/form-container"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
@@ -60,42 +62,51 @@ export default function TrainerLoginPage() {
   }
 
   return (
-    <LoginCard title="Trainer / Admin Login" error={error}>
-      <form onSubmit={handleLogin} className="space-y-4">
-        <div className="space-y-2">
-          <Label>
-            E-Mail
-          </Label>
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
-            autoComplete="username"
-            required
-          />
-        </div>
+    <FormContainer rootClassName="!min-h-[calc(100svh-12rem)] !py-3 md:!py-5">
+      <div className="space-y-4 sm:space-y-5">
+        <MemberAreaBrandHeader
+          title="Trainer / Admin Login"
+          subtitle=""
+        />
 
-        <div className="space-y-2">
-          <Label>
-            Passwort
-          </Label>
-          <PasswordInput
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
-            autoComplete="current-password"
-            required
-          />
-        </div>
+        <form onSubmit={handleLogin} className="space-y-3 sm:space-y-4">
+          <ErrorBox message={error} />
 
-        <Button
-          type="submit"
-          className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]"
-        >
-          Einloggen
-        </Button>
-      </form>
-    </LoginCard>
+          <div className="space-y-2">
+            <Label>
+              E-Mail
+            </Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
+              autoComplete="username"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>
+              Passwort
+            </Label>
+            <PasswordInput
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
+              autoComplete="current-password"
+              required
+            />
+          </div>
+
+          <Button
+            type="submit"
+            className="h-14 w-full rounded-2xl bg-[#154c83] text-base font-semibold text-white hover:bg-[#123d69]"
+          >
+            Einloggen
+          </Button>
+        </form>
+      </div>
+    </FormContainer>
   )
 }

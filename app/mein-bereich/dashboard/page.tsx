@@ -131,11 +131,8 @@ export default async function DashboardPage() {
   }
 
   return (
-    <FormContainer
-      title="Mein Bereich"
-      description="Deine Trainingsdaten und dein Kontostatus"
-    >
-      <div className="space-y-5">
+    <FormContainer rootClassName="!min-h-[calc(100svh-11rem)] !py-3 md:!py-5">
+      <div className="space-y-4 sm:space-y-5">
         <MemberAreaBrandHeader
           title="Mein Bereich"
           subtitle="Deine Übersicht für Training und Kontostatus"

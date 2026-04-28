@@ -194,7 +194,7 @@ export default async function TrainerPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-4 py-6 text-zinc-900 md:px-6 md:py-8">
+    <div className="min-h-[calc(100svh-11rem)] bg-zinc-50 px-4 py-4 text-zinc-900 md:px-6 md:py-6">
       <div className="mx-auto max-w-5xl space-y-4">
         <div className="rounded-2xl bg-[#154c83] px-4 py-4 text-base font-semibold text-white">
           Trainerbereich Halle

@@ -57,15 +57,15 @@ export default function MemberLoginForm() {
   }
 
   return (
-    <FormContainer>
-      <div className="space-y-5">
+    <FormContainer rootClassName="!min-h-[calc(100svh-12rem)] !py-3 md:!py-5">
+      <div className="space-y-4 sm:space-y-5">
         <MemberAreaBrandHeader
           title="Willkommen zurück"
-          subtitle="Sicherer Zugang zu deinen Trainingsdaten"
+          subtitle=""
         />
 
-        <form onSubmit={handleLogin} className="space-y-4">
-        <ErrorBox message={error} />
+        <form onSubmit={handleLogin} className="space-y-3 sm:space-y-4">
+          <ErrorBox message={error} />
 
         {showSessionExpired ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -73,37 +73,37 @@ export default function MemberLoginForm() {
           </div>
         ) : null}
 
-        <div className="space-y-2">
-          <Label>E-Mail</Label>
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
-            autoComplete="username"
-            required
-          />
-        </div>
+          <div className="space-y-2">
+            <Label>E-Mail</Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
+              autoComplete="username"
+              required
+            />
+          </div>
 
-        <div className="space-y-2">
-          <Label>Passwort</Label>
-          <PasswordInput
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
-            autoComplete="current-password"
-            required
-          />
-        </div>
+          <div className="space-y-2">
+            <Label>Passwort</Label>
+            <PasswordInput
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
+              autoComplete="current-password"
+              required
+            />
+          </div>
 
           <Button
             type="submit"
-            className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]"
+            className="h-14 w-full rounded-2xl bg-[#154c83] text-base font-semibold text-white hover:bg-[#123d69]"
           >
             Einloggen
           </Button>
 
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-center">
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-center">
             <p className="text-sm text-zinc-600">
               <Link
                 href="/mein-bereich/passwort-vergessen"
