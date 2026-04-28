@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { isTodayCheckinInBerlin } from "@/lib/dateFormat"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 function getServerSupabase() {
@@ -30,15 +31,17 @@ export async function GET(request: Request) {
 
     const supabase = getServerSupabase()
     const [checkinsResponse, membersResponse] = await Promise.all([
-      supabase.from("checkins").select("id, member_id, group_name, date").eq("date", today),
+      supabase.from("checkins").select("id, member_id, group_name, date, created_at"),
       supabase.from("members").select("id, base_group"),
     ])
 
     if (checkinsResponse.error) throw checkinsResponse.error
     if (membersResponse.error) throw membersResponse.error
 
+    const todayCheckins = (checkinsResponse.data ?? []).filter((row) => isTodayCheckinInBerlin(row, today))
+
     return NextResponse.json({
-      todayCheckins: checkinsResponse.data ?? [],
+      todayCheckins,
       members: membersResponse.data ?? [],
     })
   } catch (error) {

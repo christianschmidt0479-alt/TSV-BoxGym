@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { findMemberById } from "@/lib/boxgymDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { MAX_TRAININGS_WITHOUT_APPROVAL } from "@/lib/memberCheckin"
+import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { getUserContext } from "@/lib/getUserContext"
 import { MEMBER_AREA_SESSION_COOKIE } from "@/lib/publicAreaSession"
 import { resolveUserContext } from "@/lib/resolveUserContext"
@@ -57,15 +58,34 @@ export default async function DashboardPage() {
   }
 
   let lastCheckin: { created_at: string } | null = null
+  let totalCheckins = 0
+  let monthCheckins = 0
   if (memberId) {
-    const { data } = await supabase
-      .from("checkins")
-      .select("created_at")
-      .eq("member_id", memberId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    lastCheckin = data
+    const todayIsoDate = getTodayIsoDateInBerlin()
+    const currentMonthKey = todayIsoDate.slice(0, 7)
+
+    const [lastCheckinResponse, totalCountResponse, monthCountResponse] = await Promise.all([
+      supabase
+        .from("checkins")
+        .select("created_at")
+        .eq("member_id", memberId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("checkins")
+        .select("id", { count: "exact", head: true })
+        .eq("member_id", memberId),
+      supabase
+        .from("checkins")
+        .select("id", { count: "exact", head: true })
+        .eq("member_id", memberId)
+        .eq("month_key", currentMonthKey),
+    ])
+
+    lastCheckin = lastCheckinResponse.data
+    totalCheckins = totalCountResponse.count ?? 0
+    monthCheckins = monthCountResponse.count ?? 0
   }
 
   let trainingsWithoutApprovalUsed = 0
@@ -90,10 +110,21 @@ export default async function DashboardPage() {
 
   const memberName = member ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || "Unbekannt" : ""
   const memberGroup = member?.base_group || "Keine Gruppe zugewiesen"
+  const lastCheckinDisplay = lastCheckin?.created_at
+    ? new Intl.DateTimeFormat("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "Europe/Berlin",
+      }).format(new Date(lastCheckin.created_at))
+    : "-"
   const stats = {
-    monthCount: 0,
-    streak: 0,
-    lastCheckin: "-",
+    monthCount: monthCheckins,
+    streak: totalCheckins,
+    lastCheckin: lastCheckinDisplay,
   }
 
   return (
@@ -121,7 +152,7 @@ export default async function DashboardPage() {
 
           <div className="mt-4 flex justify-between text-sm">
             <div>
-              <p className="opacity-70">Serie</p>
+              <p className="opacity-70">Check-ins gesamt</p>
               <p className="font-semibold">
                 {stats?.streak || 0}
               </p>

@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useMemo, useState } from "react"
+import { type FormEvent, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 
 type MemberRow = {
@@ -105,9 +105,11 @@ function MemberCard({ m }: { m: MemberRow }) {
       <div className="text-xs text-zinc-700"><strong>Status:</strong> {memberStatus(m)}</div>
 
       <div className="flex flex-wrap gap-2">
-        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${m.checkedInToday ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
-          {m.checkedInToday ? "HEUTE DA" : "nicht da"}
-        </span>
+        {m.checkedInToday ? (
+          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+            Heute im Training
+          </span>
+        ) : null}
         <span className={`text-xs font-semibold ${m.email_verified ? "text-emerald-700" : "text-red-700"}`}>
           {m.email_verified ? "✔ E-Mail bestätigt" : "⚠ E-Mail nicht bestätigt"}
         </span>
@@ -127,7 +129,7 @@ function MemberCard({ m }: { m: MemberRow }) {
       )}
 
       <div className={`text-xs font-semibold ${isLastTrainingBeforeBlock(m) ? "text-red-700 font-bold" : "text-zinc-700"}`}>
-        {isLastTrainingBeforeBlock(m) ? "🔥" : ""} <strong>Checkins:</strong> {m.checkinCount ?? 0} / {limitFor(m)}{isLastTrainingBeforeBlock(m) ? " Trainings" : ""}
+        {isLastTrainingBeforeBlock(m) ? "🔥" : ""} <strong>Check-ins:</strong> {m.checkinCount ?? 0} / {limitFor(m)}{isLastTrainingBeforeBlock(m) ? " Trainings" : ""}
       </div>
       {isLastTrainingBeforeBlock(m) && (
         <div className="text-xs font-bold text-red-700">🔴 Letztes Training vor Sperre</div>
@@ -147,8 +149,9 @@ function MemberCard({ m }: { m: MemberRow }) {
   )
 }
 
-export default function MitgliederListClient({ members }: { members: MemberRow[] }) {
+export default function MitgliederListClient({ members, totalTodayCount }: { members: MemberRow[]; totalTodayCount: number }) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
+  const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
   const [groupFilter, setGroupFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -161,7 +164,6 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
     const normalizedSearch = search.toLowerCase().trim()
 
     return localMembers
-      .filter((m) => m.member_phase === "member")
       .filter((m) => {
         const fullName = memberName(m).toLowerCase()
         const email = (m.email || "").toLowerCase()
@@ -196,14 +198,27 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
   }, [filteredMembers])
 
   const todayMembers = useMemo(() => sortedMembers.filter((member) => Boolean(member.checkedInToday)), [sortedMembers])
-  const notTodayMembers = useMemo(() => sortedMembers.filter((member) => !member.checkedInToday), [sortedMembers])
   const criticalTodayMembers = useMemo(
     () => todayMembers.filter((member) => (member.checkinCount ?? 0) >= 7),
     [todayMembers]
   )
-  const totalTodayCount = useMemo(() => localMembers.filter((member) => Boolean(member.checkedInToday)).length, [localMembers])
   const totalCriticalCount = useMemo(() => localMembers.filter((member) => (member.checkinCount ?? 0) >= 7).length, [localMembers])
   const totalOpenCount = useMemo(() => localMembers.filter((member) => !member.is_approved).length, [localMembers])
+
+  const hasActiveFilters =
+    searchInput.trim().length > 0 || search.trim().length > 0 || groupFilter !== "all" || statusFilter !== "all"
+
+  function handleSubmitSearch(event: FormEvent) {
+    event.preventDefault()
+    setSearch(searchInput)
+  }
+
+  function resetFilters() {
+    setSearchInput("")
+    setSearch("")
+    setGroupFilter("all")
+    setStatusFilter("all")
+  }
 
   return (
     <>
@@ -222,13 +237,28 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <form className="flex flex-wrap gap-2" onSubmit={handleSubmitSearch}>
         <input
           placeholder="Name oder E-Mail suchen"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           className="min-w-[260px] rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
         />
+        <button
+          type="submit"
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400"
+        >
+          Suchen
+        </button>
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400"
+          >
+            Filter löschen
+          </button>
+        ) : null}
         <select
           value={groupFilter}
           onChange={(e) => setGroupFilter(e.target.value)}
@@ -249,7 +279,7 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
           <option value="approved">Freigegeben</option>
           <option value="pending">Offen</option>
         </select>
-      </div>
+      </form>
 
       {criticalTodayMembers.length > 0 && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
@@ -262,15 +292,7 @@ export default function MitgliederListClient({ members }: { members: MemberRow[]
       </div>
 
       <div className="space-y-3">
-        {todayMembers.map((m) => <MemberCard key={m.id} m={m} />)}
-      </div>
-
-      <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-bold text-zinc-700">
-        Nicht im Training ({notTodayMembers.length})
-      </div>
-
-      <div className="space-y-3">
-        {notTodayMembers.map((m) => <MemberCard key={m.id} m={m} />)}
+        {sortedMembers.map((m) => <MemberCard key={m.id} m={m} />)}
       </div>
     </>
   )

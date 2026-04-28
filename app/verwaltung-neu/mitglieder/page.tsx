@@ -23,6 +23,7 @@ type AdminMemberListRow = {
 export default function MitgliederPage() {
   const [members, setMembers] = useState<AdminMemberListRow[]>([])
   const [total, setTotal] = useState(0)
+  const [totalTodayCount, setTotalTodayCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
 
@@ -56,6 +57,7 @@ export default function MitgliederPage() {
 
         setMembers(result.data || [])
         setTotal(result.total || 0)
+        setTotalTodayCount(typeof result.totalTodayCount === "number" ? result.totalTodayCount : 0)
         setError(null)
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
@@ -95,7 +97,7 @@ export default function MitgliederPage() {
         </div>
       )}
 
-      <MitgliederListClient members={members} />
+      <MitgliederListClient members={members} totalTodayCount={totalTodayCount} />
 
       <div className="flex items-center gap-3">
         <button

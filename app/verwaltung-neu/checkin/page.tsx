@@ -31,11 +31,13 @@ type CheckinRow = {
     first_name?: string | null
     last_name?: string | null
     name?: string | null
+    is_trial?: boolean | null
   } | null
 }
 
 type CheckinsApiResponse = {
   rows?: CheckinRow[]
+  todayRows?: CheckinRow[]
 }
 
 export default function TrainerCheckinPage() {
@@ -44,6 +46,7 @@ export default function TrainerCheckinPage() {
   const [loadingMembers, setLoadingMembers] = useState(true)
   const [globalError, setGlobalError] = useState("")
   const [checkins, setCheckins] = useState<CheckinRow[]>([])
+  const [todayCheckins, setTodayCheckins] = useState<CheckinRow[]>([])
   const [loadingCheckins, setLoadingCheckins] = useState(true)
   const [checkinsError, setCheckinsError] = useState("")
   const [deleteLoadingById, setDeleteLoadingById] = useState<Record<string, boolean>>({})
@@ -65,6 +68,8 @@ export default function TrainerCheckinPage() {
       }
 
       const rows = Array.isArray(payload.rows) ? payload.rows : []
+      const todayRows = Array.isArray(payload.todayRows) ? payload.todayRows : []
+      setTodayCheckins(todayRows)
       setCheckins(rows.slice(0, 30))
     } catch (error) {
       setCheckinsError(error instanceof Error ? error.message : "Check-ins konnten nicht geladen werden")
@@ -298,6 +303,27 @@ export default function TrainerCheckinPage() {
       )}
 
       <div className="mt-6 rounded-lg border border-zinc-200 bg-white p-4">
+        <h2 className="mb-2 text-lg font-semibold text-zinc-900">Heute eingecheckt</h2>
+        <div className="mb-3 text-sm text-zinc-600">{todayCheckins.length} Person{todayCheckins.length === 1 ? "" : "en"}</div>
+
+        {loadingCheckins ? (
+          <div className="mb-4 text-sm text-zinc-600">Check-ins werden geladen...</div>
+        ) : todayCheckins.length === 0 ? (
+          <div className="mb-4 text-sm text-zinc-600">Heute noch niemand eingecheckt.</div>
+        ) : (
+          <div className="mb-4 space-y-2">
+            {todayCheckins.map((row) => (
+              <div key={`today-${row.id}`} className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+                <div className="text-sm font-semibold text-zinc-900">{checkinDisplayName(row)}</div>
+                <div className="text-xs text-zinc-600">
+                  {row.date || "-"} {row.time || ""} · {row.group_name || "-"} · {row.checkin_mode || "-"}
+                </div>
+                <div className="text-xs text-zinc-600">Typ: {row.members?.is_trial ? "Probemitglied" : "Mitglied"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <h2 className="mb-3 text-lg font-semibold text-zinc-900">Letzte Check-ins</h2>
 
         {checkinsError ? (

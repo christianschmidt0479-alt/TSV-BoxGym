@@ -93,3 +93,23 @@ export function getIsoDateInTimeZone(date = new Date(), timeZone = "Europe/Berli
 export function getTodayIsoDateInBerlin(date = new Date()) {
   return getIsoDateInTimeZone(date, "Europe/Berlin")
 }
+
+export function isTodayCheckinInBerlin(
+  row: { date?: string | null; created_at?: string | null },
+  todayIsoDate = getTodayIsoDateInBerlin()
+) {
+  if (row.date?.trim() === todayIsoDate) {
+    return true
+  }
+
+  if (!row.created_at) {
+    return false
+  }
+
+  const createdAt = new Date(row.created_at)
+  if (Number.isNaN(createdAt.getTime())) {
+    return false
+  }
+
+  return getIsoDateInTimeZone(createdAt, "Europe/Berlin") === todayIsoDate
+}

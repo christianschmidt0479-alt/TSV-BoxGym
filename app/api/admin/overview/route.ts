@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { isTodayCheckinInBerlin } from "@/lib/dateFormat"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
     const supabase = getServerSupabase()
     const [membersResponse, checkinsResponse, digestQueueResponse] = await Promise.all([
       supabase.from("members").select("id, first_name, last_name, name, birthdate, base_group, is_trial, is_approved"),
-      supabase.from("checkins").select("id, group_name, date").eq("date", today),
+      supabase.from("checkins").select("id, group_name, date, created_at"),
       session.accountRole === "admin"
         ? supabase
             .from("admin_notification_queue")
@@ -46,12 +47,14 @@ export async function GET(request: Request) {
     if (checkinsResponse.error) throw checkinsResponse.error
     if (digestQueueResponse.error) throw digestQueueResponse.error
 
+    const todayCheckins = (checkinsResponse.data ?? []).filter((row) => isTodayCheckinInBerlin(row, today))
+
     return NextResponse.json({
       memberRows: (membersResponse.data ?? []).map((row) => ({
         ...row,
         base_group: normalizeTrainingGroup(row.base_group) || row.base_group,
       })),
-      todayCheckins: (checkinsResponse.data ?? []).map((row) => ({
+      todayCheckins: todayCheckins.map((row) => ({
         ...row,
         group_name: normalizeTrainingGroup(row.group_name) || row.group_name,
       })),

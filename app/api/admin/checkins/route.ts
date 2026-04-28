@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
+import { getTodayIsoDateInBerlin, isTodayCheckinInBerlin } from "@/lib/dateFormat"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 function getServerSupabase() {
@@ -51,8 +52,12 @@ export async function GET(request: Request) {
 
     if (response.error) throw response.error
 
+    const todayIsoDate = getTodayIsoDateInBerlin()
+    const todayRows = (response.data ?? []).filter((row) => isTodayCheckinInBerlin(row, todayIsoDate))
+
     return NextResponse.json({
       rows: response.data ?? [],
+      todayRows,
     })
   } catch (error) {
     console.error("admin checkins failed", error)

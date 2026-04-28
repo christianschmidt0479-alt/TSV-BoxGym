@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
 import { verifyTrainerSessionToken } from "@/lib/authSession"
+import { isTodayCheckinInBerlin } from "@/lib/dateFormat"
 
 function berlinDayKey(date: Date) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
 
     const { data: checkins, error: checkinsError } = await supabase
       .from("checkins")
-      .select("member_id, created_at")
+      .select("member_id, date, created_at")
 
     if (checkinsError) {
       console.error("SUPABASE ERROR:", checkinsError)
@@ -70,11 +71,8 @@ export async function POST(req: Request) {
       if (!row.member_id) continue
       checkinCountByMemberId.set(row.member_id, (checkinCountByMemberId.get(row.member_id) ?? 0) + 1)
 
-      if (row.created_at) {
-        const createdAt = new Date(row.created_at)
-        if (!Number.isNaN(createdAt.getTime()) && berlinDayKey(createdAt) === todayBerlin) {
-          checkedInTodayByMemberId.add(row.member_id)
-        }
+      if (isTodayCheckinInBerlin(row, todayBerlin)) {
+        checkedInTodayByMemberId.add(row.member_id)
       }
     }
 
@@ -83,6 +81,8 @@ export async function POST(req: Request) {
       checkinCount: checkinCountByMemberId.get(member.id) ?? 0,
       checkedInToday: checkedInTodayByMemberId.has(member.id),
     }))
+
+    const totalTodayCount = withCheckinCounts.filter((member) => member.checkedInToday).length
 
     withCheckinCounts.sort((a, b) => {
       const aNotApprovedRank = a.is_approved ? 1 : 0
@@ -107,6 +107,7 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({
       data: pagedMembers,
       total: count,
+      totalTodayCount,
     }), { status: 200 })
   } catch (error) {
     console.error("API ERROR:", error)
