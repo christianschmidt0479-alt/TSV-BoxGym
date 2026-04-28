@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 type CheckinRow = {
   id: string
@@ -59,6 +59,11 @@ export default function TrainerHeuteDaClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [deletingById, setDeletingById] = useState<Record<string, boolean>>({})
+  const [highlightedById, setHighlightedById] = useState<Record<string, boolean>>({})
+  const [liveNotice, setLiveNotice] = useState("")
+  const previousIdsRef = useRef<Set<string>>(new Set())
+  const highlightTimersRef = useRef<Record<string, number>>({})
+  const noticeTimerRef = useRef<number | null>(null)
 
   const todayIso = useMemo(() => {
     return new Intl.DateTimeFormat("en-CA", {
@@ -69,9 +74,11 @@ export default function TrainerHeuteDaClient() {
     }).format(new Date())
   }, [])
 
-  const loadRows = useCallback(async () => {
+  const loadRows = useCallback(async (options?: { background?: boolean }) => {
     try {
-      setLoading(true)
+      if (!options?.background) {
+        setLoading(true)
+      }
       setError("")
 
       const response = await fetch(`/api/trainer/today?today=${encodeURIComponent(todayIso)}`, {
@@ -90,17 +97,98 @@ export default function TrainerHeuteDaClient() {
           return bDate - aDate
         })
 
+      const previousIds = previousIdsRef.current
+      const newRows =
+        previousIds.size > 0
+          ? todayRows.filter((row) => !previousIds.has(row.id))
+          : []
+
+      if (newRows.length > 0) {
+        const newIds = newRows.map((row) => row.id)
+        setHighlightedById((prev) => {
+          const next = { ...prev }
+          for (const id of newIds) {
+            next[id] = true
+          }
+          return next
+        })
+
+        for (const id of newIds) {
+          const existingTimer = highlightTimersRef.current[id]
+          if (existingTimer) {
+            window.clearTimeout(existingTimer)
+          }
+
+          highlightTimersRef.current[id] = window.setTimeout(() => {
+            setHighlightedById((prev) => {
+              const next = { ...prev }
+              delete next[id]
+              return next
+            })
+            delete highlightTimersRef.current[id]
+          }, 2500)
+        }
+
+        const firstName = displayName(newRows[0])
+        const extraCount = newRows.length - 1
+        setLiveNotice(extraCount > 0 ? `Eingecheckt: ${firstName} +${extraCount}` : `Eingecheckt: ${firstName}`)
+
+        if (noticeTimerRef.current !== null) {
+          window.clearTimeout(noticeTimerRef.current)
+        }
+        noticeTimerRef.current = window.setTimeout(() => {
+          setLiveNotice("")
+          noticeTimerRef.current = null
+        }, 2500)
+      }
+
+      previousIdsRef.current = new Set(todayRows.map((row) => row.id))
+
       setRows(todayRows)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Check-ins konnten nicht geladen werden")
     } finally {
-      setLoading(false)
+      if (!options?.background) {
+        setLoading(false)
+      }
     }
   }, [todayIso])
 
   useEffect(() => {
     void loadRows()
   }, [loadRows])
+
+  useEffect(() => {
+    function refreshIfVisible() {
+      if (document.visibilityState !== "visible") {
+        return
+      }
+      void loadRows({ background: true })
+    }
+
+    const intervalId = window.setInterval(refreshIfVisible, 5000)
+    const handleVisibilityChange = () => {
+      refreshIfVisible()
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [loadRows])
+
+  useEffect(() => {
+    return () => {
+      for (const id of Object.keys(highlightTimersRef.current)) {
+        window.clearTimeout(highlightTimersRef.current[id])
+      }
+      if (noticeTimerRef.current !== null) {
+        window.clearTimeout(noticeTimerRef.current)
+      }
+    }
+  }, [])
 
   async function handleDelete(checkinId: string) {
     const confirmed = window.confirm("Diesen Check-in wirklich auschecken?")
@@ -156,6 +244,12 @@ export default function TrainerHeuteDaClient() {
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         ) : null}
 
+        {liveNotice ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+            {liveNotice}
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 text-sm text-zinc-600 shadow-sm">
             Check-ins werden geladen...
@@ -174,7 +268,11 @@ export default function TrainerHeuteDaClient() {
               return (
                 <div
                   key={row.id}
-                  className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm"
+                  className={`rounded-xl border px-4 py-3 shadow-sm transition-colors ${
+                    highlightedById[row.id]
+                      ? "border-emerald-300 bg-emerald-50"
+                      : "border-zinc-200 bg-white"
+                  }`}
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>

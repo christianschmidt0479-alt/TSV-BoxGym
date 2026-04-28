@@ -92,6 +92,7 @@ export default function MemberCheckinPage() {
           if (!response.ok) {
             clearStoredQrAccess("member")
             setQrAccessToken("")
+            setQrTokenStatus("invalid")
             if (process.env.NODE_ENV !== "production") {
               console.error("member qr access validation failed", response.status)
             }
@@ -103,6 +104,7 @@ export default function MemberCheckinPage() {
           const validatedToken = result.token?.trim() || qrToken
           storeQrAccess("member", validatedToken, accessUntil)
           setQrAccessToken(validatedToken)
+          setQrTokenStatus("valid")
 
           params.delete(QR_ACCESS_PARAM)
           params.delete("panel")
@@ -111,6 +113,7 @@ export default function MemberCheckinPage() {
         } catch (error) {
           clearStoredQrAccess("member")
           setQrAccessToken("")
+          setQrTokenStatus("invalid")
           if (process.env.NODE_ENV !== "production") {
             console.error("member qr access validation failed", error)
           }
