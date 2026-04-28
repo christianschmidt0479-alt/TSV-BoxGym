@@ -1,10 +1,11 @@
 "use client"
 
-import Link from "next/link"
-import { useMemo, useState } from "react"
-import { saveGsStatusMap, type TsvStatus } from "./gsStatusStore"
+import { useState } from "react"
 
-type ResultStatus = "match" | "mismatch" | "not_found"
+import { saveGsStatusMapForGroup, type GsStatus } from "./gsStatusStore"
+import { TRAINING_GROUPS, type TrainingGroup } from "@/lib/trainingGroups"
+
+type ResultStatus = GsStatus
 
 type GsResultRow = {
   memberId: string | null
@@ -16,9 +17,17 @@ type GsResultRow = {
 }
 
 type GsCompareResponse = {
+  groupName?: string
   results?: GsResultRow[]
-  memberStatuses?: Record<string, TsvStatus>
+  memberStatuses?: Record<string, GsStatus>
   error?: string
+}
+
+type GroupUploadState = {
+  file: File | null
+  loading: boolean
+  error: string
+  results: GsResultRow[]
 }
 
 function statusLabel(status: ResultStatus) {
@@ -33,138 +42,169 @@ function statusClassName(status: ResultStatus) {
   return "bg-red-50 text-red-700 border-red-200"
 }
 
-export default function GsAbgleichPage() {
-  const [file, setFile] = useState<File | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [results, setResults] = useState<GsResultRow[]>([])
+function createInitialGroupStates() {
+  const initial = {} as Record<TrainingGroup, GroupUploadState>
 
-  const hasResults = results.length > 0
-
-  const summary = useMemo(() => {
-    const totals = { match: 0, mismatch: 0, not_found: 0 }
-    for (const row of results) {
-      totals[row.status] += 1
+  for (const group of TRAINING_GROUPS) {
+    initial[group] = {
+      file: null,
+      loading: false,
+      error: "",
+      results: [],
     }
-    return totals
-  }, [results])
+  }
 
-  async function handleUpload() {
+  return initial
+}
+
+export default function GsAbgleichPage() {
+  const [groupStates, setGroupStates] = useState<Record<TrainingGroup, GroupUploadState>>(() => createInitialGroupStates())
+
+  function setGroupState(group: TrainingGroup, patch: Partial<GroupUploadState>) {
+    setGroupStates((prev) => ({
+      ...prev,
+      [group]: {
+        ...prev[group],
+        ...patch,
+      },
+    }))
+  }
+
+  async function handleGroupUpload(group: TrainingGroup) {
+    const { file } = groupStates[group]
     if (!file) {
-      setError("Bitte zuerst eine Datei auswählen.")
+      setGroupState(group, { error: "Bitte zuerst eine Datei auswählen." })
       return
     }
 
-    setLoading(true)
-    setError("")
+    setGroupState(group, { loading: true, error: "" })
 
     try {
       const formData = new FormData()
       formData.append("file", file)
+      formData.append("groupName", group)
 
       const response = await fetch("/api/admin/gs-abgleich", {
         method: "POST",
         body: formData,
+        credentials: "include",
       })
 
-      const payload = (await response.json().catch(() => ({}))) as GsCompareResponse
+      const responseText = await response.text()
+      let payload: GsCompareResponse = {}
 
-      if (!response.ok) {
-        throw new Error(payload.error || "Upload fehlgeschlagen")
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText) as GsCompareResponse
+        } catch {
+          payload = {}
+        }
       }
 
-      setResults(Array.isArray(payload.results) ? payload.results : [])
-      saveGsStatusMap(payload.memberStatuses ?? {})
-    } catch (uploadError) {
-      setResults([])
-      setError(uploadError instanceof Error ? uploadError.message : "Upload fehlgeschlagen")
-    } finally {
-      setLoading(false)
+      if (!response.ok) {
+        const message = payload.error || responseText || "Upload fehlgeschlagen"
+        throw new Error(message)
+      }
+
+      const results = payload.results ?? []
+      const memberStatuses = payload.memberStatuses ?? {}
+
+      saveGsStatusMapForGroup(group, memberStatuses)
+      setGroupState(group, { loading: false, error: "", results })
+    } catch (error) {
+      setGroupState(group, {
+        loading: false,
+        results: [],
+        error: error instanceof Error ? error.message : "Abgleich fehlgeschlagen.",
+      })
     }
   }
 
   return (
-
     <div className="space-y-4">
+      {TRAINING_GROUPS.map((group) => {
+        const state = groupStates[group]
+        const matches = state.results.filter((entry) => entry.status === "match").length
+        const mismatches = state.results.filter((entry) => entry.status === "mismatch").length
+        const notFound = state.results.filter((entry) => entry.status === "not_found").length
 
-      <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={(event) => {
-              setFile(event.target.files?.[0] ?? null)
-              setError("")
-            }}
-            className="block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              void handleUpload()
-            }}
-            disabled={loading}
-            className="rounded-lg bg-[#154c83] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123d69] disabled:opacity-60"
-          >
-            {loading ? "Lade..." : "Datei hochladen"}
-          </button>
-        </div>
+        return (
+          <div key={group} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 text-base font-semibold text-zinc-900">{group}</div>
 
-        <div className="mt-2 text-xs text-zinc-500">Erlaubte Formate: xlsx, xls, csv</div>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={(event) => {
+                  setGroupState(group, {
+                    file: event.target.files?.[0] ?? null,
+                    error: "",
+                  })
+                }}
+                className="block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  void handleGroupUpload(group)
+                }}
+                disabled={state.loading}
+                className="rounded-lg bg-[#154c83] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123d69] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {state.loading ? "Lade..." : "Datei hochladen"}
+              </button>
+            </div>
 
-        {error ? (
-          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
-        ) : null}
-      </div>
+            <div className="mt-2 text-xs text-zinc-500">Erlaubte Formate: xlsx, xls, csv</div>
 
-      {hasResults ? (
-        <div className="space-y-3">
-          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm shadow-sm">
-            <span className="font-semibold">Match:</span> {summary.match} · <span className="font-semibold">Mismatch:</span>{" "}
-            {summary.mismatch} · <span className="font-semibold">Not found:</span> {summary.not_found}
+            {state.error ? (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</div>
+            ) : null}
+
+            <div className="mt-4 space-y-3">
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm shadow-sm">
+                <span className="font-semibold">Match:</span> {matches} · <span className="font-semibold">Mismatch:</span> {mismatches} · <span className="font-semibold">Not found:</span> {notFound}
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-zinc-50 text-left text-zinc-700">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Name</th>
+                      <th className="px-3 py-2 font-semibold">Geburtsdatum</th>
+                      <th className="px-3 py-2 font-semibold">Gruppe</th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.results.length > 0 ? (
+                      state.results.map((row, index) => (
+                        <tr key={`${group}-${row.memberId ?? `${row.firstName}-${row.lastName}`}-${index}`} className="border-t border-zinc-100">
+                          <td className="px-3 py-2 text-zinc-900">{row.firstName} {row.lastName}</td>
+                          <td className="px-3 py-2 text-zinc-700">{row.birthdate || "-"}</td>
+                          <td className="px-3 py-2 text-zinc-700">{row.group || group}</td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusClassName(row.status)}`}>
+                              {statusLabel(row.status)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-4 text-center text-zinc-500">
+                          Noch kein Abgleich für diese Gruppe.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-
-          <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
-            <table className="min-w-full text-sm">
-              <thead className="bg-zinc-50 text-left text-zinc-700">
-                <tr>
-                  <th className="px-3 py-2 font-semibold">Name</th>
-                  <th className="px-3 py-2 font-semibold">Geburtsdatum</th>
-                  <th className="px-3 py-2 font-semibold">Gruppe</th>
-                  <th className="px-3 py-2 font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((row, index) => (
-                  <tr key={`${row.firstName}-${row.lastName}-${row.birthdate ?? "-"}-${index}`} className="border-t border-zinc-100">
-                    <td className="px-3 py-2">{row.firstName} {row.lastName}</td>
-                    <td className="px-3 py-2">{row.birthdate || "-"}</td>
-                    <td className="px-3 py-2">{row.group || "-"}</td>
-                    <td className="px-3 py-2">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClassName(row.status)}`}>
-                        {statusLabel(row.status)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-8 text-sm text-zinc-500">
-          Ergebnisbereich ist leer.
-        </div>
-      )}
-
-      <div>
-        <Link
-          href="/verwaltung-neu"
-          className="inline-flex rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
-        >
-          Zurueck zur Verwaltung
-        </Link>
-      </div>
+        )
+      })}
     </div>
   )
 }

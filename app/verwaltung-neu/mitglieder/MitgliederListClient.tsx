@@ -1,7 +1,7 @@
 "use client"
 import { type FormEvent, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { loadGsStatusMap, type TsvStatus } from "../gs-abgleich/gsStatusStore"
+import { loadGsStatusMap, type GsStatusEntry } from "../gs-abgleich/gsStatusStore"
 
 type MemberRow = {
   id: string
@@ -29,18 +29,13 @@ function memberStatus(member: MemberRow) {
   return "Freigegeben"
 }
 
-function tsvStatusLabel(status?: TsvStatus) {
-  if (status === "match") return "TSV ok"
-  if (status === "mismatch") return "prüfen"
-  if (status === "not_found") return "nicht im TSV"
-  return "-"
-}
 
-function tsvStatusClass(status?: TsvStatus) {
-  if (status === "match") return "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700"
-  if (status === "mismatch") return "inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700"
-  if (status === "not_found") return "inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700"
-  return "inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-semibold text-zinc-500"
+function gsBadgeProps(entry?: GsStatusEntry) {
+  if (!entry) return { color: "bg-zinc-200 text-zinc-600", title: "GS: noch nicht geprüft" }
+  if (entry.status === "match") return { color: "bg-emerald-500 text-white", title: "GS: Mitglied gefunden" }
+  if (entry.status === "mismatch") return { color: "bg-amber-400 text-white", title: "GS: Name gefunden, Geburtsdatum prüfen" }
+  if (entry.status === "not_found") return { color: "bg-red-500 text-white", title: "GS: nicht in GS-Liste gefunden" }
+  return { color: "bg-zinc-200 text-zinc-600", title: "GS: noch nicht geprüft" }
 }
 
 function limitFor(member: MemberRow) {
@@ -103,7 +98,7 @@ function priorityLabel(m: MemberRow) {
   return p.label
 }
 
-function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: TsvStatus }) {
+function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: GsStatusEntry }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-2">
       <div className="flex items-start justify-between gap-3">
@@ -118,9 +113,16 @@ function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: TsvStatus }) {
       </div>
 
       <div className="text-xs text-zinc-700"><strong>Status:</strong> {memberStatus(m)}</div>
+
       <div className="text-xs text-zinc-700">
-        <strong>TSV Status:</strong>{" "}
-        <span className={tsvStatusClass(tsvStatus)}>{tsvStatusLabel(tsvStatus)}</span>
+        {/* Kompakter GS-Badge */}
+        <span
+          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-bold border border-zinc-300 shadow-sm cursor-default ${gsBadgeProps(tsvStatus).color}`}
+          title={gsBadgeProps(tsvStatus).title}
+          style={{ minWidth: 28, justifyContent: "center" }}
+        >
+          GS
+        </span>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -170,7 +172,7 @@ function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: TsvStatus }) {
 
 export default function MitgliederListClient({ members, totalTodayCount, onFiltersChanged }: { members: MemberRow[]; totalTodayCount: number; onFiltersChanged?: () => void }) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
-  const [tsvStatusMap, setTsvStatusMap] = useState<Record<string, TsvStatus>>({})
+  const [tsvStatusMap, setTsvStatusMap] = useState<Record<string, GsStatusEntry>>({})
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
   const [groupFilter, setGroupFilter] = useState("all")

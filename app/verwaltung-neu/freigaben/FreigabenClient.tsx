@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { groupOptions } from "@/lib/boxgymSessions"
-import { loadGsStatusMap, type TsvStatus } from "../gs-abgleich/gsStatusStore"
+import { loadGsStatusMap, type GsStatusEntry, type GsStatus } from "../gs-abgleich/gsStatusStore"
 
 type ApprovalMember = {
   id: string
@@ -36,21 +36,16 @@ function statusLabel(status: ApprovalMember["member_phase"]) {
   return "Offen"
 }
 
-function tsvStatusLabel(status?: TsvStatus) {
-  if (status === "match") return "TSV ok"
-  if (status === "mismatch") return "prüfen"
-  if (status === "not_found") return "nicht im TSV"
-  return "-"
+
+function gsBadgeProps(entry?: GsStatusEntry) {
+  if (!entry) return { color: "bg-zinc-200 text-zinc-600", title: "GS: noch nicht geprüft" }
+  if (entry.status === "match") return { color: "bg-emerald-500 text-white", title: "GS: Mitglied gefunden" }
+  if (entry.status === "mismatch") return { color: "bg-amber-400 text-white", title: "GS: Name gefunden, Geburtsdatum prüfen" }
+  if (entry.status === "not_found") return { color: "bg-red-500 text-white", title: "GS: nicht in GS-Liste gefunden" }
+  return { color: "bg-zinc-200 text-zinc-600", title: "GS: noch nicht geprüft" }
 }
 
-function tsvStatusClass(status?: TsvStatus) {
-  if (status === "match") return "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700"
-  if (status === "mismatch") return "inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700"
-  if (status === "not_found") return "inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700"
-  return "inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-semibold text-zinc-500"
-}
-
-function approvalHintText(status?: TsvStatus) {
+function approvalHintText(status?: GsStatus) {
   if (status === "not_found") return "Warnung: Mitglied wurde im TSV-Abgleich nicht gefunden. Freigabe wird trotzdem ausgeführt."
   if (status === "mismatch") return "Hinweis: TSV-Abgleich meldet Namens-Treffer mit abweichendem Geburtsdatum. Freigabe wird trotzdem ausgeführt."
   return null
@@ -60,7 +55,7 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
   const [members, setMembers] = useState<ApprovalMember[]>(initialMembers)
   const [loadingMemberId, setLoadingMemberId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tsvStatusMap] = useState<Record<string, TsvStatus>>(() => loadGsStatusMap())
+  const [tsvStatusMap] = useState<Record<string, GsStatusEntry>>(() => loadGsStatusMap())
 
   const groupByMemberId = useMemo(() => {
     const next = new Map<string, string>()
@@ -93,8 +88,8 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
       return
     }
 
-    const tsvStatus = tsvStatusMap[member.id]
-    const hint = approvalHintText(tsvStatus)
+    const gsEntry = tsvStatusMap[member.id]
+    const hint = approvalHintText(gsEntry?.status)
     if (hint) {
       window.alert(hint)
     }
@@ -131,7 +126,8 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
       {members.map((member) => {
         const currentGroup = selectedGroups.get(member.id) || member.base_group || ""
         const status = member.member_phase
-        const tsvStatus = tsvStatusMap[member.id]
+
+        const gsEntry = tsvStatusMap[member.id]
         const isBusy = loadingMemberId === member.id
 
         return (
@@ -141,15 +137,18 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
                 <div className="text-sm font-semibold text-zinc-900">{getDisplayName(member)}</div>
                 <div className="text-xs text-zinc-500">{member.email || "Keine E-Mail"}</div>
               </div>
-              <span className={statusBadgeClass(status)}>{statusLabel(status)}</span>
+              {/* Kompakter GS-Badge */}
+              <span
+                className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-bold border border-zinc-300 shadow-sm cursor-default ${gsBadgeProps(gsEntry).color}`}
+                title={gsBadgeProps(gsEntry).title}
+                style={{ minWidth: 28, justifyContent: "center" }}
+              >
+                GS
+              </span>
             </div>
-
             <div className="grid grid-cols-2 gap-2 text-xs text-zinc-700">
               <div><strong>Gruppe:</strong> {member.base_group || "-"}</div>
               <div><strong>Check-ins:</strong> {member.checkin_count}</div>
-              <div>
-                <strong>TSV Status:</strong> <span className={tsvStatusClass(tsvStatus)}>{tsvStatusLabel(tsvStatus)}</span>
-              </div>
               <div>
                 <strong>E-Mail:</strong>{" "}
                 <span className={member.email_verified ? "text-emerald-700 font-semibold" : "text-red-700 font-semibold"}>
@@ -158,9 +157,9 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
               </div>
             </div>
 
-            {approvalHintText(tsvStatus) ? (
+            {approvalHintText(gsEntry?.status) ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                {approvalHintText(tsvStatus)}
+                {approvalHintText(gsEntry?.status)}
               </div>
             ) : null}
 
