@@ -212,7 +212,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
         <Link href="/verwaltung-neu/mitglieder" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
           <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Mitglieder gesamt</div>
           <div className="text-2xl font-extrabold text-zinc-900">{totalMembers ?? "…"}</div>
@@ -225,6 +225,12 @@ export default function DashboardPage() {
             {pendingApprovals ?? "…"}
           </div>
           <div className="mt-1 text-sm text-zinc-600">Freigaben prüfen</div>
+        </Link>
+
+        <Link href="/verwaltung-neu/gs-abgleich" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
+          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">GS-Abgleich</div>
+          <div className="text-2xl font-extrabold text-zinc-900">GS</div>
+          <div className="mt-1 text-sm text-zinc-600">TSV Status prüfen</div>
         </Link>
 
         <Link href="/verwaltung-neu/qr-code" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
@@ -280,7 +286,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Link href="/verwaltung-neu/mitglieder" className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400">
           <div>Mitglieder</div>
           <div className="mt-1 text-sm font-medium text-zinc-600">Alle Mitglieder und Check-ins</div>
@@ -288,6 +294,10 @@ export default function DashboardPage() {
         <Link href="/verwaltung-neu/freigaben" className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400">
           <div>Freigaben</div>
           <div className="mt-1 text-sm font-medium text-zinc-600">Neue Mitglieder freigeben</div>
+        </Link>
+        <Link href="/verwaltung-neu/gs-abgleich" className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400">
+          <div>GS-Abgleich</div>
+          <div className="mt-1 text-sm font-medium text-zinc-600">TSV Match prüfen</div>
         </Link>
         <Link href="/verwaltung-neu/probemitglieder" className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400">
           <div>Probemitglieder</div>

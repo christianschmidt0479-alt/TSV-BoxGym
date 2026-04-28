@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { groupOptions } from "@/lib/boxgymSessions"
+import { loadGsStatusMap, type TsvStatus } from "../gs-abgleich/gsStatusStore"
 
 type ApprovalMember = {
   id: string
@@ -35,10 +36,31 @@ function statusLabel(status: ApprovalMember["member_phase"]) {
   return "Offen"
 }
 
+function tsvStatusLabel(status?: TsvStatus) {
+  if (status === "match") return "TSV ok"
+  if (status === "mismatch") return "prüfen"
+  if (status === "not_found") return "nicht im TSV"
+  return "-"
+}
+
+function tsvStatusClass(status?: TsvStatus) {
+  if (status === "match") return "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700"
+  if (status === "mismatch") return "inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700"
+  if (status === "not_found") return "inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700"
+  return "inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-semibold text-zinc-500"
+}
+
+function approvalHintText(status?: TsvStatus) {
+  if (status === "not_found") return "Warnung: Mitglied wurde im TSV-Abgleich nicht gefunden. Freigabe wird trotzdem ausgeführt."
+  if (status === "mismatch") return "Hinweis: TSV-Abgleich meldet Namens-Treffer mit abweichendem Geburtsdatum. Freigabe wird trotzdem ausgeführt."
+  return null
+}
+
 export default function FreigabenClient({ initialMembers }: { initialMembers: ApprovalMember[] }) {
   const [members, setMembers] = useState<ApprovalMember[]>(initialMembers)
   const [loadingMemberId, setLoadingMemberId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [tsvStatusMap] = useState<Record<string, TsvStatus>>(() => loadGsStatusMap())
 
   const groupByMemberId = useMemo(() => {
     const next = new Map<string, string>()
@@ -69,6 +91,12 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
     if (!baseGroup) {
       setError("Bitte zuerst eine Gruppe auswählen.")
       return
+    }
+
+    const tsvStatus = tsvStatusMap[member.id]
+    const hint = approvalHintText(tsvStatus)
+    if (hint) {
+      window.alert(hint)
     }
 
     setError(null)
@@ -103,6 +131,7 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
       {members.map((member) => {
         const currentGroup = selectedGroups.get(member.id) || member.base_group || ""
         const status = member.member_phase
+        const tsvStatus = tsvStatusMap[member.id]
         const isBusy = loadingMemberId === member.id
 
         return (
@@ -119,12 +148,21 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
               <div><strong>Gruppe:</strong> {member.base_group || "-"}</div>
               <div><strong>Check-ins:</strong> {member.checkin_count}</div>
               <div>
+                <strong>TSV Status:</strong> <span className={tsvStatusClass(tsvStatus)}>{tsvStatusLabel(tsvStatus)}</span>
+              </div>
+              <div>
                 <strong>E-Mail:</strong>{" "}
                 <span className={member.email_verified ? "text-emerald-700 font-semibold" : "text-red-700 font-semibold"}>
                   {member.email_verified ? "bestätigt" : "nicht bestätigt"}
                 </span>
               </div>
             </div>
+
+            {approvalHintText(tsvStatus) ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {approvalHintText(tsvStatus)}
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-2">
               <select

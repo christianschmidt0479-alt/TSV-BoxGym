@@ -1,6 +1,7 @@
 "use client"
 import { type FormEvent, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { loadGsStatusMap, type TsvStatus } from "../gs-abgleich/gsStatusStore"
 
 type MemberRow = {
   id: string
@@ -26,6 +27,20 @@ function memberStatus(member: MemberRow) {
   if (member.is_trial) return "Probemitglied"
   if (!member.is_approved) return "Mitglied - Prüfung offen"
   return "Freigegeben"
+}
+
+function tsvStatusLabel(status?: TsvStatus) {
+  if (status === "match") return "TSV ok"
+  if (status === "mismatch") return "prüfen"
+  if (status === "not_found") return "nicht im TSV"
+  return "-"
+}
+
+function tsvStatusClass(status?: TsvStatus) {
+  if (status === "match") return "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700"
+  if (status === "mismatch") return "inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700"
+  if (status === "not_found") return "inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700"
+  return "inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-semibold text-zinc-500"
 }
 
 function limitFor(member: MemberRow) {
@@ -88,7 +103,7 @@ function priorityLabel(m: MemberRow) {
   return p.label
 }
 
-function MemberCard({ m }: { m: MemberRow }) {
+function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: TsvStatus }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-2">
       <div className="flex items-start justify-between gap-3">
@@ -103,6 +118,10 @@ function MemberCard({ m }: { m: MemberRow }) {
       </div>
 
       <div className="text-xs text-zinc-700"><strong>Status:</strong> {memberStatus(m)}</div>
+      <div className="text-xs text-zinc-700">
+        <strong>TSV Status:</strong>{" "}
+        <span className={tsvStatusClass(tsvStatus)}>{tsvStatusLabel(tsvStatus)}</span>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         {m.checkedInToday ? (
@@ -151,6 +170,7 @@ function MemberCard({ m }: { m: MemberRow }) {
 
 export default function MitgliederListClient({ members, totalTodayCount, onFiltersChanged }: { members: MemberRow[]; totalTodayCount: number; onFiltersChanged?: () => void }) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
+  const [tsvStatusMap, setTsvStatusMap] = useState<Record<string, TsvStatus>>({})
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
   const [groupFilter, setGroupFilter] = useState("all")
@@ -159,6 +179,19 @@ export default function MitgliederListClient({ members, totalTodayCount, onFilte
   useEffect(() => {
     setLocalMembers(members)
   }, [members])
+
+  useEffect(() => {
+    setTsvStatusMap(loadGsStatusMap())
+
+    const onStorage = () => {
+      setTsvStatusMap(loadGsStatusMap())
+    }
+
+    window.addEventListener("storage", onStorage)
+    return () => {
+      window.removeEventListener("storage", onStorage)
+    }
+  }, [])
 
   const filteredMembers = useMemo(() => {
     const normalizedSearch = search.toLowerCase().trim()
@@ -307,7 +340,7 @@ export default function MitgliederListClient({ members, totalTodayCount, onFilte
               : "Auf dieser Seite sind aktuell keine Mitglieder."}
           </div>
         ) : (
-          sortedMembers.map((m) => <MemberCard key={m.id} m={m} />)
+          sortedMembers.map((m) => <MemberCard key={m.id} m={m} tsvStatus={tsvStatusMap[m.id]} />)
         )}
       </div>
     </>

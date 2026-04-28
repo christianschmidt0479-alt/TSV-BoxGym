@@ -12,8 +12,13 @@ const headerStyle = {
   background: "linear-gradient(90deg, #0b2a4a 0%, #133a63 100%)",
   color: "#fff",
   padding: "16px",
-  display: "flex",
-  flexDirection: "column" as const,
+  display: "grid",
+  gridTemplateRows: "auto auto",
+  alignItems: "center",
+  justifyItems: "stretch",
+  position: "sticky" as const,
+  top: 0,
+  zIndex: 50,
   boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
   borderBottom: "1px solid rgba(255,255,255,0.08)",
 }
@@ -46,9 +51,9 @@ export function HeaderClient({ user }: Props) {
   }
 
   return (
-    <div style={headerStyle}>
+    <div style={headerStyle} className="sticky top-0 z-50 relative">
       {/* TOP ROW */}
-      <div style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+      <div className="flex items-center min-h-14 px-4 pr-[420px]">
         {/* LEFT: LOGO */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <img
@@ -61,63 +66,67 @@ export function HeaderClient({ user }: Props) {
             <span style={{ fontWeight: 700, fontSize: 14, opacity: 0.9 }}>BoxGym</span>
           </div>
         </div>
+        {/* Right side bleibt leer, Platz für absolute Actions */}
+      </div>
 
-        {/* RIGHT: ROLE-BASED NAV */}
-        <div className="flex items-center gap-2 flex-wrap sm:justify-end">
-          {!isLoggedIn && (
-            <Link href="/" style={{ textDecoration: "none" }}>
-              <button className="px-3 py-2 text-sm rounded-md text-white bg-red-600 hover:bg-red-700" type="button">
-                Startseite
-              </button>
-            </Link>
-          )}
-
-          {isMember && (
-            <Link
-              href="/mein-bereich/dashboard"
-              className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-white/20 text-white hover:bg-white/30 transition whitespace-nowrap"
-              style={{ textDecoration: "none" }}
-            >
-              Dashboard
-            </Link>
-          )}
-
-          {isTrainer && (
-            <Link
-              href="/trainer"
-              className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-white/20 text-white hover:bg-white/30 transition whitespace-nowrap"
-              style={{ textDecoration: "none" }}
-            >
-              Trainer
-            </Link>
-          )}
-
-          {isAdmin && (
-            <Link
-              href="/verwaltung-neu"
-              className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-white/20 text-white hover:bg-white/30 transition whitespace-nowrap"
-              style={{ textDecoration: "none" }}
-            >
-              Verwaltung
-            </Link>
-          )}
-
-          {isLoggedIn && (
-            <button
-              className="px-3 py-2 text-sm rounded-md text-white bg-red-600 hover:bg-red-700"
-              style={{ border: "none", outline: "none", cursor: "pointer" }}
-              type="button"
-              onClick={() => void handleLogout()}
-            >
-              Logout
+      {/* RIGHT: ROLE-BASED NAV (absolut zentriert im Header) */}
+      <div
+        className="flex items-center gap-2 flex-wrap md:absolute md:right-4 md:top-1/2 md:-translate-y-1/2 sm:justify-end"
+        style={{ pointerEvents: "auto" }}
+      >
+        {!isLoggedIn && (
+          <Link href="/" style={{ textDecoration: "none" }}>
+            <button className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-red-600 hover:bg-red-700 transition whitespace-nowrap" type="button">
+              Startseite
             </button>
-          )}
-        </div>
+          </Link>
+        )}
+
+        {isMember && (
+          <Link
+            href="/mein-bereich/dashboard"
+            className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-white/20 text-white hover:bg-white/30 transition whitespace-nowrap"
+            style={{ textDecoration: "none" }}
+          >
+            Dashboard
+          </Link>
+        )}
+
+        {isTrainer && (
+          <Link
+            href="/trainer"
+            className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-white/20 text-white hover:bg-white/30 transition whitespace-nowrap"
+            style={{ textDecoration: "none" }}
+          >
+            Trainer
+          </Link>
+        )}
+
+        {isAdmin && (
+          <Link
+            href="/verwaltung-neu"
+            className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-white/20 text-white hover:bg-white/30 transition whitespace-nowrap"
+            style={{ textDecoration: "none" }}
+          >
+            Verwaltung
+          </Link>
+        )}
+
+        {isLoggedIn && (
+          <button
+            className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-red-600 hover:bg-red-700 transition whitespace-nowrap"
+            style={{ border: "none", outline: "none", cursor: "pointer" }}
+            type="button"
+            onClick={() => void handleLogout()}
+          >
+            Logout
+          </button>
+        )}
       </div>
 
       {/* MEMBER AREA SUB-NAV */}
       {isMember && (pathname === "/mein-bereich" || pathname.startsWith("/mein-bereich/")) && (
-        <div style={{ width: "100%", marginTop: 16, display: "flex", gap: 20, fontSize: 14 }}>
+        <div style={{ width: "100%", marginTop: 16, display: "flex", gap: 20, fontSize: 14, alignItems: "center", flexWrap: "wrap" }}>
           <Link
             href="/mein-bereich/dashboard"
             style={navLinkStyle(
@@ -142,7 +151,7 @@ export function HeaderClient({ user }: Props) {
 
       {/* VERWALTUNG SUB-NAV */}
       {(pathname === "/verwaltung-neu" || pathname.startsWith("/verwaltung-neu/")) && (
-        <div style={{ width: "100%", marginTop: 16, display: "flex", gap: 20, fontSize: 14 }}>
+        <div style={{ width: "100%", marginTop: 16, display: "flex", gap: 20, fontSize: 14, alignItems: "center", flexWrap: "wrap" }}>
           <Link
             href="/verwaltung-neu"
             style={navLinkStyle(pathname === "/verwaltung-neu" || pathname === "/verwaltung-neu/")}
@@ -188,6 +197,14 @@ export function HeaderClient({ user }: Props) {
             )}
           >
             QR Code
+          </Link>
+          <Link
+            href="/verwaltung-neu/gs-abgleich"
+            style={navLinkStyle(
+              pathname === "/verwaltung-neu/gs-abgleich" || pathname.startsWith("/verwaltung-neu/gs-abgleich"),
+            )}
+          >
+            GS-Abgleich
           </Link>
         </div>
       )}
