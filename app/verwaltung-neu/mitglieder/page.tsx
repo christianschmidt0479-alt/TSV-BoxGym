@@ -97,7 +97,11 @@ export default function MitgliederPage() {
         </div>
       )}
 
-      <MitgliederListClient members={members} totalTodayCount={totalTodayCount} />
+      <MitgliederListClient
+        members={members}
+        totalTodayCount={totalTodayCount}
+        onFiltersChanged={() => setCurrentPage(1)}
+      />
 
       <div className="flex items-center gap-3">
         <button

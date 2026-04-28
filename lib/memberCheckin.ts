@@ -67,6 +67,13 @@ export function getSessionsForDate(dateString: string) {
   return sessions.filter((session) => session.dayKey === dayKey)
 }
 
+export function getAvailableSessionsForToday(dateString: string) {
+  return getSessionsForDate(dateString).map((session) => ({
+    group: normalizeTrainingGroup(session.group) || session.group,
+    time: session.start,
+  }))
+}
+
 export function getMemberCheckinMode(disableCheckinTimeWindow: boolean): MemberCheckinMode {
   return disableCheckinTimeWindow ? "ferien" : "normal"
 }
@@ -84,45 +91,84 @@ export function resolveMemberCheckinAssignment({
   now,
   baseGroup,
   mode,
+  selectedGroup,
+  availableGroups,
+  allowOutsideWindowGroupFallback,
 }: {
   dailySessions: Session[]
   now: Date
   baseGroup?: string | null
   mode: MemberCheckinMode
+  selectedGroup?: string
+  availableGroups?: string[]
+  allowOutsideWindowGroupFallback?: boolean
 }) {
   const normalizedBaseGroup = normalizeTrainingGroup(baseGroup)
-  const isAdult = normalizedBaseGroup === "Basic Ü18"
-
-  if (isAdult) {
-    const activeSession = mode === "normal" ? getActiveCheckinSession(now, dailySessions) : null
-    const activeGroup = activeSession ? normalizeTrainingGroup(activeSession.group) || activeSession.group : null
-
-    return {
-      allowed: true,
-      groupName: activeGroup === "L-Gruppe" ? "L-Gruppe" : "Basic Ü18",
-      session:
-        activeGroup === "L-Gruppe"
-          ? activeSession
-          : dailySessions.find((session) => (normalizeTrainingGroup(session.group) || session.group) === "Basic Ü18") ?? null,
-      isAdult: true,
-    }
-  }
+  const normalizedSelectedGroup = normalizeTrainingGroup(selectedGroup) || selectedGroup || ""
+  const normalizedAvailableGroups = (availableGroups ?? []).map(
+    (group) => normalizeTrainingGroup(group) || group
+  )
 
   if (mode === "ferien") {
     return {
-      allowed: Boolean(normalizedBaseGroup),
+      allowed: true,
       groupName: normalizedBaseGroup || null,
       session: null,
       isAdult: false,
     }
   }
 
-  const activeSession = getActiveCheckinSession(now, dailySessions)
+  const ownGroupSessions = dailySessions.filter(
+    (session) => (normalizeTrainingGroup(session.group) || session.group) === normalizedBaseGroup
+  )
+
+  if (ownGroupSessions.length === 0) {
+    const hasValidSelectedGroup =
+      mode === "normal" &&
+      Boolean(normalizedSelectedGroup) &&
+      normalizedAvailableGroups.includes(normalizedSelectedGroup)
+
+    if (hasValidSelectedGroup) {
+      const selectedSessions = dailySessions.filter(
+        (session) => (normalizeTrainingGroup(session.group) || session.group) === normalizedSelectedGroup
+      )
+      const activeSelectedSession = getActiveCheckinSession(now, selectedSessions)
+
+      return {
+        allowed: Boolean(activeSelectedSession),
+        groupName: normalizedSelectedGroup,
+        session: activeSelectedSession,
+        isAdult: false,
+      }
+    }
+
+    return {
+      allowed: false,
+      groupName: null,
+      session: null,
+      isAdult: false,
+      reason: "no_own_session_today" as const,
+    }
+  }
+
+  const activeSession = getActiveCheckinSession(now, ownGroupSessions)
+
+  if (!activeSession && allowOutsideWindowGroupFallback && normalizedBaseGroup) {
+    return {
+      allowed: false,
+      groupName: normalizedBaseGroup,
+      session: null,
+      isAdult: false,
+      reason: "outside_time_window" as const,
+    }
+  }
+
   return {
     allowed: Boolean(activeSession),
-    groupName: activeSession ? normalizeTrainingGroup(activeSession.group) || activeSession.group : null,
+    groupName: activeSession ? normalizedBaseGroup : null,
     session: activeSession,
     isAdult: false,
+    reason: activeSession ? undefined : ("outside_time_window" as const),
   }
 }
 

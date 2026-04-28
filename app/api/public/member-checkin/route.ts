@@ -15,7 +15,7 @@ import { createCheckin, findMemberByEmailAndPin } from "@/lib/boxgymDb"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { handleCheckin } from "@/lib/checkinCore"
 import { applyMemberDeviceCookie, clearMemberDeviceCookie, createMemberDeviceToken, getMemberDeviceSessionMaxAgeMs } from "@/lib/memberDeviceSession"
-import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility } from "@/lib/memberCheckin"
+import { getAvailableSessionsForToday, getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility } from "@/lib/memberCheckin"
 import { isWeightRequiredGroup } from "@/lib/memberUtils"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
@@ -29,6 +29,7 @@ type MemberCheckinBody = {
   qrAccessToken?: string
   weight?: string
   sessionId?: string
+  selectedGroup?: string
   rememberDevice?: boolean
 }
 
@@ -136,6 +137,8 @@ export async function POST(request: Request) {
     const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
     const currentMonthKey = getMonthKey(liveDate)
     const todaysSessions = getSessionsForDate(liveDate)
+    const availableGroups = getAvailableSessionsForToday(liveDate)
+    const availableGroupNames = availableGroups.map((session) => session.group)
     if (!email || !password) {
       if (process.env.NODE_ENV !== "production") {
         console.warn('[member-flow][checkin][error] reason=missing_credentials email=' + maskEmail(email))
@@ -164,10 +167,18 @@ export async function POST(request: Request) {
       dailySessions: todaysSessions,
       now,
       baseGroup: resolvedMember.base_group,
-      mode: disableNormalWindowForTest ? "ferien" : checkinMode,
+      mode: checkinMode,
+      selectedGroup: body.selectedGroup,
+      availableGroups: availableGroupNames,
+      allowOutsideWindowGroupFallback: disableNormalWindowForTest,
     })
+    const bypassTimeWindow = Boolean(checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest)
+    const effectiveGroupName = checkinAssignment.groupName
+    const isNoOwnSessionToday = checkinAssignment.reason === "no_own_session_today"
+    const isOutsideTimeWindow = checkinAssignment.reason === "outside_time_window"
+    const checkinWindowAllowed = Boolean(checkinAssignment.allowed && effectiveGroupName)
     console.log("CHECKIN ASSIGNMENT", {
-      groupName: checkinAssignment?.groupName,
+      groupName: effectiveGroupName,
       session: checkinAssignment?.session,
     })
     console.log("CHECKIN SETTINGS", {
@@ -176,18 +187,36 @@ export async function POST(request: Request) {
       disableNormalWindowForTest,
     })
     console.log("GROUP CHECK", {
-      groupName: checkinAssignment.groupName,
+      groupName: effectiveGroupName,
       ferienmodus: checkinSettings.disableCheckinTimeWindow,
     })
+
+    if (isNoOwnSessionToday && !effectiveGroupName) {
+      return jsonResponse(
+        {
+          ok: false,
+          reason: "no_own_session_today",
+          availableGroups,
+        },
+        400
+      )
+    }
+
+    if (isOutsideTimeWindow && !bypassTimeWindow) {
+      return jsonResponse(
+        {
+          ok: false,
+          reason: "outside_time_window",
+        },
+        400
+      )
+    }
 
     // Eligibility-Prüfung (zentral)
     const eligibility = checkMemberEligibility({
       member: resolvedMember,
-      groupAllowed: Boolean(checkinAssignment.groupName),
-      timeAllowed:
-        checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest
-          ? true
-          : Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
+      groupAllowed: Boolean(effectiveGroupName),
+      timeAllowed: bypassTimeWindow || checkinWindowAllowed,
     })
 
     if (!eligibility.eligible) {
@@ -205,7 +234,7 @@ export async function POST(request: Request) {
     }
 
 
-    const requiresWeight = resolvedMember.is_competition_member || isWeightRequiredGroup(checkinAssignment.groupName)
+    const requiresWeight = resolvedMember.is_competition_member || isWeightRequiredGroup(effectiveGroupName)
     if (requiresWeight) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
@@ -251,8 +280,8 @@ export async function POST(request: Request) {
       hasCheckedInToday,
       {
         activeSession: checkinAssignment.session,
-        disableCheckinTimeWindow: Boolean(checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest),
-        groupAllowed: Boolean(checkinAssignment.groupName),
+        disableCheckinTimeWindow: bypassTimeWindow,
+        groupAllowed: Boolean(effectiveGroupName),
       }
     )
     console.log("CHECKIN CORE RESULT", checkinResult)
@@ -285,14 +314,14 @@ export async function POST(request: Request) {
 
     console.log("CHECKIN INSERT DATA", {
       memberId: resolvedMember.id,
-      groupName: checkinAssignment?.groupName,
+      groupName: effectiveGroupName,
       session: checkinAssignment?.session,
     })
 
     try {
       await createCheckin({
         member_id: resolvedMember.id,
-        group_name: checkinAssignment.groupName ?? "",
+        group_name: effectiveGroupName ?? "",
         checkin_mode: checkinMode,
         weight: requiresWeight ? body.weight?.trim() : undefined,
         date: liveDate,
@@ -316,7 +345,7 @@ export async function POST(request: Request) {
     // Gewichtspflicht-Logik nach erfolgreichem Check-in
     let requires_weight_entry_today = false
     let weight_already_recorded_today = false
-    if (resolvedMember.is_competition_member || isWeightRequiredGroup(checkinAssignment.groupName)) {
+    if (resolvedMember.is_competition_member || isWeightRequiredGroup(effectiveGroupName)) {
       requires_weight_entry_today = true
       // Prüfe, ob heute ein Check-in mit Gewicht existiert
       const { data: todayWeightRows, error: todayWeightError } = await supabase

@@ -3,7 +3,12 @@
 import Link from "next/link"
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import LoginCard from "@/components/LoginCard"
+import { ErrorBox } from "@/components/ErrorBox"
+import { Button } from "@/components/ui/button"
+import { FormContainer } from "@/components/ui/form-container"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/ui/password-input"
 
 export default function MemberLoginForm() {
   const router = useRouter()
@@ -51,42 +56,43 @@ export default function MemberLoginForm() {
   }
 
   return (
-    <LoginCard title="Mein Bereich" error={error}>
+    <FormContainer title="Mein Bereich" description="Bitte melde dich an">
       <form onSubmit={handleLogin} className="space-y-4">
+        <ErrorBox message={error} />
+
         {showSessionExpired ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Du wurdest aus Sicherheitsgründen ausgeloggt.
           </div>
         ) : null}
 
-        <div>
-          <label className="block text-sm font-medium text-zinc-900">E-Mail</label>
-          <input
+        <div className="space-y-2">
+          <Label>E-Mail</Label>
+          <Input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full h-12 rounded-xl border border-zinc-300 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
             required
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-zinc-900">Passwort</label>
-          <input
-            type="password"
+        <div className="space-y-2">
+          <Label>Passwort</Label>
+          <PasswordInput
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full h-12 rounded-xl border border-zinc-300 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
             required
           />
         </div>
 
-        <button
+        <Button
           type="submit"
-          className="w-full h-12 rounded-xl bg-[#154c83] hover:bg-[#123d69] transition text-white font-medium"
+          className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69]"
         >
           Einloggen
-        </button>
+        </Button>
 
         <p className="text-center text-sm text-zinc-500">
           <Link
@@ -97,6 +103,6 @@ export default function MemberLoginForm() {
           </Link>
         </p>
       </form>
-    </LoginCard>
+    </FormContainer>
   )
 }

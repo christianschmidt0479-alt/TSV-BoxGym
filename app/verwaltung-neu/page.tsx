@@ -3,10 +3,28 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 
+type TodayCheckinRow = {
+  id: string
+  member_id?: string | null
+  time?: string | null
+  created_at?: string | null
+  members?: {
+    name?: string | null
+    first_name?: string | null
+    last_name?: string | null
+    is_trial?: boolean | null
+  } | null
+}
+
+type AdminCheckinsResponse = {
+  todayRows?: TodayCheckinRow[]
+}
 
 export default function DashboardPage() {
   const [totalMembers, setTotalMembers] = useState<number | null>(null)
   const [pendingApprovals, setPendingApprovals] = useState<number | null>(null)
+  const [todayCheckins, setTodayCheckins] = useState<TodayCheckinRow[]>([])
+  const [loadingTodayCheckins, setLoadingTodayCheckins] = useState(true)
   const [disableCheckinTimeWindow, setDisableCheckinTimeWindow] = useState(false)
   const [disableNormalCheckinTimeWindow, setDisableNormalCheckinTimeWindow] = useState(false)
   const [checkinSettingsLoading, setCheckinSettingsLoading] = useState(true)
@@ -37,6 +55,42 @@ export default function DashboardPage() {
         return
       }
     })
+
+    return () => {
+      controller.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function loadTodayCheckins() {
+      try {
+        setLoadingTodayCheckins(true)
+        const response = await fetch("/api/admin/checkins", {
+          method: "GET",
+          credentials: "include",
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          setTodayCheckins([])
+          return
+        }
+
+        const result = (await response.json()) as AdminCheckinsResponse
+        setTodayCheckins(Array.isArray(result.todayRows) ? result.todayRows : [])
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return
+        }
+        setTodayCheckins([])
+      } finally {
+        setLoadingTodayCheckins(false)
+      }
+    }
+
+    void loadTodayCheckins()
 
     return () => {
       controller.abort()
@@ -115,6 +169,41 @@ export default function DashboardPage() {
     }
   }
 
+  function displayMemberName(row: TodayCheckinRow) {
+    const first = row.members?.first_name?.trim() ?? ""
+    const last = row.members?.last_name?.trim() ?? ""
+    const fullName = `${first} ${last}`.trim()
+    return fullName || row.members?.name?.trim() || "Unbekannt"
+  }
+
+  function displayCheckinType(row: TodayCheckinRow) {
+    if (typeof row.members?.is_trial === "boolean") {
+      return row.members.is_trial ? "Probemitglied" : "Mitglied"
+    }
+
+    return "Typ unbekannt"
+  }
+
+  function displayCheckinTime(row: TodayCheckinRow) {
+    if (row.time?.trim()) {
+      return row.time.trim()
+    }
+
+    if (row.created_at) {
+      const value = new Date(row.created_at)
+      if (!Number.isNaN(value.getTime())) {
+        return new Intl.DateTimeFormat("de-DE", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "Europe/Berlin",
+        }).format(value)
+      }
+    }
+
+    return null
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -137,6 +226,49 @@ export default function DashboardPage() {
           <div className="text-2xl font-extrabold text-zinc-900">QR</div>
           <div className="mt-1 text-sm text-zinc-600">Anzeigen und herunterladen</div>
         </Link>
+      </div>
+
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-base font-semibold text-emerald-900">Heute im Training</div>
+          <div className="text-2xl font-extrabold text-emerald-800">{loadingTodayCheckins ? "…" : todayCheckins.length}</div>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {loadingTodayCheckins ? (
+            <div className="text-sm text-emerald-900/80">Lade heutige Check-ins...</div>
+          ) : todayCheckins.length === 0 ? (
+            <div className="text-sm text-emerald-900/80">Heute noch niemand eingecheckt.</div>
+          ) : (
+            todayCheckins.map((row) => {
+              const time = displayCheckinTime(row)
+              const memberName = displayMemberName(row)
+              const typeLabel = displayCheckinType(row)
+
+              return (
+                <div key={row.id} className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                    {row.member_id ? (
+                      <Link href={`/verwaltung-neu/mitglieder/${row.member_id}`} className="font-semibold text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500">
+                        {memberName}
+                      </Link>
+                    ) : (
+                      <span className="font-semibold text-zinc-900">{memberName}</span>
+                    )}
+                    <span className="text-zinc-500">•</span>
+                    <span className="text-zinc-700">{typeLabel}</span>
+                    {time ? (
+                      <>
+                        <span className="text-zinc-500">•</span>
+                        <span className="text-zinc-700">{time}</span>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

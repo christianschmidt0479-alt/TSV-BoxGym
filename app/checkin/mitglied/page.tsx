@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
-import { getMemberCheckinMode, getSessionsForDate, isAdultBaseGroup, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
+import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment } from "@/lib/memberCheckin"
 import { isWeightRequiredGroup, needsWeight } from "@/lib/memberUtils"
 import { buildQrAccessHeaders, clearStoredQrAccess, readStoredQrAccess, storeQrAccess } from "@/lib/qrAccessClient"
 import { QR_ACCESS_PARAM } from "@/lib/qrAccess"
@@ -49,6 +49,8 @@ export default function MemberCheckinPage() {
   const [checkinDone, setCheckinDone] = useState("")
   const [checkinSuccessName, setCheckinSuccessName] = useState("")
   const [checkinError, setCheckinError] = useState("")
+  const [availableGroups, setAvailableGroups] = useState<Array<{ group: string; time: string }>>([])
+  const [selectedGroup, setSelectedGroup] = useState("")
   const [nfcDetected, setNfcDetected] = useState(false)
   const [initialFastCheckinResolved, setInitialFastCheckinResolved] = useState(false)
   const [autoCheckinRunning, setAutoCheckinRunning] = useState(false)
@@ -171,7 +173,6 @@ export default function MemberCheckinPage() {
 
   const todaysSessions = useMemo(() => getSessionsForDate(liveDate), [liveDate])
   const checkinMode = useMemo(() => getMemberCheckinMode(disableCheckinTimeWindow), [disableCheckinTimeWindow])
-  const useWindowBypassInNormalMode = !disableCheckinTimeWindow && disableNormalCheckinTimeWindow
 
   const rememberedAssignment = useMemo(() => {
     if (!now || !rememberedBaseGroup) return null
@@ -179,9 +180,9 @@ export default function MemberCheckinPage() {
       dailySessions: todaysSessions,
       now,
       baseGroup: rememberedBaseGroup,
-      mode: useWindowBypassInNormalMode ? "ferien" : checkinMode,
+      mode: checkinMode,
     })
-  }, [checkinMode, now, rememberedBaseGroup, todaysSessions, useWindowBypassInNormalMode])
+  }, [checkinMode, now, rememberedBaseGroup, todaysSessions])
   const rememberedNeedsWeight = rememberedCompetitionMember || isWeightRequiredGroup(rememberedAssignment?.groupName)
   const showRegistrationHint =
     autoCheckinFailed ||
@@ -268,6 +269,18 @@ export default function MemberCheckinPage() {
     setCheckinError("")
   }
 
+  function resetAvailableGroupSelection() {
+    setAvailableGroups([])
+    setSelectedGroup("")
+  }
+
+  function stopCheckinProgressInline() {
+    setIsCheckingIn(false)
+    setSoftProgress(false)
+    stopWaitGuard()
+    stopTimeoutGuard()
+  }
+
   useEffect(() => {
     return () => {
       stopWaitGuard()
@@ -349,6 +362,12 @@ export default function MemberCheckinPage() {
       window.scrollTo({ top: 0, behavior: "smooth" })
       return
     }
+
+    if (availableGroups.length > 0 && !selectedGroup) {
+      setCheckinError("Bitte wähle eine Gruppe aus, bevor du eincheckst.")
+      window.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
     // Einfache E-Mail Plausibilität
     if (!email.includes("@")) {
       setCheckinError("Bitte gültige E-Mail eingeben")
@@ -377,6 +396,7 @@ export default function MemberCheckinPage() {
           password: pin,
           qrAccessToken,
           weight: memberWeight.trim(),
+          selectedGroup: selectedGroup || undefined,
           rememberDevice,
         }),
       })
@@ -390,6 +410,7 @@ export default function MemberCheckinPage() {
             ok?: boolean
             error?: string
             reason?: string
+            availableGroups?: Array<{ group: string; time: string }>
             requires_weight_entry_today?: boolean
             rememberUntil?: number | null
             member?: {
@@ -409,6 +430,7 @@ export default function MemberCheckinPage() {
         ok?: boolean
         error?: string
         reason?: string
+        availableGroups?: Array<{ group: string; time: string }>
         requires_weight_entry_today?: boolean
         rememberUntil?: number | null
         member?: {
@@ -438,10 +460,23 @@ export default function MemberCheckinPage() {
         setMemberEmail("")
         setMemberPin("")
         setMemberWeight("")
+        resetAvailableGroupSelection()
         return
       }
 
       if (!response.ok || !typedResult.ok) {
+        if (typedResult.reason === "no_own_session_today") {
+          setAvailableGroups(Array.isArray(typedResult.availableGroups) ? typedResult.availableGroups : [])
+          if (selectedGroup && !Array.isArray(typedResult.availableGroups)) {
+            setSelectedGroup("")
+          }
+          setCheckinError("Heute findet kein Training deiner Gruppe statt. Du kannst eine andere Gruppe auswählen.")
+          stopCheckinProgressInline()
+          window.scrollTo({ top: 0, behavior: "smooth" })
+          return
+        }
+
+        resetAvailableGroupSelection()
         let errorMessage = "Fehler beim Speichern des Check-ins."
         if (typeof typedResult.reason === "string") {
           switch (typedResult.reason) {
@@ -455,7 +490,7 @@ export default function MemberCheckinPage() {
               errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
               break
             case "outside_time_window":
-              errorMessage = "Check-in ist nur im freigegebenen Zeitfenster möglich."
+              errorMessage = "Check-in für deine Gruppe ist aktuell nicht im Zeitfenster möglich."
               break
             case "LIMIT_TRIAL":
               errorMessage = "Du hast die maximale Anzahl an Probetrainings erreicht."
@@ -518,6 +553,7 @@ export default function MemberCheckinPage() {
             ok?: boolean
             error?: string
             reason?: string
+            availableGroups?: Array<{ group: string; time: string }>
             rememberUntil?: number
             member?: {
               id: string
@@ -535,6 +571,7 @@ export default function MemberCheckinPage() {
         ok?: boolean
         error?: string
         reason?: string
+        availableGroups?: Array<{ group: string; time: string }>
         rememberUntil?: number
         member?: {
           id: string
@@ -562,6 +599,16 @@ export default function MemberCheckinPage() {
       }
 
       if (!response.ok || !typedResult.ok) {
+        if (typedResult.reason === "no_own_session_today") {
+          setAvailableGroups(Array.isArray(typedResult.availableGroups) ? typedResult.availableGroups : [])
+          setSelectedGroup("")
+          setCheckinError("Heute findet kein Training deiner Gruppe statt. Du kannst eine andere Gruppe auswählen.")
+          setAutoCheckinFailed(true)
+          forgetRememberedDevice()
+          stopCheckinProgressInline()
+          return
+        }
+
         let errorMessage = "Fehler beim Schnell-Check-in."
         if (typeof typedResult.reason === "string") {
           switch (typedResult.reason) {
@@ -575,7 +622,7 @@ export default function MemberCheckinPage() {
               errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
               break
             case "outside_time_window":
-              errorMessage = "Check-in ist nur im freigegebenen Zeitfenster möglich."
+              errorMessage = "Check-in für deine Gruppe ist aktuell nicht im Zeitfenster möglich."
               break
             case "LIMIT_TRIAL":
               errorMessage = "Du hast die maximale Anzahl an Probetrainings erreicht."
@@ -685,11 +732,6 @@ export default function MemberCheckinPage() {
             {checkinMode === "ferien" ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
                 Ferienmodus aktiv
-              </div>
-            ) : null}
-            {hasRememberedDevice && isAdultBaseGroup(rememberedBaseGroup) ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-                Ü18 jederzeit möglich
               </div>
             ) : null}
           </CardHeader>
@@ -802,7 +844,12 @@ export default function MemberCheckinPage() {
                   ref={emailInputRef}
                   type="email"
                   value={memberEmail}
-                  onChange={(e) => setMemberEmail(e.target.value)}
+                  onChange={(e) => {
+                    setMemberEmail(e.target.value)
+                    if (availableGroups.length > 0) {
+                      resetAvailableGroupSelection()
+                    }
+                  }}
                   placeholder="name@tsv-falkensee.de"
                   className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
                   autoFocus
@@ -816,13 +863,49 @@ export default function MemberCheckinPage() {
                 <Label>Passwort</Label>
                 <PasswordInput
                   value={memberPin}
-                  onChange={(e) => setMemberPin(e.target.value)}
+                  onChange={(e) => {
+                    setMemberPin(e.target.value)
+                    if (availableGroups.length > 0) {
+                      resetAvailableGroupSelection()
+                    }
+                  }}
                   placeholder="Passwort"
                   className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
                   inputMode="numeric"
                   enterKeyHint="done"
                 />
               </div>
+
+              {checkinMode === "normal" && availableGroups.length > 0 ? (
+                <div className="space-y-2 rounded-2xl border border-blue-200 bg-blue-50 p-3">
+                  <p className="text-sm font-semibold text-blue-900">
+                    Heute findet kein Training deiner Gruppe statt. Du kannst eine andere Gruppe auswählen.
+                  </p>
+                  <div className="space-y-2">
+                    {availableGroups.map((session) => {
+                      const optionValue = `${session.group}__${session.time}`
+                      const isSelected = selectedGroup === session.group
+                      return (
+                        <button
+                          key={optionValue}
+                          type="button"
+                          className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                            isSelected
+                              ? "border-[#154c83] bg-white text-[#154c83]"
+                              : "border-blue-200 bg-white text-zinc-800 hover:border-blue-300"
+                          }`}
+                          onClick={() => {
+                            setSelectedGroup(session.group)
+                            setCheckinError("")
+                          }}
+                        >
+                          {session.group} · {session.time}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               {(rememberedCompetitionMember || isWeightRequiredGroup(rememberedAssignment?.groupName)) && (
                 <div className="space-y-2">

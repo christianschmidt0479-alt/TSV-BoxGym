@@ -149,7 +149,7 @@ function MemberCard({ m }: { m: MemberRow }) {
   )
 }
 
-export default function MitgliederListClient({ members, totalTodayCount }: { members: MemberRow[]; totalTodayCount: number }) {
+export default function MitgliederListClient({ members, totalTodayCount, onFiltersChanged }: { members: MemberRow[]; totalTodayCount: number; onFiltersChanged?: () => void }) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
@@ -211,6 +211,7 @@ export default function MitgliederListClient({ members, totalTodayCount }: { mem
   function handleSubmitSearch(event: FormEvent) {
     event.preventDefault()
     setSearch(searchInput)
+    onFiltersChanged?.()
   }
 
   function resetFilters() {
@@ -218,6 +219,17 @@ export default function MitgliederListClient({ members, totalTodayCount }: { mem
     setSearch("")
     setGroupFilter("all")
     setStatusFilter("all")
+    onFiltersChanged?.()
+  }
+
+  function handleGroupChange(value: string) {
+    setGroupFilter(value)
+    onFiltersChanged?.()
+  }
+
+  function handleStatusChange(value: string) {
+    setStatusFilter(value)
+    onFiltersChanged?.()
   }
 
   return (
@@ -261,7 +273,7 @@ export default function MitgliederListClient({ members, totalTodayCount }: { mem
         ) : null}
         <select
           value={groupFilter}
-          onChange={(e) => setGroupFilter(e.target.value)}
+          onChange={(e) => handleGroupChange(e.target.value)}
           className="rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
         >
           <option value="all">Alle Gruppen</option>
@@ -272,7 +284,7 @@ export default function MitgliederListClient({ members, totalTodayCount }: { mem
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => handleStatusChange(e.target.value)}
           className="rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
         >
           <option value="all">Alle</option>
@@ -287,12 +299,16 @@ export default function MitgliederListClient({ members, totalTodayCount }: { mem
         </div>
       )}
 
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
-        Heute im Training ({todayMembers.length})
-      </div>
-
       <div className="space-y-3">
-        {sortedMembers.map((m) => <MemberCard key={m.id} m={m} />)}
+        {sortedMembers.length === 0 ? (
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+            {hasActiveFilters
+              ? "Keine Treffer auf dieser Seite. Bitte Filter löschen oder zur ersten Seite wechseln."
+              : "Auf dieser Seite sind aktuell keine Mitglieder."}
+          </div>
+        ) : (
+          sortedMembers.map((m) => <MemberCard key={m.id} m={m} />)
+        )}
       </div>
     </>
   )

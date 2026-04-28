@@ -22,33 +22,7 @@ type CheckinRow = {
 }
 
 type CheckinsResponse = {
-  rows?: CheckinRow[]
-}
-
-function berlinDayKey(date: Date) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Berlin",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date)
-}
-
-function isTodayCheckin(row: CheckinRow, todayIso: string) {
-  if (row.date === todayIso) {
-    return true
-  }
-
-  if (!row.created_at) {
-    return false
-  }
-
-  const createdAt = new Date(row.created_at)
-  if (Number.isNaN(createdAt.getTime())) {
-    return false
-  }
-
-  return berlinDayKey(createdAt) === todayIso
+  todayCheckins?: CheckinRow[]
 }
 
 function displayName(row: CheckinRow) {
@@ -86,14 +60,21 @@ export default function TrainerHeuteDaClient() {
   const [error, setError] = useState("")
   const [deletingById, setDeletingById] = useState<Record<string, boolean>>({})
 
-  const todayIso = useMemo(() => berlinDayKey(new Date()), [])
+  const todayIso = useMemo(() => {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date())
+  }, [])
 
   const loadRows = useCallback(async () => {
     try {
       setLoading(true)
       setError("")
 
-      const response = await fetch("/api/admin/checkins", {
+      const response = await fetch(`/api/trainer/today?today=${encodeURIComponent(todayIso)}`, {
         method: "GET",
       })
 
@@ -102,9 +83,7 @@ export default function TrainerHeuteDaClient() {
         throw new Error("Check-ins konnten nicht geladen werden")
       }
 
-      const allRows = Array.isArray(payload.rows) ? payload.rows : []
-      const todayRows = allRows
-        .filter((row) => isTodayCheckin(row, todayIso))
+      const todayRows = (Array.isArray(payload.todayCheckins) ? payload.todayCheckins : [])
         .sort((a, b) => {
           const aDate = a.created_at ? new Date(a.created_at).getTime() : 0
           const bDate = b.created_at ? new Date(b.created_at).getTime() : 0

@@ -5,6 +5,8 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
 import { ErrorBox } from "@/components/ErrorBox"
+import { Button } from "@/components/ui/button"
+import { FormContainer } from "@/components/ui/form-container"
 import { InfoHint } from "@/components/ui/info-hint"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -224,36 +226,33 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
   })()
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 pt-8 pb-12 text-zinc-900 md:px-6 md:pt-10">
-      <div className="mx-auto max-w-3xl space-y-6">
-        <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6 text-center">
-          <Image src="/logo.png" alt="TSV Falkensee" width={64} height={64} className="h-20 w-auto mx-auto mb-4" />
-          <h1 className="text-xl font-semibold">{heading}</h1>
-          <p className="text-sm text-gray-600 mt-2">{description}</p>
-        </div>
+    <FormContainer
+      title={heading}
+      description={description}
+      headerSlot={<Image src="/logo.png" alt="TSV Falkensee" width={64} height={64} className="mx-auto h-16 w-auto" />}
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-zinc-600">Bitte fülle die folgenden Angaben vollständig aus.</p>
 
-        <div className="text-sm text-gray-600 text-center mb-4">Bitte fülle die folgenden Angaben vollständig aus.</div>
-
-        <div className="bg-white rounded-xl p-6 space-y-4 border border-gray-200">
-          {registrationSuccessMessage ? (
-            <div className="space-y-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-4">
-              <p className="text-sm font-semibold text-emerald-900">{registrationSuccessMessage}</p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Link
-                  href="/mein-bereich/login"
-                  className="inline-flex h-11 items-center justify-center rounded-md bg-[#154c83] px-4 text-sm font-semibold text-white transition hover:bg-[#123f6e]"
-                >
-                  Zum Login
-                </Link>
-                <Link
-                  href="/checkin"
-                  className="inline-flex h-11 items-center justify-center rounded-md border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50"
-                >
-                  Zurück zum Check-in
-                </Link>
-              </div>
+        {registrationSuccessMessage ? (
+          <div className="space-y-4 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-4">
+            <p className="text-sm font-semibold text-emerald-900">{registrationSuccessMessage}</p>
+            <div className="flex flex-col gap-2">
+              <Link
+                href="/mein-bereich/login"
+                className="inline-flex h-14 items-center justify-center rounded-2xl bg-[#154c83] px-4 text-base font-semibold text-white transition hover:bg-[#123d69]"
+              >
+                Zum Login
+              </Link>
+              <Link
+                href="/checkin"
+                className="inline-flex h-14 items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 text-base font-semibold text-zinc-900 transition hover:bg-zinc-50"
+              >
+                Zurück zum Check-in
+              </Link>
             </div>
-          ) : (
+          </div>
+        ) : (
           <form
             className="space-y-4"
             onSubmit={(event) => {
@@ -262,30 +261,30 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
             }}
           >
             <ErrorBox message={apiError} />
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Vorname <span className="ml-1 text-gray-800">*</span></Label>
-                <Input value={registerFirstName} onChange={(e) => setRegisterFirstName(e.target.value)} placeholder="Vorname" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+                <Label>Vorname <span className="ml-1 text-zinc-800">*</span></Label>
+                <Input value={registerFirstName} onChange={(e) => setRegisterFirstName(e.target.value)} placeholder="Vorname" className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900" />
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Nachname <span className="ml-1 text-gray-800">*</span></Label>
-                <Input value={registerLastName} onChange={(e) => setRegisterLastName(e.target.value)} placeholder="Nachname" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+                <Label>Nachname <span className="ml-1 text-zinc-800">*</span></Label>
+                <Input value={registerLastName} onChange={(e) => setRegisterLastName(e.target.value)} placeholder="Nachname" className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900" />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Geburtsdatum <span className="ml-1 text-gray-800">*</span></Label>
-              <Input type="date" value={registerBirthDate} onChange={(e) => setRegisterBirthDate(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+              <Label>Geburtsdatum <span className="ml-1 text-zinc-800">*</span></Label>
+              <Input type="date" value={registerBirthDate} onChange={(e) => setRegisterBirthDate(e.target.value)} className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900" />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Geschlecht <span className="ml-1 text-gray-800">*</span></label>
+            <div className="space-y-2">
+              <Label>Geschlecht <span className="ml-1 text-zinc-800">*</span></Label>
               <select
                 name="gender"
                 required
                 value={registerGender}
                 onChange={(event) => setRegisterGender(event.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="h-14 w-full rounded-2xl border border-zinc-300 bg-white px-3 text-base text-zinc-900"
               >
                 <option value="" disabled>Bitte Geschlecht auswählen</option>
                 <option value="male">Männlich</option>
@@ -294,13 +293,13 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Stammgruppe <span className="ml-1 text-gray-800">*</span></Label>
+              <Label>Stammgruppe <span className="ml-1 text-zinc-800">*</span></Label>
               <select
                 name="registerGroup"
                 value={registerBaseGroup}
                 onChange={(e) => setRegisterBaseGroup(e.target.value)}
                 required
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="h-14 w-full rounded-2xl border border-zinc-300 bg-white px-3 text-base text-zinc-900"
               >
                 <option value="" disabled>Bitte Stammgruppe auswählen</option>
                 <option value="Basic 10 - 14 Jahre">Basic 10 - 14 Jahre</option>
@@ -314,40 +313,40 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Passwort selbst wählen <span className="ml-1 text-gray-800">*</span></Label>
+              <Label>Passwort selbst wählen <span className="ml-1 text-zinc-800">*</span></Label>
               <PasswordInput
                 value={registerPin}
                 onChange={(e) => setRegisterPin(e.target.value)}
                 placeholder="Eigenes Passwort wählen"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
               />
               <p className="text-xs text-zinc-500">Dieses Passwort legst du bei der Registrierung selbst fest.</p>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">E-Mail *</Label>
+              <Label>E-Mail *</Label>
               <Input
                 type="email"
                 value={registerEmail}
                 onChange={(e) => setRegisterEmail(e.target.value)}
                 placeholder="E-Mail"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Telefon *</Label>
+              <Label>Telefon *</Label>
               <Input
                 type="tel"
                 value={registerPhone}
                 onChange={(e) => setRegisterPhone(e.target.value)}
                 placeholder="Telefonnummer"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="flex items-start gap-3 rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+              <label className="flex items-start gap-3 rounded-2xl border border-[#d8e3ee] bg-zinc-50 p-3 text-sm text-zinc-700">
                 <input
                   type="checkbox"
                   checked={privacyAccepted}
@@ -355,30 +354,29 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
                     setPrivacyAccepted(event.target.checked)
                     if (event.target.checked) setPrivacyError("")
                   }}
-                  className="mt-1 h-4 w-4 rounded border-zinc-300 text-[#154c83]"
+                  className="mt-1 h-4 w-4 rounded border-zinc-300 accent-[#154c83]"
                 />
                 <span>
                   Ich akzeptiere die{" "}
                   <Link href="/datenschutz" className="font-medium text-[#154c83] underline underline-offset-4">
                     Datenschutzerklärung
                   </Link>
-                  <span className="ml-1 text-gray-800">*</span>
+                  <span className="ml-1 text-zinc-800">*</span>
                 </span>
               </label>
               {privacyError ? <p className="text-sm text-red-600">{privacyError}</p> : null}
             </div>
 
-            <button type="submit" disabled={dbLoading} className="w-full rounded-md bg-[#154c83] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#123f6e] disabled:opacity-60">
+            <Button type="submit" disabled={dbLoading} className="h-16 w-full rounded-2xl bg-[#154c83] text-xl font-semibold text-white hover:bg-[#123d69] disabled:opacity-60">
               {dbLoading ? "Speichere..." : "Registrieren"}
-            </button>
+            </Button>
           </form>
-          )}
+        )}
 
-          <div className="flex justify-center">
-            <InfoHint text={MEMBER_PASSWORD_HINT} />
-          </div>
+        <div className="flex justify-center">
+          <InfoHint text={MEMBER_PASSWORD_HINT} />
         </div>
       </div>
-    </div>
+    </FormContainer>
   )
 }

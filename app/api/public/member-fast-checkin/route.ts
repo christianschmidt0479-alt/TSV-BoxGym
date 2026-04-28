@@ -11,7 +11,7 @@ import {
   readMemberDeviceTokenFromHeaders,
   verifyMemberDeviceToken,
 } from "@/lib/memberDeviceSession"
-import { getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility } from "@/lib/memberCheckin"
+import { getAvailableSessionsForToday, getMemberCheckinMode, getSessionsForDate, resolveMemberCheckinAssignment, checkMemberEligibility } from "@/lib/memberCheckin"
 import { isWeightRequiredGroup } from "@/lib/memberUtils"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
@@ -22,6 +22,7 @@ type MemberFastCheckinBody = {
   qrAccessToken?: string
   token?: string
   sessionId?: string
+  selectedGroup?: string
   weight?: string
 }
 
@@ -116,6 +117,8 @@ export async function POST(request: Request) {
     const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
     const currentMonthKey = getMonthKey(liveDate)
     const todaysSessions = getSessionsForDate(liveDate)
+    const availableGroups = getAvailableSessionsForToday(liveDate)
+    const availableGroupNames = availableGroups.map((session) => session.group)
     const checkinSettings = await readCheckinSettings()
     const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
     const disableNormalWindowForTest =
@@ -126,17 +129,43 @@ export async function POST(request: Request) {
       dailySessions: todaysSessions,
       now,
       baseGroup: member.base_group,
-      mode: disableNormalWindowForTest ? "ferien" : checkinMode,
+      mode: checkinMode,
+      selectedGroup: body.selectedGroup,
+      availableGroups: availableGroupNames,
+      allowOutsideWindowGroupFallback: disableNormalWindowForTest,
     })
+    const bypassTimeWindow = Boolean(checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest)
+    const effectiveGroupName = checkinAssignment.groupName
+    const isNoOwnSessionToday = checkinAssignment.reason === "no_own_session_today"
+    const isOutsideTimeWindow = checkinAssignment.reason === "outside_time_window"
+    const checkinWindowAllowed = Boolean(checkinAssignment.allowed && effectiveGroupName)
+
+    if (isNoOwnSessionToday && !effectiveGroupName) {
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: "no_own_session_today",
+          availableGroups,
+        },
+        { status: 400 }
+      )
+    }
+
+    if (isOutsideTimeWindow && !bypassTimeWindow) {
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: "outside_time_window",
+        },
+        { status: 400 }
+      )
+    }
 
     // Eligibility-Prüfung (zentral, produktiv)
     const eligibility = checkMemberEligibility({
       member,
-      groupAllowed: Boolean(checkinAssignment.groupName),
-      timeAllowed:
-        checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest
-          ? true
-          : Boolean(checkinAssignment.allowed && checkinAssignment.groupName),
+      groupAllowed: Boolean(effectiveGroupName),
+      timeAllowed: bypassTimeWindow || checkinWindowAllowed,
     })
     if (!eligibility.eligible) {
       // Minimal Logging
@@ -153,7 +182,7 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    const requiresWeight = member.is_competition_member || isWeightRequiredGroup(checkinAssignment.groupName)
+    const requiresWeight = member.is_competition_member || isWeightRequiredGroup(effectiveGroupName)
     if (requiresWeight) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
@@ -199,8 +228,8 @@ export async function POST(request: Request) {
       hasCheckedInToday,
       {
         activeSession: checkinAssignment.session,
-        disableCheckinTimeWindow: Boolean(checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest),
-        groupAllowed: Boolean(checkinAssignment.groupName),
+        disableCheckinTimeWindow: bypassTimeWindow,
+        groupAllowed: Boolean(effectiveGroupName),
       }
     )
 
@@ -228,7 +257,7 @@ export async function POST(request: Request) {
 
     await createCheckin({
       member_id: member.id,
-      group_name: checkinAssignment.groupName ?? "",
+      group_name: effectiveGroupName ?? "",
       checkin_mode: checkinMode,
       weight: requiresWeight ? body.weight?.trim() : undefined,
       date: liveDate,
