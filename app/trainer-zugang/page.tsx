@@ -71,6 +71,7 @@ export default function TrainerLoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
+            autoComplete="username"
             required
           />
         </div>
@@ -83,6 +84,7 @@ export default function TrainerLoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
+            autoComplete="current-password"
             required
           />
         </div>

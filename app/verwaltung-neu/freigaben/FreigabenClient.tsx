@@ -1,8 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
-import { groupOptions } from "@/lib/boxgymSessions"
+import { useState } from "react"
 import { loadGsStatusMap, type GsStatusEntry, type GsStatus } from "../gs-abgleich/gsStatusStore"
 
 type ApprovalMember = {
@@ -57,16 +56,6 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
   const [error, setError] = useState<string | null>(null)
   const [tsvStatusMap] = useState<Record<string, GsStatusEntry>>(() => loadGsStatusMap())
 
-  const groupByMemberId = useMemo(() => {
-    const next = new Map<string, string>()
-    for (const member of members) {
-      next.set(member.id, member.base_group || groupOptions[0] || "")
-    }
-    return next
-  }, [members])
-
-  const [selectedGroups, setSelectedGroups] = useState<Map<string, string>>(groupByMemberId)
-
   async function callAction(url: string, body: Record<string, unknown>) {
     const response = await fetch(url, {
       method: "POST",
@@ -82,9 +71,9 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
   }
 
   async function approveMember(member: ApprovalMember) {
-    const baseGroup = selectedGroups.get(member.id) || member.base_group || ""
+    const baseGroup = member.base_group || ""
     if (!baseGroup) {
-      setError("Bitte zuerst eine Gruppe auswählen.")
+      setError("Bitte zuerst unter \"Daten ändern\" eine Stammgruppe setzen.")
       return
     }
 
@@ -124,8 +113,7 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
       ) : null}
 
       {members.map((member) => {
-        const currentGroup = selectedGroups.get(member.id) || member.base_group || ""
-        const status = member.member_phase
+          const status = member.member_phase
 
         const gsEntry = tsvStatusMap[member.id]
         const isBusy = loadingMemberId === member.id
@@ -164,22 +152,6 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
             ) : null}
 
             <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={currentGroup}
-                onChange={(event) => {
-                  const next = new Map(selectedGroups)
-                  next.set(member.id, event.target.value)
-                  setSelectedGroups(next)
-                }}
-                disabled={isBusy}
-                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none disabled:opacity-60"
-              >
-                <option value="">Gruppe wählen</option>
-                {groupOptions.map((group) => (
-                  <option key={group} value={group}>{group}</option>
-                ))}
-              </select>
-
               <Link href={`/verwaltung-neu/mitglieder/${member.id}`}>
                 <button type="button" disabled={isBusy} className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400 disabled:opacity-60">
                   Daten ändern

@@ -57,7 +57,7 @@ export default function MemberLoginForm() {
   }
 
   return (
-    <FormContainer title="Mein TSV BoxGym" description="Melde dich mit E-Mail und PIN an.">
+    <FormContainer>
       <div className="space-y-5">
         <MemberAreaBrandHeader
           title="Willkommen zurück"
@@ -80,6 +80,7 @@ export default function MemberLoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
+            autoComplete="username"
             required
           />
         </div>
@@ -90,6 +91,7 @@ export default function MemberLoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
+            autoComplete="current-password"
             required
           />
         </div>

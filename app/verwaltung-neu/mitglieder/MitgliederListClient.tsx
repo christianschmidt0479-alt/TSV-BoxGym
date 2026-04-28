@@ -107,23 +107,21 @@ function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: GsStatusEntry 
           <div className="text-xs text-zinc-500">{m.email || "-"}</div>
           <div className="text-xs text-zinc-600">Gruppe: {m.base_group || "-"}</div>
         </div>
-        {!m.is_approved ? (
-          <span className={priorityBadge(m)}>{priorityLabel(m)}</span>
-        ) : null}
+        <div className="flex flex-col items-end gap-1.5">
+          {!m.is_approved ? (
+            <span className={priorityBadge(m)}>{priorityLabel(m)}</span>
+          ) : null}
+          <span
+            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-bold border border-zinc-300 shadow-sm cursor-default ${gsBadgeProps(tsvStatus).color}`}
+            title={gsBadgeProps(tsvStatus).title}
+            style={{ minWidth: 28, justifyContent: "center" }}
+          >
+            GS
+          </span>
+        </div>
       </div>
 
       <div className="text-xs text-zinc-700"><strong>Status:</strong> {memberStatus(m)}</div>
-
-      <div className="text-xs text-zinc-700">
-        {/* Kompakter GS-Badge */}
-        <span
-          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-bold border border-zinc-300 shadow-sm cursor-default ${gsBadgeProps(tsvStatus).color}`}
-          title={gsBadgeProps(tsvStatus).title}
-          style={{ minWidth: 28, justifyContent: "center" }}
-        >
-          GS
-        </span>
-      </div>
 
       <div className="flex flex-wrap gap-2">
         {m.checkedInToday ? (
