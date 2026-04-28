@@ -6,6 +6,7 @@ import Link from "next/link"
 type TodayCheckinRow = {
   id: string
   member_id?: string | null
+  group_name?: string | null
   time?: string | null
   created_at?: string | null
   members?: {
@@ -184,6 +185,11 @@ export default function DashboardPage() {
     return "Typ unbekannt"
   }
 
+  function displayGroupName(row: TodayCheckinRow) {
+    const groupName = row.group_name?.trim()
+    return groupName || "Gruppe unbekannt"
+  }
+
   function displayCheckinTime(row: TodayCheckinRow) {
     if (row.time?.trim()) {
       return row.time.trim()
@@ -231,7 +237,10 @@ export default function DashboardPage() {
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 shadow-sm">
         <div className="flex items-center justify-between gap-3">
           <div className="text-base font-semibold text-emerald-900">Heute im Training</div>
-          <div className="text-2xl font-extrabold text-emerald-800">{loadingTodayCheckins ? "…" : todayCheckins.length}</div>
+          <div className="text-right">
+            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Teilnehmer heute</div>
+            <div className="text-2xl font-extrabold text-emerald-800">{loadingTodayCheckins ? "…" : todayCheckins.length}</div>
+          </div>
         </div>
 
         <div className="mt-3 space-y-2">
@@ -243,7 +252,7 @@ export default function DashboardPage() {
             todayCheckins.map((row) => {
               const time = displayCheckinTime(row)
               const memberName = displayMemberName(row)
-              const typeLabel = displayCheckinType(row)
+              const groupLabel = displayGroupName(row)
 
               return (
                 <div key={row.id} className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
@@ -255,8 +264,8 @@ export default function DashboardPage() {
                     ) : (
                       <span className="font-semibold text-zinc-900">{memberName}</span>
                     )}
-                    <span className="text-zinc-500">•</span>
-                    <span className="text-zinc-700">{typeLabel}</span>
+                    <span className="text-zinc-500">—</span>
+                    <span className="text-zinc-700">{groupLabel}</span>
                     {time ? (
                       <>
                         <span className="text-zinc-500">•</span>

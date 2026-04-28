@@ -52,6 +52,7 @@ export default function MemberCheckinPage() {
   const [availableGroups, setAvailableGroups] = useState<Array<{ group: string; time: string }>>([])
   const [selectedGroup, setSelectedGroup] = useState("")
   const [nfcDetected, setNfcDetected] = useState(false)
+  const [qrTokenStatus, setQrTokenStatus] = useState<"idle" | "valid" | "invalid">("idle")
   const [initialFastCheckinResolved, setInitialFastCheckinResolved] = useState(false)
   const [autoCheckinRunning, setAutoCheckinRunning] = useState(false)
   const [autoCheckinFailed, setAutoCheckinFailed] = useState(false)
@@ -490,10 +491,13 @@ export default function MemberCheckinPage() {
               errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
               break
             case "outside_time_window":
-              errorMessage = "Check-in für deine Gruppe ist aktuell nicht im Zeitfenster möglich."
+              errorMessage = "Check-in aktuell nicht möglich (Zeitfenster)"
               break
             case "LIMIT_TRIAL":
               errorMessage = "Du hast die maximale Anzahl an Probetrainings erreicht."
+              break
+            case "DUPLICATE":
+              errorMessage = "Bereits eingecheckt"
               break
             default:
               errorMessage = typedResult.error || "Fehler beim Speichern des Check-ins."
@@ -622,10 +626,13 @@ export default function MemberCheckinPage() {
               errorMessage = "Für dich wurde aktuell keine passende Trainingseinheit gefunden."
               break
             case "outside_time_window":
-              errorMessage = "Check-in für deine Gruppe ist aktuell nicht im Zeitfenster möglich."
+              errorMessage = "Check-in aktuell nicht möglich (Zeitfenster)"
               break
             case "LIMIT_TRIAL":
               errorMessage = "Du hast die maximale Anzahl an Probetrainings erreicht."
+              break
+            case "DUPLICATE":
+              errorMessage = "Bereits eingecheckt"
               break
             default:
               errorMessage = typedResult.error || "Fehler beim Schnell-Check-in."
@@ -724,9 +731,17 @@ export default function MemberCheckinPage() {
                 <p className="mt-1 text-sm text-blue-700">Bitte kurz warten.</p>
               </div>
             ) : null}
-            {nfcDetected ? (
+            {qrTokenStatus === "valid" ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                Zugang erkannt
+              </div>
+            ) : qrTokenStatus === "invalid" ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                QR-Code ungültig oder abgelaufen
+              </div>
+            ) : nfcDetected ? (
               <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
-                NFC erkannt - Check-in starten
+                NFC erkannt – Check-in starten
               </div>
             ) : null}
             {checkinMode === "ferien" ? (
@@ -742,7 +757,7 @@ export default function MemberCheckinPage() {
                   <div>
                     <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#154c83]">
                       <Smartphone className="h-4 w-4" />
-                      Fast-Check-in
+                      Gerät erkannt – schneller Check-in möglich
                     </div>
                     <div className="mt-3 text-lg font-semibold text-zinc-900">
                       Als {rememberedFirstName} {rememberedLastName} einchecken

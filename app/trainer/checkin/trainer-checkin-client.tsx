@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { FormContainer } from "@/components/ui/form-container"
 import { Button } from "@/components/ui/button"
@@ -88,11 +88,14 @@ function mapCheckinError(response: CheckinApiResponse) {
 
 export default function TrainerCheckinClient() {
   const searchParams = useSearchParams()
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [members, setMembers] = useState<TrainerMember[]>([])
   const [checkedInToday, setCheckedInToday] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState("")
+  const [selectedMemberId, setSelectedMemberId] = useState("")
   const [loading, setLoading] = useState(true)
   const [globalError, setGlobalError] = useState("")
+  const [quickInfo, setQuickInfo] = useState("")
   const [rowLoading, setRowLoading] = useState<Record<string, boolean>>({})
   const [rowFeedback, setRowFeedback] = useState<Record<string, RowFeedback>>({})
   const [resolvingToken, setResolvingToken] = useState(false)
@@ -170,6 +173,10 @@ export default function TrainerCheckinClient() {
   }, [searchParams])
 
   useEffect(() => {
+    searchInputRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
     let active = true
 
     async function loadData() {
@@ -243,6 +250,13 @@ export default function TrainerCheckinClient() {
     })
   }, [members, query])
 
+  const selectedMember = useMemo(() => {
+    if (!selectedMemberId) {
+      return null
+    }
+    return filteredMembers.find((member) => member.id === selectedMemberId) ?? null
+  }, [filteredMembers, selectedMemberId])
+
   const preselectedMember = useMemo(() => {
     if (!preselectedMemberId) {
       return null
@@ -266,12 +280,37 @@ export default function TrainerCheckinClient() {
     }
   }, [loading, preselectedMember, preselectedMemberId, query])
 
+  useEffect(() => {
+    const needle = query.trim()
+    if (!needle) {
+      return
+    }
+
+    const firstMatch = filteredMembers[0]
+    if (!firstMatch) {
+      setSelectedMemberId("")
+      return
+    }
+
+    setSelectedMemberId(firstMatch.id)
+  }, [filteredMembers, query])
+
+  async function handleSubmitSelectedByEnter() {
+    const member = selectedMember ?? filteredMembers[0] ?? null
+    if (!member || rowLoading[member.id]) {
+      return
+    }
+    await handleCheckin(member)
+  }
+
   async function handleCheckin(member: TrainerMember) {
     if (checkedInToday.has(member.id)) {
       setRowFeedback((prev) => ({
         ...prev,
         [member.id]: { tone: "info", message: "Bereits eingecheckt" },
       }))
+      setQuickInfo("Bereits eingecheckt")
+      searchInputRef.current?.focus()
       return
     }
 
@@ -303,6 +342,8 @@ export default function TrainerCheckinClient() {
           ...prev,
           [member.id]: { tone: "info", message: "Bereits eingecheckt" },
         }))
+        setQuickInfo("Bereits eingecheckt")
+        searchInputRef.current?.focus()
         return
       }
 
@@ -323,6 +364,10 @@ export default function TrainerCheckinClient() {
         ...prev,
         [member.id]: { tone: "success", message: "Eingecheckt" },
       }))
+      setQuickInfo(`${displayName(member)} eingecheckt`)
+      setQuery("")
+      setSelectedMemberId("")
+      searchInputRef.current?.focus()
     } catch {
       setRowFeedback((prev) => ({
         ...prev,
@@ -384,14 +429,29 @@ export default function TrainerCheckinClient() {
             Name suchen
           </label>
           <Input
+            ref={searchInputRef}
             id="trainer-checkin-search"
             type="text"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setQuickInfo("")
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") {
+                return
+              }
+              event.preventDefault()
+              void handleSubmitSelectedByEnter()
+            }}
             placeholder="Mitglied eingeben"
             autoComplete="off"
           />
         </div>
+
+        {quickInfo ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{quickInfo}</div>
+        ) : null}
 
         {globalError ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{globalError}</div>
@@ -407,7 +467,7 @@ export default function TrainerCheckinClient() {
               const isBusy = Boolean(rowLoading[member.id])
               const isAlreadyCheckedIn = checkedInToday.has(member.id)
               const feedback = rowFeedback[member.id]
-              const isPreselected = preselectedMemberId === member.id
+              const isPreselected = preselectedMemberId === member.id || selectedMemberId === member.id
 
               return (
                 <div
