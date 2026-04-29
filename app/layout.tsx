@@ -1,8 +1,25 @@
 
 import "./globals.css"
+import type { Metadata, Viewport } from "next"
 import { AreaProvider } from "@/lib/area-context"
 import Header from "@/components/Header"
 import AppVersion from "@/components/AppVersion"
+
+export const viewport: Viewport = {
+  themeColor: "#154c83",
+  viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
+}
+
+export const metadata: Metadata = {
+  title: "TSV BoxGym",
+  description: "Mitgliederbereich TSV Falkensee BoxGym",
+  icons: {
+    icon: "/logo.png",
+    apple: "/boxgym-apple-icon.png",
+  },
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

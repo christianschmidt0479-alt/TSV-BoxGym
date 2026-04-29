@@ -683,8 +683,8 @@ export default function MemberCheckinPage() {
 
   if (success || checkinDone) {
     return (
-      <div className="min-h-screen bg-emerald-600 px-4 py-8 text-white">
-        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-emerald-500/60 p-6 text-center shadow-2xl">
+      <div className="min-h-[100svh] bg-emerald-600 px-4 py-8 text-white">
+        <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-emerald-500/60 p-6 text-center shadow-2xl">
           <p className="text-4xl font-black tracking-tight">Check-in erfolgreich</p>
           {checkinSuccessName ? <p className="mt-3 text-2xl font-semibold">{checkinSuccessName}</p> : null}
           <p className="mt-5 text-base text-emerald-50">Du bist eingecheckt.</p>
@@ -695,8 +695,8 @@ export default function MemberCheckinPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-red-600 px-4 py-8 text-white">
-        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-red-500/70 p-6 text-center shadow-2xl">
+      <div className="min-h-[100svh] bg-red-600 px-4 py-8 text-white">
+        <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-red-500/70 p-6 text-center shadow-2xl">
           <p className="text-4xl font-black tracking-tight">Check-in fehlgeschlagen</p>
           <p className="mt-4 text-base text-red-50">{checkinError || "Bitte erneut versuchen."}</p>
           <Button
@@ -713,8 +713,8 @@ export default function MemberCheckinPage() {
 
   if (isCheckingIn) {
     return (
-      <div className="min-h-screen bg-emerald-600 px-4 py-8 text-white">
-        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-emerald-500/60 p-6 text-center shadow-2xl">
+      <div className="min-h-[100svh] bg-emerald-600 px-4 py-8 text-white">
+        <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-md flex-col items-center justify-center rounded-[28px] bg-emerald-500/60 p-6 text-center shadow-2xl">
           <p className="text-4xl font-black tracking-tight">{softProgress ? "Check-in wird gespeichert..." : "Check-in läuft..."}</p>
         </div>
       </div>
@@ -722,7 +722,7 @@ export default function MemberCheckinPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
+    <div className="min-h-[100svh] bg-zinc-50 text-zinc-900">
       <div className="max-w-md mx-auto px-4 py-6 space-y-4">
         <Card className="rounded-[24px] border border-[#d8e3ee] bg-white shadow-sm">
           <CardHeader>

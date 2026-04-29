@@ -61,7 +61,7 @@ function CheckinSuccessPageContent() {
   // Only render if id is valid
   if (!isValid) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
+      <div className="flex min-h-[100svh] items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
         <div className="w-full max-w-sm text-center">
           <p className="text-slate-600">Wird weitergeleitet...</p>
         </div>
@@ -70,7 +70,7 @@ function CheckinSuccessPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-gradient-to-br from-green-50 to-emerald-100 px-4 py-8">
+    <div className="flex min-h-[100svh] flex-col items-center justify-center gap-6 bg-gradient-to-br from-green-50 to-emerald-100 px-4 py-8">
       {/* Success Icon */}
       <div className="text-6xl">✅</div>
 
@@ -112,7 +112,7 @@ export default function CheckinSuccessPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
+        <div className="flex min-h-[100svh] items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
           <div className="w-full max-w-sm text-center">
             <p className="text-slate-600">Wird weitergeleitet...</p>
           </div>

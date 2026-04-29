@@ -11,7 +11,10 @@ type Props = {
 const headerStyle = {
   background: "linear-gradient(90deg, #0b2a4a 0%, #133a63 100%)",
   color: "#fff",
-  padding: "16px",
+  paddingTop: "max(16px, calc(16px + env(safe-area-inset-top)))",
+  paddingRight: "16px",
+  paddingBottom: "16px",
+  paddingLeft: "16px",
   display: "grid",
   gridTemplateRows: "auto auto",
   alignItems: "center",
@@ -53,7 +56,7 @@ export function HeaderClient({ user }: Props) {
   return (
     <div style={headerStyle} className="sticky top-0 z-50 relative">
       {/* TOP ROW */}
-      <div className="flex items-center min-h-14 px-4 pr-[420px]">
+      <div className="flex items-center min-h-14 px-4 md:pr-[420px]">
         {/* LEFT: LOGO */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <img

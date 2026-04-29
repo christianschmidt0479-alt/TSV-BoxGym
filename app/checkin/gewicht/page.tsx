@@ -76,7 +76,7 @@ export default function GewichtPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-6 text-white">
+    <div className="min-h-[100svh] bg-zinc-950 px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-md">
         <Card className="rounded-[24px] border border-zinc-700 bg-zinc-900 text-white shadow-2xl">
           <CardHeader className="space-y-2 text-center">
