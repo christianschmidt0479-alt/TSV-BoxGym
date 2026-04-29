@@ -14,17 +14,52 @@ type ScannerTestClientProps = {
   mode?: ScannerMode
 }
 
+type ResolvedMember = {
+  id?: string
+  first_name?: string | null
+  last_name?: string | null
+  name?: string | null
+  base_group?: string | null
+  is_approved?: boolean | null
+  is_trial?: boolean | null
+}
+
+type MemberLookupState =
+  | {
+      state: "idle"
+    }
+  | {
+      state: "loading"
+      token: string
+    }
+  | {
+      state: "success"
+      token: string
+      member: ResolvedMember
+    }
+  | {
+      state: "warning" | "error"
+      token: string
+      message: string
+    }
+
 const READER_ID = "admin-tools-scanner-reader"
 const COOLDOWN_MS = 1800
 const SUCCESS_STATUS_MS = 2200
 const SCANNER_FPS = 12
+const SCANNER_TEST_EVENT = "tsvboxgym:scanner-test-decode"
+const ENABLE_SCANNER_TEST_HOOK = process.env.NODE_ENV !== "production"
 
 type StopReason = "manual" | "visibility" | "error"
 
 const MODE_LABEL: Record<ScannerMode, string> = {
   test: "Testmodus",
-  member: "Mitglieder-Modus (vorbereitet)",
+  member: "Mitglieder-QR pruefen",
   ticket: "Ticket-Modus (vorbereitet)",
+}
+
+type ScanMemberQrResponse = {
+  member?: ResolvedMember
 }
 
 type Html5QrcodeInstance = {
@@ -76,7 +111,29 @@ function getQrBoxSize() {
   return Math.max(200, Math.min(250, dynamicSize))
 }
 
+function parseMemberQrToken(rawValue: string) {
+  const trimmed = rawValue.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const prefixedMatch = /^TSVBOXGYM:MEMBER:([A-Za-z0-9_-]+)$/i.exec(trimmed)
+  if (prefixedMatch?.[1]) {
+    return prefixedMatch[1]
+  }
+
+  return trimmed
+}
+
+function displayMemberName(member: ResolvedMember) {
+  const first = member.first_name?.trim() ?? ""
+  const last = member.last_name?.trim() ?? ""
+  const fullName = `${first} ${last}`.trim()
+  return fullName || member.name?.trim() || "Unbekanntes Mitglied"
+}
+
 export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
+  const [activeMode, setActiveMode] = useState<ScannerMode>(mode)
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
@@ -86,6 +143,7 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
   const [cameraUnsupported, setCameraUnsupported] = useState(false)
   const [statusTone, setStatusTone] = useState<"ready" | "success" | "error">("ready")
   const [statusText, setStatusText] = useState("Scanner gestoppt. Kamera starten, um zu scannen.")
+  const [memberLookup, setMemberLookup] = useState<MemberLookupState>({ state: "idle" })
 
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const sequenceRef = useRef(1)
@@ -95,6 +153,7 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
   const mountedRef = useRef(true)
   const successResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wasPausedByVisibilityRef = useRef(false)
+  const lookupRequestRef = useRef(0)
 
   const setStatus = useCallback((tone: "ready" | "success" | "error", text: string) => {
     if (!mountedRef.current) {
@@ -209,6 +268,85 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
     })
   }, [isScanning, setStatus])
 
+  const resolveMemberToken = useCallback(async (rawValue: string) => {
+    const parsedToken = parseMemberQrToken(rawValue)
+    if (!parsedToken) {
+      setMemberLookup({
+        state: "error",
+        token: rawValue,
+        message: "Mitglieder-QR ist ungueltig.",
+      })
+      setStatus("error", "Mitglieder-QR ist ungueltig.")
+      return
+    }
+
+    const requestId = lookupRequestRef.current + 1
+    lookupRequestRef.current = requestId
+    setMemberLookup({ state: "loading", token: parsedToken })
+    setStatus("ready", "Mitglieder-QR wird geprueft...")
+
+    try {
+      const response = await fetch("/api/checkin/scan-member-qr", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: parsedToken }),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as ScanMemberQrResponse
+      if (lookupRequestRef.current !== requestId || !mountedRef.current) {
+        return
+      }
+
+      if (response.ok && payload.member) {
+        setMemberLookup({
+          state: "success",
+          token: parsedToken,
+          member: payload.member,
+        })
+        setStatus("success", "Mitglied erkannt.")
+        return
+      }
+
+      const fallbackMessage =
+        response.status === 404
+          ? "QR-Code nicht gefunden oder deaktiviert. Bitte pruefen."
+          : response.status === 503
+            ? "QR-Code-Funktion ist noch nicht vollstaendig aktiviert."
+            : response.status === 400
+              ? "Mitglieder-QR ist ungueltig."
+              : "Mitglieder-QR konnte nicht verarbeitet werden."
+
+      const nextState: MemberLookupState =
+        response.status === 404 || response.status === 503
+          ? { state: "warning", token: parsedToken, message: fallbackMessage }
+          : { state: "error", token: parsedToken, message: fallbackMessage }
+
+      setMemberLookup(nextState)
+      setStatus(nextState.state === "warning" ? "ready" : "error", fallbackMessage)
+    } catch {
+      if (lookupRequestRef.current !== requestId || !mountedRef.current) {
+        return
+      }
+
+      setMemberLookup({
+        state: "error",
+        token: parsedToken,
+        message: "Mitglieder-QR konnte nicht verarbeitet werden.",
+      })
+      setStatus("error", "Mitglieder-QR konnte nicht verarbeitet werden.")
+    }
+  }, [setStatus])
+
+  const handleDecodedValue = useCallback((decodedText: string) => {
+    addScanToHistory(decodedText)
+
+    if (activeMode === "member") {
+      void resolveMemberToken(decodedText)
+    }
+  }, [activeMode, addScanToHistory, resolveMemberToken])
+
   const startScanner = useCallback(async () => {
     if (startLockRef.current || isStarting || isScanning || cameraUnsupported || scannerRef.current) {
       return
@@ -242,7 +380,7 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
           { facingMode: "environment" },
           scannerConfiguration,
           (decodedText: string) => {
-            addScanToHistory(decodedText)
+            handleDecodedValue(decodedText)
           },
         )
         started = true
@@ -262,7 +400,7 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
           fallbackCameraId,
           scannerConfiguration,
           (decodedText: string) => {
-            addScanToHistory(decodedText)
+            handleDecodedValue(decodedText)
           },
         )
       }
@@ -280,7 +418,32 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
       }
       startLockRef.current = false
     }
-  }, [addScanToHistory, cameraUnsupported, isScanning, isStarting, setStatus, stopScanner])
+  }, [cameraUnsupported, handleDecodedValue, isScanning, isStarting, setStatus, stopScanner])
+
+  useEffect(() => {
+    setMemberLookup({ state: "idle" })
+  }, [activeMode])
+
+  useEffect(() => {
+    if (!ENABLE_SCANNER_TEST_HOOK || typeof window === "undefined") {
+      return
+    }
+
+    function handleScannerTestDecode(event: Event) {
+      const customEvent = event as CustomEvent<{ value?: unknown }>
+      const rawValue = typeof customEvent.detail?.value === "string" ? customEvent.detail.value.trim() : ""
+      if (!rawValue) {
+        return
+      }
+
+      handleDecodedValue(rawValue)
+    }
+
+    window.addEventListener(SCANNER_TEST_EVENT, handleScannerTestDecode as EventListener)
+    return () => {
+      window.removeEventListener(SCANNER_TEST_EVENT, handleScannerTestDecode as EventListener)
+    }
+  }, [handleDecodedValue])
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -327,12 +490,14 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
     <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-900">Kamera-Scanner (Testmodus)</h2>
+          <h2 className="text-lg font-semibold text-zinc-900">
+            {activeMode === "member" ? "Kamera-Scanner (Mitglieder-QR pruefen)" : "Kamera-Scanner (Testmodus)"}
+          </h2>
           <p className="mt-1 text-sm text-zinc-600">
             Scannt QR-Codes nur lokal im Browser. Es werden keine Daten gespeichert oder weitergeleitet.
           </p>
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Aktiver Modus: {MODE_LABEL[mode]}
+            Aktiver Modus: {MODE_LABEL[activeMode]}
           </p>
         </div>
 
@@ -367,7 +532,40 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
         </div>
       )}
 
-      <div className={`mt-4 rounded-2xl border px-4 py-4 ${statusStyle}`}>
+      <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Modus</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveMode("test")}
+            data-testid="scanner-mode-test"
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              activeMode === "test"
+                ? "bg-[#154c83] text-white"
+                : "border border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"
+            }`}
+          >
+            Testmodus
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMode("member")}
+            data-testid="scanner-mode-member"
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              activeMode === "member"
+                ? "bg-[#154c83] text-white"
+                : "border border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"
+            }`}
+          >
+            Mitglieder-QR pruefen
+          </button>
+        </div>
+        <p className="mt-3 text-sm text-zinc-600">
+          Admin-Testphase: Mitglieder-QRs werden nur identifiziert und angezeigt. Es wird kein Check-in ausgeloest.
+        </p>
+      </div>
+
+      <div data-testid="scanner-status-panel" className={`mt-4 rounded-2xl border px-4 py-4 ${statusStyle}`}>
         <div className="text-xs font-semibold uppercase tracking-wide">Status</div>
         <div className="mt-1 text-lg font-bold">{statusText}</div>
       </div>
@@ -380,14 +578,48 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
         <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-          <div id={READER_ID} className="min-h-[260px] overflow-hidden rounded-lg bg-black/90" />
+          <div id={READER_ID} data-testid="scanner-reader" className="min-h-[260px] overflow-hidden rounded-lg bg-black/90" />
         </div>
 
         <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Letztes Ergebnis</div>
-          <div className="mt-2 break-all rounded-lg bg-white p-3 text-base font-semibold text-zinc-900">
+          <div data-testid="scanner-latest-result" className="mt-2 break-all rounded-lg bg-white p-3 text-base font-semibold text-zinc-900">
             {latestResult || "Noch kein QR-Code erkannt"}
           </div>
+
+          {activeMode === "member" && (
+            <div data-testid="scanner-member-result" className="mt-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Mitglieds-Pruefung</div>
+              <div className="mt-2 rounded-lg bg-white p-3 text-sm text-zinc-700">
+                {memberLookup.state === "idle" && "Noch kein Mitglieder-QR geprueft."}
+                {memberLookup.state === "loading" && "Mitglieder-QR wird geprueft..."}
+                {memberLookup.state === "success" && (
+                  <div className="space-y-2">
+                    <div className="text-base font-semibold text-emerald-800">{displayMemberName(memberLookup.member)}</div>
+                    <div>
+                      <span className="font-medium text-zinc-900">Gruppe:</span>{" "}
+                      {memberLookup.member.base_group?.trim() || "Keine Gruppe"}
+                    </div>
+                    <div>
+                      <span className="font-medium text-zinc-900">Freigabe:</span>{" "}
+                      {memberLookup.member.is_approved ? "Freigegeben" : "Nicht freigegeben"}
+                    </div>
+                    <div>
+                      <span className="font-medium text-zinc-900">QR-Status:</span> Aktiv
+                    </div>
+                  </div>
+                )}
+                {(memberLookup.state === "warning" || memberLookup.state === "error") && (
+                  <div className={memberLookup.state === "warning" ? "text-amber-800" : "text-red-700"}>
+                    <div className="font-semibold">{memberLookup.message}</div>
+                    <div className="mt-1 text-xs">
+                      Token: {memberLookup.token}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">Lokale Historie</div>
           <ul className="mt-2 space-y-2">

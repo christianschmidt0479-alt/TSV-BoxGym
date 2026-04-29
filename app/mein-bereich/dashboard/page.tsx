@@ -181,6 +181,12 @@ export default async function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-3">
           <Link
+            href="/mein-bereich/qr-code"
+            className="inline-flex h-14 items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 text-base font-semibold text-zinc-900 hover:border-zinc-400"
+          >
+            Mein Mitglieds-QR
+          </Link>
+          <Link
             href="/mein-bereich/einstellungen/daten"
             className="inline-flex h-14 items-center justify-center rounded-2xl border border-[#154c83] bg-white px-4 text-base font-semibold text-[#154c83] hover:bg-[#f4f9ff]"
           >
