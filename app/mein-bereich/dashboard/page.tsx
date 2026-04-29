@@ -4,7 +4,7 @@ import Link from "next/link"
 import { findMemberById } from "@/lib/boxgymDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { MAX_TRAININGS_WITHOUT_APPROVAL } from "@/lib/memberCheckin"
-import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
+import { getTodayIsoDateInBerlin, isTodayCheckinInBerlin } from "@/lib/dateFormat"
 import { getUserContext } from "@/lib/getUserContext"
 import { MEMBER_AREA_SESSION_COOKIE } from "@/lib/publicAreaSession"
 import { resolveUserContext } from "@/lib/resolveUserContext"
@@ -104,11 +104,7 @@ export default async function DashboardPage() {
   let hasCheckedInToday = false
 
   if (lastCheckin?.created_at) {
-    const today = new Date()
-    const checkinDate = new Date(lastCheckin.created_at)
-
-    hasCheckedInToday =
-      checkinDate.toDateString() === today.toDateString()
+    hasCheckedInToday = isTodayCheckinInBerlin({ created_at: lastCheckin.created_at })
   }
 
   const memberName = member ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || "Unbekannt" : ""

@@ -21,7 +21,7 @@ export function MemberQrRevealClient({ qrToken, isQrActive }: MemberQrRevealClie
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
         Bitte nicht weitergeben. Dieser QR-Code ist deinem Mitgliedskonto zugeordnet.
-        Screenshots oder Weitergabe koennen zu Missbrauch fuehren.
+        Screenshots oder Weitergabe können zu Missbrauch führen.
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -31,7 +31,7 @@ export function MemberQrRevealClient({ qrToken, isQrActive }: MemberQrRevealClie
             onClick={() => setVisible(true)}
             className="inline-flex h-11 items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
           >
-            Persoenlichen QR anzeigen
+            Persönlichen QR anzeigen
           </button>
         ) : (
           <button
@@ -52,7 +52,7 @@ export function MemberQrRevealClient({ qrToken, isQrActive }: MemberQrRevealClie
 
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             Bitte nicht weitergeben. Dieser QR-Code ist deinem Mitgliedskonto zugeordnet.
-            Screenshots oder Weitergabe koennen zu Missbrauch fuehren.
+            Screenshots oder Weitergabe können zu Missbrauch führen.
           </div>
 
           <div className="rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600 break-all">

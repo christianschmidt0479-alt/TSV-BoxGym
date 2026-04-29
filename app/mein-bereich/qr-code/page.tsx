@@ -36,14 +36,14 @@ export default async function MemberQrCodePage() {
       <div className="space-y-4 sm:space-y-5">
         <MemberAreaBrandHeader
           title="Mein Mitglieds-QR"
-          subtitle={`Persoenlicher QR-Code fuer ${memberName}`}
+          subtitle={`Persönlicher QR-Code für ${memberName}`}
         />
 
         <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Alternative Check-in-Moeglichkeit</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Alternative Check-in-Möglichkeit</p>
           <p className="text-sm text-zinc-700">
-            Der regulaere Check-in erfolgt ueber den QR-Code am Eingang oder per NFC.
-            Nutze diesen persoenlichen QR nur, wenn der regulaere Check-in nicht moeglich ist.
+            Der reguläre Check-in erfolgt über den QR-Code am Eingang oder per NFC.
+            Nutze diesen persönlichen QR nur, wenn der reguläre Check-in nicht möglich ist.
           </p>
         </div>
 
@@ -59,7 +59,7 @@ export default async function MemberQrCodePage() {
           href="/mein-bereich/dashboard"
           className="inline-flex h-12 items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
         >
-          Zurueck zum Dashboard
+          Zurück zum Dashboard
         </Link>
       </div>
     </FormContainer>

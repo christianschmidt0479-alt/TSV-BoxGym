@@ -12,6 +12,8 @@ type ScannerMode = "test" | "member" | "ticket"
 
 type ScannerTestClientProps = {
   mode?: ScannerMode
+  mobileApp?: boolean
+  enableMemberCheckinAction?: boolean
 }
 
 type ResolvedMember = {
@@ -46,6 +48,7 @@ type MemberLookupState =
 const READER_ID = "admin-tools-scanner-reader"
 const COOLDOWN_MS = 1800
 const SUCCESS_STATUS_MS = 2200
+const CHECKIN_ACTION_COOLDOWN_MS = 3000
 const SCANNER_FPS = 12
 const SCANNER_TEST_EVENT = "tsvboxgym:scanner-test-decode"
 const ENABLE_SCANNER_TEST_HOOK = process.env.NODE_ENV !== "production"
@@ -54,12 +57,19 @@ type StopReason = "manual" | "visibility" | "error"
 
 const MODE_LABEL: Record<ScannerMode, string> = {
   test: "Testmodus",
-  member: "Mitglieder-QR pruefen",
+  member: "Mitglieder-QR prüfen",
   ticket: "Ticket-Modus (vorbereitet)",
 }
 
 type ScanMemberQrResponse = {
   member?: ResolvedMember
+}
+
+type MemberQrCheckinResponse = {
+  status: "success" | "needs_selection" | "needs_weight" | "blocked" | "error"
+  message: string
+  reason?: string
+  availableGroups?: Array<{ group: string; time: string }>
 }
 
 type Html5QrcodeInstance = {
@@ -132,7 +142,11 @@ function displayMemberName(member: ResolvedMember) {
   return fullName || member.name?.trim() || "Unbekanntes Mitglied"
 }
 
-export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
+export function ScannerTestClient({
+  mode = "test",
+  mobileApp = false,
+  enableMemberCheckinAction = false,
+}: ScannerTestClientProps) {
   const [activeMode, setActiveMode] = useState<ScannerMode>(mode)
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
@@ -144,6 +158,13 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
   const [statusTone, setStatusTone] = useState<"ready" | "success" | "error">("ready")
   const [statusText, setStatusText] = useState("Scanner gestoppt. Kamera starten, um zu scannen.")
   const [memberLookup, setMemberLookup] = useState<MemberLookupState>({ state: "idle" })
+  const [isSubmittingMemberCheckin, setIsSubmittingMemberCheckin] = useState(false)
+  const [memberCheckinFeedback, setMemberCheckinFeedback] = useState<{
+    status: MemberQrCheckinResponse["status"]
+    message: string
+    reason?: string
+    availableGroups?: Array<{ group: string; time: string }>
+  } | null>(null)
 
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const sequenceRef = useRef(1)
@@ -154,6 +175,7 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
   const successResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wasPausedByVisibilityRef = useRef(false)
   const lookupRequestRef = useRef(0)
+  const lastMemberCheckinRequestRef = useRef<{ token: string; at: number } | null>(null)
 
   const setStatus = useCallback((tone: "ready" | "success" | "error", text: string) => {
     if (!mountedRef.current) {
@@ -274,16 +296,16 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
       setMemberLookup({
         state: "error",
         token: rawValue,
-        message: "Mitglieder-QR ist ungueltig.",
+        message: "Mitglieder-QR ist ungültig.",
       })
-      setStatus("error", "Mitglieder-QR ist ungueltig.")
+      setStatus("error", "Mitglieder-QR ist ungültig.")
       return
     }
 
     const requestId = lookupRequestRef.current + 1
     lookupRequestRef.current = requestId
     setMemberLookup({ state: "loading", token: parsedToken })
-    setStatus("ready", "Mitglieder-QR wird geprueft...")
+    setStatus("ready", "Mitglieder-QR wird geprüft...")
 
     try {
       const response = await fetch("/api/checkin/scan-member-qr", {
@@ -311,11 +333,11 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
 
       const fallbackMessage =
         response.status === 404
-          ? "QR-Code nicht gefunden oder deaktiviert. Bitte pruefen."
+          ? "QR-Code nicht gefunden oder deaktiviert. Bitte prüfen."
           : response.status === 503
-            ? "QR-Code-Funktion ist noch nicht vollstaendig aktiviert."
+            ? "QR-Code-Funktion ist noch nicht vollständig aktiviert."
             : response.status === 400
-              ? "Mitglieder-QR ist ungueltig."
+              ? "Mitglieder-QR ist ungültig."
               : "Mitglieder-QR konnte nicht verarbeitet werden."
 
       const nextState: MemberLookupState =
@@ -422,7 +444,83 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
 
   useEffect(() => {
     setMemberLookup({ state: "idle" })
+    setMemberCheckinFeedback(null)
   }, [activeMode])
+
+  const resetForNextScan = useCallback(() => {
+    setMemberLookup({ state: "idle" })
+    setMemberCheckinFeedback(null)
+    setLatestResult("")
+    setStatus("ready", isScanning ? "Scanner aktiv..." : "Scanner gestoppt. Kamera starten, um zu scannen.")
+  }, [isScanning, setStatus])
+
+  const triggerMemberCheckin = useCallback(async () => {
+    if (memberLookup.state !== "success" || !memberLookup.member.id || isSubmittingMemberCheckin) {
+      return
+    }
+
+    const now = Date.now()
+    const token = memberLookup.token
+    const previousRequest = lastMemberCheckinRequestRef.current
+
+    if (previousRequest && previousRequest.token === token && now - previousRequest.at < CHECKIN_ACTION_COOLDOWN_MS) {
+      const waitSeconds = Math.ceil((CHECKIN_ACTION_COOLDOWN_MS - (now - previousRequest.at)) / 1000)
+      const message = `Doppel-Scan-Schutz aktiv. Bitte ${waitSeconds}s warten oder Nächster Scan wählen.`
+      setMemberCheckinFeedback({
+        status: "blocked",
+        message,
+        reason: "duplicate_action_guard",
+      })
+      setStatus("error", message)
+      return
+    }
+
+    setIsSubmittingMemberCheckin(true)
+    setMemberCheckinFeedback(null)
+    setStatus("ready", "Check-in wird vorbereitet...")
+
+    try {
+      const response = await fetch("/api/admin/checkin/member-qr", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          memberId: memberLookup.member.id,
+        }),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as Partial<MemberQrCheckinResponse>
+      const nextStatus = payload.status ?? "error"
+      const nextMessage = payload.message ?? "Check-in konnte nicht abgeschlossen werden."
+
+      setMemberCheckinFeedback({
+        status: nextStatus,
+        message: nextMessage,
+        reason: payload.reason,
+        availableGroups: payload.availableGroups,
+      })
+
+      if (nextStatus === "success") {
+        lastMemberCheckinRequestRef.current = { token, at: now }
+        setStatus("success", nextMessage)
+      } else if (nextStatus === "needs_selection") {
+        setStatus("ready", nextMessage)
+      } else {
+        setStatus("error", nextMessage)
+      }
+    } catch {
+      const message = "Check-in konnte nicht abgeschlossen werden."
+      setMemberCheckinFeedback({
+        status: "error",
+        message,
+        reason: "network_error",
+      })
+      setStatus("error", message)
+    } finally {
+      setIsSubmittingMemberCheckin(false)
+    }
+  }, [isSubmittingMemberCheckin, memberLookup, setStatus])
 
   useEffect(() => {
     if (!ENABLE_SCANNER_TEST_HOOK || typeof window === "undefined") {
@@ -486,19 +584,40 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
         ? "border-red-300 bg-red-50 text-red-900"
         : "border-amber-300 bg-amber-50 text-amber-900"
 
+  const statusLabel =
+    statusTone === "success"
+      ? "Erfolgreich"
+      : statusTone === "error"
+        ? "Ungültig / Fehler"
+        : isStarting || isScanning
+          ? "Scan läuft"
+          : "Bereit"
+
+  const readerMinHeightClass = mobileApp ? "min-h-[56svh]" : "min-h-[260px]"
+  const primaryButtonClass = mobileApp
+    ? "h-14 rounded-2xl bg-emerald-600 px-6 text-base font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+    : "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+  const secondaryButtonClass = mobileApp
+    ? "h-14 rounded-2xl bg-zinc-700 px-6 text-base font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+    : "rounded-lg bg-zinc-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <section className={mobileApp ? "rounded-3xl border border-zinc-300 bg-zinc-950 p-4 shadow-xl text-zinc-100" : "rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-900">
-            {activeMode === "member" ? "Kamera-Scanner (Mitglieder-QR pruefen)" : "Kamera-Scanner (Testmodus)"}
+          <h2 className={mobileApp ? "text-2xl font-bold text-white" : "text-lg font-semibold text-zinc-900"}>
+            {mobileApp ? "QR-Scanner" : activeMode === "member" ? "Kamera-Scanner (Mitglieder-QR prüfen)" : "Kamera-Scanner (Testmodus)"}
           </h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Scannt QR-Codes nur lokal im Browser. Es werden keine Daten gespeichert oder weitergeleitet.
+          <p className={mobileApp ? "mt-1 text-sm text-zinc-300" : "mt-1 text-sm text-zinc-600"}>
+            {mobileApp
+              ? "QR-Code scannen und Ergebnis prüfen"
+              : "Scannt QR-Codes nur lokal im Browser. Es werden keine Daten gespeichert oder weitergeleitet."}
           </p>
-          <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Aktiver Modus: {MODE_LABEL[activeMode]}
-          </p>
+          {!mobileApp && (
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Aktiver Modus: {MODE_LABEL[activeMode]}
+            </p>
+          )}
         </div>
 
         <div className="flex gap-2">
@@ -508,7 +627,7 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
               void startScanner()
             }}
             disabled={isStarting || isScanning || cameraUnsupported}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+            className={primaryButtonClass}
           >
             {isStarting ? "Starte..." : "Kamera starten"}
           </button>
@@ -518,7 +637,7 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
               void stopScanner()
             }}
             disabled={isStopping || !isScanning}
-            className="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+            className={secondaryButtonClass}
           >
             {isStopping ? "Stoppt..." : "Kamera stoppen"}
           </button>
@@ -526,48 +645,57 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
       </div>
 
       {cameraUnsupported && (
-        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Dieser Browser unterstuetzt keinen Kamera-Zugriff. Bitte Safari, Chrome oder Edge auf einem
+        <div className={mobileApp ? "mt-4 rounded-xl border border-amber-400 bg-amber-100 px-3 py-2 text-sm text-amber-900" : "mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800"}>
+          Dieser Browser unterstützt keinen Kamera-Zugriff. Bitte Safari, Chrome oder Edge auf einem
           Smartphone nutzen.
         </div>
       )}
 
-      <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
-        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Modus</div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveMode("test")}
-            data-testid="scanner-mode-test"
-            className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              activeMode === "test"
-                ? "bg-[#154c83] text-white"
-                : "border border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"
-            }`}
-          >
-            Testmodus
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveMode("member")}
-            data-testid="scanner-mode-member"
-            className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              activeMode === "member"
-                ? "bg-[#154c83] text-white"
-                : "border border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"
-            }`}
-          >
-            Mitglieder-QR pruefen
-          </button>
+      {!mobileApp && (
+        <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Modus</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveMode("test")}
+              data-testid="scanner-mode-test"
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                activeMode === "test"
+                  ? "bg-[#154c83] text-white"
+                  : "border border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"
+              }`}
+            >
+              Testmodus
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMode("member")}
+              data-testid="scanner-mode-member"
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                activeMode === "member"
+                  ? "bg-[#154c83] text-white"
+                  : "border border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"
+              }`}
+            >
+              Mitglieder-QR prüfen
+            </button>
+          </div>
+          <p className="mt-3 text-sm text-zinc-600">
+            Admin-Testphase: Mitglieder-QRs werden nur identifiziert und angezeigt. Es wird kein Check-in ausgelöst.
+          </p>
         </div>
-        <p className="mt-3 text-sm text-zinc-600">
-          Admin-Testphase: Mitglieder-QRs werden nur identifiziert und angezeigt. Es wird kein Check-in ausgeloest.
-        </p>
-      </div>
+      )}
 
-      <div data-testid="scanner-status-panel" className={`mt-4 rounded-2xl border px-4 py-4 ${statusStyle}`}>
-        <div className="text-xs font-semibold uppercase tracking-wide">Status</div>
-        <div className="mt-1 text-lg font-bold">{statusText}</div>
+      {mobileApp && (
+        <div className="mt-4 rounded-2xl border border-zinc-700 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-200">
+          Testmodus: Es werden keine Check-ins ausgelöst und keine neuen Prozesse gestartet.
+        </div>
+      )}
+
+      <div data-testid="scanner-status-panel" className={`mt-4 rounded-2xl border px-4 py-4 ${mobileApp ? "border-zinc-700 bg-zinc-900 text-white" : statusStyle}`}>
+        <div className="text-xs font-semibold uppercase tracking-wide opacity-80">Status</div>
+        <div className={mobileApp ? "mt-1 text-2xl font-extrabold" : "mt-1 text-lg font-bold"}>{statusLabel}</div>
+        <div className={mobileApp ? "mt-1 text-sm text-zinc-300" : "mt-1 text-lg font-bold"}>{statusText}</div>
       </div>
 
       {scannerError && (
@@ -576,36 +704,36 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
         </div>
       )}
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
-        <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-          <div id={READER_ID} data-testid="scanner-reader" className="min-h-[260px] overflow-hidden rounded-lg bg-black/90" />
+      <div className={mobileApp ? "mt-4 grid gap-4" : "mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr),minmax(0,1fr)]"}>
+        <div className={mobileApp ? "rounded-2xl border border-zinc-700 bg-black p-2" : "rounded-xl border border-zinc-200 bg-zinc-50 p-3"}>
+          <div id={READER_ID} data-testid="scanner-reader" className={`${readerMinHeightClass} overflow-hidden rounded-lg bg-black/90`} />
         </div>
 
-        <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Letztes Ergebnis</div>
-          <div data-testid="scanner-latest-result" className="mt-2 break-all rounded-lg bg-white p-3 text-base font-semibold text-zinc-900">
+        <div className={mobileApp ? "rounded-2xl border border-zinc-700 bg-zinc-900 p-4" : "rounded-xl border border-zinc-200 bg-zinc-50 p-4"}>
+          <div className={mobileApp ? "text-xs font-semibold uppercase tracking-wide text-zinc-400" : "text-xs font-semibold uppercase tracking-wide text-zinc-500"}>Letztes Ergebnis</div>
+          <div data-testid="scanner-latest-result" className={mobileApp ? "mt-2 break-all rounded-xl bg-zinc-950 p-3 text-base font-semibold text-zinc-100" : "mt-2 break-all rounded-lg bg-white p-3 text-base font-semibold text-zinc-900"}>
             {latestResult || "Noch kein QR-Code erkannt"}
           </div>
 
           {activeMode === "member" && (
             <div data-testid="scanner-member-result" className="mt-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Mitglieds-Pruefung</div>
-              <div className="mt-2 rounded-lg bg-white p-3 text-sm text-zinc-700">
-                {memberLookup.state === "idle" && "Noch kein Mitglieder-QR geprueft."}
-                {memberLookup.state === "loading" && "Mitglieder-QR wird geprueft..."}
+              <div className={mobileApp ? "text-xs font-semibold uppercase tracking-wide text-zinc-400" : "text-xs font-semibold uppercase tracking-wide text-zinc-500"}>Mitglieds-Prüfung</div>
+              <div className={mobileApp ? "mt-2 rounded-xl bg-zinc-950 p-3 text-sm text-zinc-200" : "mt-2 rounded-lg bg-white p-3 text-sm text-zinc-700"}>
+                {memberLookup.state === "idle" && "Noch kein Mitglieder-QR geprüft."}
+                {memberLookup.state === "loading" && "Mitglieder-QR wird geprüft..."}
                 {memberLookup.state === "success" && (
                   <div className="space-y-2">
-                    <div className="text-base font-semibold text-emerald-800">{displayMemberName(memberLookup.member)}</div>
+                    <div className={mobileApp ? "text-base font-semibold text-emerald-300" : "text-base font-semibold text-emerald-800"}>{displayMemberName(memberLookup.member)}</div>
                     <div>
-                      <span className="font-medium text-zinc-900">Gruppe:</span>{" "}
+                      <span className={mobileApp ? "font-medium text-zinc-100" : "font-medium text-zinc-900"}>Gruppe:</span>{" "}
                       {memberLookup.member.base_group?.trim() || "Keine Gruppe"}
                     </div>
                     <div>
-                      <span className="font-medium text-zinc-900">Freigabe:</span>{" "}
+                      <span className={mobileApp ? "font-medium text-zinc-100" : "font-medium text-zinc-900"}>Freigabe:</span>{" "}
                       {memberLookup.member.is_approved ? "Freigegeben" : "Nicht freigegeben"}
                     </div>
                     <div>
-                      <span className="font-medium text-zinc-900">QR-Status:</span> Aktiv
+                      <span className={mobileApp ? "font-medium text-zinc-100" : "font-medium text-zinc-900"}>QR-Status:</span> Aktiv
                     </div>
                   </div>
                 )}
@@ -618,22 +746,79 @@ export function ScannerTestClient({ mode = "test" }: ScannerTestClientProps) {
                   </div>
                 )}
               </div>
+
+              {enableMemberCheckinAction && memberLookup.state === "success" && (
+                <div className={mobileApp ? "mt-3 space-y-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3" : "mt-3 space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3"}>
+                  <div className={mobileApp ? "text-sm font-semibold text-zinc-100" : "text-sm font-semibold text-zinc-900"}>Mitgliedskarte</div>
+                  <div className={mobileApp ? "text-sm text-zinc-300" : "text-sm text-zinc-700"}>Name: {displayMemberName(memberLookup.member)}</div>
+                  <div className={mobileApp ? "text-sm text-zinc-300" : "text-sm text-zinc-700"}>Stammgruppe: {memberLookup.member.base_group?.trim() || "Keine Gruppe"}</div>
+                  <div className={mobileApp ? "text-sm text-zinc-300" : "text-sm text-zinc-700"}>Status: QR erkannt</div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void triggerMemberCheckin()
+                      }}
+                      disabled={isSubmittingMemberCheckin}
+                      className={mobileApp
+                        ? "h-12 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                        : "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"}
+                    >
+                      {isSubmittingMemberCheckin ? "Check-in läuft..." : "Mitglied einchecken"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={resetForNextScan}
+                      className={mobileApp
+                        ? "h-12 rounded-xl border border-zinc-600 bg-zinc-900 px-4 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-800"
+                        : "rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-zinc-400"}
+                    >
+                      Nächster Scan
+                    </button>
+                  </div>
+
+                  {memberCheckinFeedback && (
+                    <div
+                      className={
+                        memberCheckinFeedback.status === "success"
+                          ? "rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"
+                          : memberCheckinFeedback.status === "needs_selection"
+                            ? "rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                            : memberCheckinFeedback.status === "needs_weight"
+                              ? "rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
+                              : "rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+                      }
+                    >
+                      <div className="font-semibold">{memberCheckinFeedback.message}</div>
+                      {memberCheckinFeedback.status === "needs_selection" && (
+                        <div className="mt-1 text-xs">Auswahl erforderlich - noch nicht aktiv.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">Lokale Historie</div>
-          <ul className="mt-2 space-y-2">
-            {history.length === 0 ? (
-              <li className="rounded-lg bg-white p-2 text-sm text-zinc-600">Noch keine Scans.</li>
-            ) : (
-              history.map((entry) => (
-                <li key={entry.id} className="rounded-lg bg-white p-2 text-sm text-zinc-700">
-                  <div className="text-xs text-zinc-500">{entry.at}</div>
-                  <div className="break-all font-medium text-zinc-900">{entry.value}</div>
-                </li>
-              ))
-            )}
-          </ul>
+          {!mobileApp && (
+            <>
+              <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">Lokale Historie</div>
+              <ul className="mt-2 space-y-2">
+                {history.length === 0 ? (
+                  <li className="rounded-lg bg-white p-2 text-sm text-zinc-600">Noch keine Scans.</li>
+                ) : (
+                  history.map((entry) => (
+                    <li key={entry.id} className="rounded-lg bg-white p-2 text-sm text-zinc-700">
+                      <div className="text-xs text-zinc-500">{entry.at}</div>
+                      <div className="break-all font-medium text-zinc-900">{entry.value}</div>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </>
+          )}
         </div>
       </div>
     </section>

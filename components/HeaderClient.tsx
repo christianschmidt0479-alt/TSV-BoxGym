@@ -214,6 +214,14 @@ export function HeaderClient({ user }: Props) {
           >
             Tools
           </Link>
+          <Link
+            href="/verwaltung-neu/qr-scanner"
+            style={navLinkStyle(
+              pathname === "/verwaltung-neu/qr-scanner" || pathname.startsWith("/verwaltung-neu/qr-scanner"),
+            )}
+          >
+            QR-Scanner
+          </Link>
         </div>
       )}
     </div>

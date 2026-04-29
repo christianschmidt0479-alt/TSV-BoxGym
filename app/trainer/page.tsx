@@ -215,7 +215,7 @@ export default async function TrainerPage() {
           <Link href="/trainer/probemitglieder" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-400">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Probemitglieder heute</div>
             <div className="text-2xl font-extrabold text-zinc-900">{trialTodayCount}</div>
-            <div className="mt-1 text-sm text-zinc-600">Probetrainings und aktuelle Anwesenheit pruefen</div>
+            <div className="mt-1 text-sm text-zinc-600">Probetrainings und aktuelle Anwesenheit prüfen</div>
           </Link>
         </div>
 
@@ -257,7 +257,7 @@ export default async function TrainerPage() {
             className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
           >
             <div>Probemitglieder heute</div>
-            <div className="mt-1 text-sm font-medium text-zinc-600">Probetrainings und aktuelle Anwesenheit pruefen</div>
+            <div className="mt-1 text-sm font-medium text-zinc-600">Probetrainings und aktuelle Anwesenheit prüfen</div>
           </Link>
         </div>
 

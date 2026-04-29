@@ -12,14 +12,14 @@ export default function ToolsScannerPage() {
           <div>
             <h1 className="text-2xl font-bold text-zinc-900">Scanner Test</h1>
             <p className="mt-1 text-sm text-zinc-700">
-              Diagnosemodus fuer QR-Scans. Kein Check-in, keine Ticketpruefung, keine Speicherung.
+              Diagnosemodus für QR-Scans. Kein Check-in, keine Ticketprüfung, keine Speicherung.
             </p>
           </div>
           <Link
             href="/verwaltung-neu/tools"
             className="inline-flex items-center justify-center rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
           >
-            Zurueck zu Tools
+            Zurück zu Tools
           </Link>
         </div>
       </section>
@@ -27,7 +27,7 @@ export default function ToolsScannerPage() {
       <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
         <h2 className="text-lg font-semibold text-zinc-900">Fester Test-QR (Diagnose)</h2>
         <p className="mt-1 text-sm text-zinc-600">
-          Dieser QR-Code dient nur fuer den Scanner-Praxistest. Keine produktive Logik, keine API, keine Speicherung.
+          Dieser QR-Code dient nur für den Scanner-Praxistest. Keine produktive Logik, keine API, keine Speicherung.
         </p>
 
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -43,11 +43,11 @@ export default function ToolsScannerPage() {
 
             <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">Testanleitung</div>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-zinc-700">
-              <li>Seite auf dem iPhone oeffnen.</li>
+              <li>Seite auf dem iPhone öffnen.</li>
               <li>Kamera-Zugriff erlauben.</li>
               <li>Den Test-QR scannen.</li>
-              <li>Start und Stop des Scanners pruefen.</li>
-              <li>App oder Tab wechseln und danach zurueckkehren.</li>
+              <li>Start und Stop des Scanners prüfen.</li>
+              <li>App oder Tab wechseln und danach zurückkehren.</li>
             </ol>
           </div>
         </div>

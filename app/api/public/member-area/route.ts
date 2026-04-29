@@ -35,6 +35,7 @@ import { sessions } from "@/lib/boxgymSessions"
 import { normalizeTrainingGroup } from "@/lib/trainingGroups"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { readCheckinSettings } from "@/lib/checkinSettingsDb"
+import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 
 type MemberAreaBody =
   | { action: "member_login"; email?: string; password?: string; pin?: string }
@@ -278,7 +279,7 @@ async function buildMemberSnapshot(member: MemberRecord) {
     competition_draws: typeof rawMember.competition_draws === "number" && !isNaN(rawMember.competition_draws) ? rawMember.competition_draws : 0,
     weight: typeof rawMember.weight === "number" && !isNaN(rawMember.weight) ? rawMember.weight : 0,
   };
-  const liveDate = new Date().toISOString().slice(0, 10)
+  const liveDate = getTodayIsoDateInBerlin()
   const currentYear = new Date(`${liveDate}T12:00:00`).getFullYear()
   const currentMonthKey = getMonthKey(liveDate)
   const previousMonthKey = getPreviousMonthKey(currentMonthKey)
