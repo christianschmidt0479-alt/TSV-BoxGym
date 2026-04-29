@@ -206,6 +206,14 @@ export function HeaderClient({ user }: Props) {
           >
             GS-Abgleich
           </Link>
+          <Link
+            href="/verwaltung-neu/tools"
+            style={navLinkStyle(
+              pathname === "/verwaltung-neu/tools" || pathname.startsWith("/verwaltung-neu/tools"),
+            )}
+          >
+            Tools
+          </Link>
         </div>
       )}
     </div>
