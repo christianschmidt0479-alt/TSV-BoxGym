@@ -13,7 +13,7 @@ type Html5QrcodeInstance = {
   clear: () => Promise<void>
 }
 
-const READER_ID = "verwaltung-tools-scanner-reader"
+const READER_ID = "trainer-qr-scanner-v1-reader"
 const SCAN_LOCK_MS = 1000
 const FEEDBACK_VISIBLE_MS = 1200
 
@@ -43,8 +43,8 @@ type FeedbackTone = "success" | "warning" | "error"
 
 type UiScanType = "Mitglied" | "Unbekannt" | "Ungueltig"
 
-type AdminQrScannerProps = {
-  autoStart: boolean
+type TrainerQrScannerV1Props = {
+  autoStart?: boolean
 }
 
 function classifyQrContent(text: string): QrClassification {
@@ -108,7 +108,7 @@ function mapCameraError(error: unknown) {
   }
 
   if (message.includes("notfounderror") || message.includes("no camera") || message.includes("camera not found")) {
-    return "Keine Kamera auf diesem Gerät gefunden."
+    return "Keine Kamera auf diesem Geraet gefunden."
   }
 
   return "Kamera konnte nicht gestartet werden."
@@ -130,7 +130,8 @@ function isCameraAccessRequired(errorText: string) {
   return errorText.toLowerCase().includes("kamerazugriff erforderlich")
 }
 
-export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
+// Frozen trainer scanner baseline. Admin scanner evolves independently from here.
+export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScannerV1Props) {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const lastRawRef = useRef("")
   const lastValidatedTokenRef = useRef("")
@@ -433,7 +434,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
 
     void (async () => {
       try {
-        const response = await fetch("/api/admin/scan-member-qr", {
+        const response = await fetch("/api/trainer/scan-member-qr", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -509,7 +510,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const needsCameraPermission = isCameraAccessRequired(errorText)
 
   return (
-    <div className="fixed inset-0 z-[80] h-[100svh] w-screen overflow-hidden bg-gradient-to-b from-[#061421] via-[#0a1f33] to-[#0d1723] text-white">
+    <div className="fixed inset-0 z-[80] h-[100svh] w-screen overflow-hidden bg-gradient-to-b from-[#10243d] via-[#16385a] to-[#0d1723] text-white">
       <div className="mx-auto flex h-full w-full max-w-[860px] flex-col px-3 pb-3 pt-[max(env(safe-area-inset-top),10px)] sm:px-4">
         <div className="mb-2 flex items-center justify-between px-1 text-xs">
           <div className="rounded-full border border-sky-200/20 bg-slate-900/70 px-3 py-1.5 font-semibold text-slate-100">
@@ -521,10 +522,10 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
         </div>
 
         <section className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-lg font-black tracking-tight text-white">QR Scanner</h1>
-              <p className="mt-1 text-sm text-slate-300">Read-only-Pruefung ohne Check-in</p>
+              <h1 className="text-lg font-black tracking-tight text-white">QR Scanner - Testfunktion</h1>
+              <p className="mt-1 text-sm text-slate-300">Pruefung nur lesend - kein Check-in</p>
             </div>
             <div className="rounded-full border border-sky-200/20 bg-slate-950/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-100">
               Version 1.0
@@ -610,7 +611,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
 
         <section className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-sky-100/10 bg-slate-900/60 p-4">
           <h2 className="text-sm font-bold uppercase tracking-wide text-sky-100/90">Scanner-Informationen</h2>
-          <p className="mt-1 text-xs text-slate-300">Nur lesende QR-Pruefung, keine Check-in-Ausloesung.</p>
+          <p className="mt-1 text-xs text-slate-300">Pruefung nur lesend - kein Check-in, keine Datenbank-Schreiboperation.</p>
 
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-3 sm:col-span-2">

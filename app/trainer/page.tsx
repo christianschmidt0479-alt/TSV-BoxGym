@@ -229,6 +229,14 @@ export default async function TrainerPage() {
           </Link>
 
           <Link
+            href="/trainer/qr-scanner"
+            className="rounded-2xl border border-sky-300 bg-sky-50 px-5 py-5 text-lg font-semibold text-sky-950 shadow-sm transition hover:bg-sky-100"
+          >
+            <div>QR Scanner - Testfunktion</div>
+            <div className="mt-1 text-sm font-medium text-sky-900">Version 1.0 · nur lesend, kein Check-in</div>
+          </Link>
+
+          <Link
             href="/verwaltung-neu/checkin"
             className="rounded-2xl border border-[#154c83] bg-[#154c83] px-5 py-5 text-lg font-semibold text-white shadow-sm transition hover:bg-[#0f3d6b]"
           >
