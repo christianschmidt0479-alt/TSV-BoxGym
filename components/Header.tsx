@@ -4,5 +4,9 @@ import { HeaderClient } from "./HeaderClient"
 export default async function Header() {
   const user = await resolveUserContext()
 
-  return <HeaderClient user={user} />
+  return (
+    <header data-app-header>
+      <HeaderClient user={user} />
+    </header>
+  )
 }

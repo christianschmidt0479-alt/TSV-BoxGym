@@ -672,6 +672,17 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   }, [autoStart, startScanner])
 
   useEffect(() => {
+    if (!autoStart || typeof document === "undefined") {
+      return
+    }
+
+    document.body.classList.add("admin-scanner-fullscreen")
+    return () => {
+      document.body.classList.remove("admin-scanner-fullscreen")
+    }
+  }, [autoStart])
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return
     }
@@ -938,6 +949,26 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       </div>
 
       <style jsx global>{`
+        body.admin-scanner-fullscreen [data-app-header],
+        body.admin-scanner-fullscreen [data-app-footer],
+        body.admin-scanner-fullscreen [data-admin-banner],
+        body.admin-scanner-fullscreen [data-app-version] {
+          display: none !important;
+        }
+
+        body.admin-scanner-fullscreen [data-admin-layout] {
+          min-height: 100dvh;
+          padding: 0 !important;
+          background: transparent !important;
+        }
+
+        body.admin-scanner-fullscreen [data-admin-layout] > div {
+          max-width: none !important;
+          width: 100% !important;
+          margin: 0 !important;
+          gap: 0 !important;
+        }
+
         #${READER_ID} {
           position: relative;
           height: 100%;
