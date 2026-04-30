@@ -61,6 +61,53 @@ type AdminQrScannerProps = {
 
 type AdminCheckinUiStatus = "idle" | "success" | "duplicate" | "outside_time_window" | "needs_weight" | "member_not_found" | "forbidden" | "error"
 
+function looksLikeDirectMemberToken(value: string) {
+  return /^[A-Fa-f0-9]{32}$/.test(value) || /^TEST-\d{3}$/i.test(value)
+}
+
+function extractMemberQrToken(rawValue: string): string | null {
+  const raw = rawValue.trim()
+  if (!raw) {
+    return null
+  }
+
+  const memberPrefix = /^TSVBOXGYM:MEMBER:([A-Za-z0-9_-]+)$/i.exec(raw)
+  if (memberPrefix?.[1]) {
+    return memberPrefix[1].trim() || null
+  }
+
+  if (looksLikeDirectMemberToken(raw)) {
+    return raw
+  }
+
+  try {
+    const url = new URL(raw)
+    const tokenFromQuery = url.searchParams.get("token")?.trim()
+    if (tokenFromQuery) {
+      return tokenFromQuery
+    }
+
+    const lastPathSegment = url.pathname.split("/").filter(Boolean).at(-1)?.trim() ?? ""
+    if (looksLikeDirectMemberToken(lastPathSegment)) {
+      return lastPathSegment
+    }
+  } catch {
+    // Not a full URL; continue with query-string style fallback.
+  }
+
+  try {
+    const params = new URLSearchParams(raw.startsWith("?") ? raw.slice(1) : raw)
+    const tokenFromParams = params.get("token")?.trim()
+    if (tokenFromParams) {
+      return tokenFromParams
+    }
+  } catch {
+    // Ignore malformed search params.
+  }
+
+  return null
+}
+
 function classifyQrContent(text: string): QrClassification {
   const raw = text.trim()
 
@@ -68,23 +115,9 @@ function classifyQrContent(text: string): QrClassification {
     return { type: "invalid", raw }
   }
 
-  const memberPrefix = /^TSVBOXGYM:MEMBER:([A-Za-z0-9_-]+)$/i.exec(raw)
-  if (memberPrefix?.[1]) {
-    return { type: "member", raw, token: memberPrefix[1] }
-  }
-
-  const lowered = raw.toLowerCase()
-  if (lowered.includes("/checkin") || lowered.includes("/mein-bereich/qr-code")) {
-    let token: string | undefined
-
-    try {
-      const url = new URL(raw)
-      token = url.searchParams.get("token") ?? undefined
-    } catch {
-      token = undefined
-    }
-
-    return { type: "member", raw, token }
+  const extractedToken = extractMemberQrToken(raw)
+  if (extractedToken) {
+    return { type: "member", raw, token: extractedToken }
   }
 
   return { type: "unknown", raw }
@@ -776,6 +809,24 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       ? `${lastScan.classification.raw.slice(0, 26)}...${lastScan.classification.raw.slice(-12)}`
       : lastScan.classification.raw
     : "-"
+  const extractedTokenPreview = lastScan?.classification.token
+    ? shortenToken(lastScan.classification.token)
+    : "-"
+  const lookupStatus = !lastScan
+    ? "Noch kein Scan"
+    : lastScan.classification.type !== "member"
+      ? "Kein Mitglieder-QR erkannt"
+      : !lastScan.classification.token
+        ? "Token fehlt"
+        : validationLoading
+          ? "Lookup läuft..."
+          : validationError
+            ? "Lookup fehlgeschlagen"
+            : validationResult
+              ? validationResult.found
+                ? "Mitglied gefunden"
+                : "Mitglied nicht gefunden"
+              : "Warte auf Lookup"
   const needsCameraPermission = isCameraAccessRequired(errorText)
   const computedRootMinHeight = viewportHeight ? `${viewportHeight}px` : "100dvh"
   const isRealMemberReadyForCheckin = Boolean(
@@ -1068,12 +1119,17 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
 
             <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Token</div>
-              <div className="mt-0.5 truncate text-sm font-semibold text-slate-100">{lastScan?.classification.token ? shortenToken(lastScan.classification.token) : "-"}</div>
+              <div className="mt-0.5 truncate text-sm font-semibold text-slate-100">{extractedTokenPreview}</div>
             </div>
 
             <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-500">Rohwert</div>
               <div className="mt-0.5 truncate text-xs text-slate-300">{rawPreview}</div>
+            </div>
+
+            <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Lookup</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{lookupStatus}</div>
             </div>
 
             {isRealMemberReadyForCheckin && (
