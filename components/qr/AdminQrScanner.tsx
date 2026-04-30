@@ -162,6 +162,8 @@ function getScannerConfig() {
 
 export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
+  const titleSectionRef = useRef<HTMLElement | null>(null)
+  const buttonBarRef = useRef<HTMLDivElement | null>(null)
   const lastRawRef = useRef("")
   const lastRawAtRef = useRef(0)
   const lastValidatedTokenRef = useRef("")
@@ -190,6 +192,9 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const [activeCameraLabel, setActiveCameraLabel] = useState("-")
   const [torchSupported, setTorchSupported] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
+  const [scannerSizePx, setScannerSizePx] = useState(240)
+  const [infoMaxHeightPx, setInfoMaxHeightPx] = useState<number | null>(null)
   const [devScannerInfo, setDevScannerInfo] = useState<{
     isIPhoneLike: boolean
     fps: number
@@ -666,6 +671,63 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     void startScanner()
   }, [autoStart, startScanner])
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+    const recomputeLayout = () => {
+      const visibleHeight = Math.max(
+        0,
+        Math.floor(window.visualViewport?.height ?? window.innerHeight)
+      )
+
+      setViewportHeight(visibleHeight)
+
+      const titleHeight = titleSectionRef.current?.offsetHeight ?? 44
+      const buttonBarHeight = buttonBarRef.current?.offsetHeight ?? 44
+
+      // Reserve space for safe areas, compact info card, and vertical gaps.
+      const reservedForInfo = 220
+      const verticalChrome = 70
+      const availableScanner = visibleHeight - titleHeight - buttonBarHeight - reservedForInfo - verticalChrome
+      const nextScannerSize = clamp(availableScanner, 180, 300)
+      setScannerSizePx(nextScannerSize)
+
+      const availableInfo = visibleHeight - titleHeight - buttonBarHeight - nextScannerSize - verticalChrome
+      setInfoMaxHeightPx(Math.max(140, Math.floor(availableInfo)))
+    }
+
+    let rafId: number | null = null
+    const scheduleRecompute = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+      }
+      rafId = requestAnimationFrame(() => {
+        recomputeLayout()
+        rafId = null
+      })
+    }
+
+    scheduleRecompute()
+    window.addEventListener("resize", scheduleRecompute)
+    window.addEventListener("orientationchange", scheduleRecompute)
+    window.visualViewport?.addEventListener("resize", scheduleRecompute)
+    window.visualViewport?.addEventListener("scroll", scheduleRecompute)
+
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+      }
+      window.removeEventListener("resize", scheduleRecompute)
+      window.removeEventListener("orientationchange", scheduleRecompute)
+      window.visualViewport?.removeEventListener("resize", scheduleRecompute)
+      window.visualViewport?.removeEventListener("scroll", scheduleRecompute)
+    }
+  }, [])
+
   const latestScanType = lastScan ? getUiScanType(lastScan.classification) : "-"
   const memberName = validationResult?.name || "-"
   const memberGroup = validationResult?.group || "-"
@@ -683,17 +745,21 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       : lastScan.classification.raw
     : "-"
   const needsCameraPermission = isCameraAccessRequired(errorText)
+  const computedRootMinHeight = viewportHeight ? `${viewportHeight}px` : "100dvh"
 
   return (
-    <div className="fixed inset-0 z-[80] h-[100svh] w-screen overflow-hidden bg-gradient-to-b from-[#061421] via-[#0a1f33] to-[#0d1723] text-white">
-      <div className="mx-auto flex h-full w-full max-w-[860px] flex-col px-3 pb-3 pt-[max(env(safe-area-inset-top),10px)] sm:px-4">
-        <section className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-3 py-2">
+    <div className="relative z-[80] w-full overflow-hidden bg-gradient-to-b from-[#061421] via-[#0a1f33] to-[#0d1723] text-white" style={{ minHeight: computedRootMinHeight }}>
+      <div className="mx-auto flex w-full max-w-[860px] flex-col px-3 pb-[max(env(safe-area-inset-bottom),10px)] pt-[max(env(safe-area-inset-top),10px)] sm:px-4" style={{ minHeight: computedRootMinHeight }}>
+        <section ref={titleSectionRef} className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-3 py-2">
           <h1 className="text-base font-black tracking-tight text-white sm:text-lg">QR Scanner</h1>
         </section>
 
         <section className="relative mt-2 w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
-          <div className="flex w-full items-center justify-center py-2">
-            <div className="relative aspect-square h-[clamp(260px,34svh,300px)] w-[clamp(260px,34svh,300px)] max-h-[320px] max-w-[320px] overflow-hidden rounded-2xl">
+          <div className="flex w-full items-start justify-center py-2">
+            <div
+              className="relative aspect-square overflow-hidden rounded-2xl"
+              style={{ width: `${scannerSizePx}px`, height: `${scannerSizePx}px`, maxWidth: "300px", maxHeight: "300px" }}
+            >
             <div id={READER_ID} className="h-full w-full" />
 
             <div className="pointer-events-none absolute inset-0">
@@ -702,8 +768,8 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               <div className="absolute left-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
               <div className="absolute right-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
 
-              <div className="absolute left-1/2 top-1/2 aspect-square h-[78%] max-h-[280px] w-[78%] max-w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
-                <div className="absolute inset-x-6 top-1/2 h-[2px] -translate-y-1/2 animate-pulse bg-sky-100/80" />
+              <div className="absolute inset-0 m-auto aspect-square h-[78%] w-[78%] rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
+                <div className="absolute inset-x-6 top-1/2 h-[2px] animate-pulse bg-sky-100/80" />
               </div>
             </div>
 
@@ -757,14 +823,14 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-2 border-t border-sky-100/10 bg-slate-900/75 p-2">
+          <div ref={buttonBarRef} className="flex flex-wrap items-center justify-center gap-1.5 border-t border-sky-100/10 bg-slate-900/75 p-1.5">
             <button
               type="button"
               onClick={() => {
                 void startScanner()
               }}
               disabled={isStarting || isScanning}
-              className="h-10 rounded-lg bg-[#0f5f9b] px-4 text-sm font-bold text-white transition hover:bg-[#0c4f82] disabled:cursor-not-allowed disabled:bg-[#365f7b]"
+              className="h-9 rounded-lg bg-[#0f5f9b] px-3 text-xs font-bold text-white transition hover:bg-[#0c4f82] disabled:cursor-not-allowed disabled:bg-[#365f7b]"
             >
               {isStarting ? "Starte..." : "Start"}
             </button>
@@ -775,7 +841,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 void stopScanner()
               }}
               disabled={!isScanning}
-              className="h-10 rounded-lg bg-slate-700 px-4 text-sm font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
+              className="h-9 rounded-lg bg-slate-700 px-3 text-xs font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
             >
               Stop
             </button>
@@ -784,7 +850,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               type="button"
               onClick={resetScan}
               disabled={!lastScan}
-              className="h-10 rounded-lg bg-slate-700 px-4 text-sm font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
+              className="h-9 rounded-lg bg-slate-700 px-3 text-xs font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
             >
               Neuer Scan
             </button>
@@ -797,7 +863,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 }}
                 disabled={!isScanning}
                 title="Licht ein/aus"
-                className={`h-10 rounded-lg px-3 text-sm font-bold transition ${
+                className={`h-9 rounded-lg px-2.5 text-xs font-bold transition ${
                   torchOn
                     ? "bg-yellow-500 text-yellow-900 hover:bg-yellow-400"
                     : "bg-slate-600 text-white hover:bg-slate-500"
@@ -813,7 +879,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 onClick={() => { void switchCamera() }}
                 disabled={!isScanning || isStarting}
                 title={`Aktiv: ${activeCameraLabel}`}
-                className="h-10 truncate rounded-lg bg-slate-600 px-3 text-sm font-bold text-white transition hover:bg-slate-500 disabled:cursor-not-allowed disabled:bg-slate-800"
+                className="h-9 truncate rounded-lg bg-slate-600 px-2.5 text-xs font-bold text-white transition hover:bg-slate-500 disabled:cursor-not-allowed disabled:bg-slate-800"
               >
                 Kamera ↔
               </button>
@@ -821,7 +887,8 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
           </div>
         </section>
 
-        <section className="mt-2 rounded-2xl border border-sky-100/10 bg-slate-900/60 p-2.5">
+        <section className="mt-2 min-h-0 flex-1 overflow-hidden rounded-2xl border border-sky-100/10 bg-slate-900/60 p-2">
+          <div className="h-full overflow-y-auto" style={{ maxHeight: infoMaxHeightPx ? `${infoMaxHeightPx}px` : undefined }}>
           <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-2.5">
             <div className="text-[10px] uppercase tracking-wide text-sky-200/80">Name</div>
             <div className="mt-0.5 text-lg font-black tracking-tight text-white sm:text-xl">{memberName}</div>
@@ -866,13 +933,13 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
           </div>
 
           <p className="mt-2 text-center text-[10px] text-slate-400">Nur Anzeige, kein Check-in.</p>
+          </div>
         </section>
       </div>
 
       <style jsx global>{`
         #${READER_ID} {
-          position: absolute;
-          inset: 0;
+          position: relative;
           height: 100%;
           width: 100%;
           overflow: hidden;
