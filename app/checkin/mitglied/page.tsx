@@ -37,7 +37,7 @@ export default function MemberCheckinPage() {
   const [error, setError] = useState(false)
   const [qrAccessToken, setQrAccessToken] = useState("")
   const [memberEmail, setMemberEmail] = useState("")
-  const [memberPin, setMemberPin] = useState("")
+  const [memberPassword, setMemberPassword] = useState("")
   const [memberWeight, setMemberWeight] = useState("")
   const [rememberDevice, setRememberDevice] = useState(true)
   const [rememberedMemberId, setRememberedMemberId] = useState("")
@@ -362,9 +362,9 @@ export default function MemberCheckinPage() {
 
   async function handleMemberCheckin() {
     const email = memberEmail.trim().toLowerCase()
-    const pin = memberPin.trim()
+    const password = memberPassword.trim()
 
-    if (!email || !pin) {
+    if (!email || !password) {
       setCheckinError("Bitte E-Mail und Passwort eingeben.")
       window.scrollTo({ top: 0, behavior: "smooth" })
       return
@@ -400,7 +400,7 @@ export default function MemberCheckinPage() {
         },
         body: JSON.stringify({
           email,
-          password: pin,
+          password,
           qrAccessToken,
           weight: memberWeight.trim(),
           selectedGroup: selectedGroup || undefined,
@@ -467,7 +467,7 @@ export default function MemberCheckinPage() {
 
         showCheckinSuccess(typedResult.member?.firstName || undefined)
         setMemberEmail("")
-        setMemberPin("")
+        setMemberPassword("")
         setMemberWeight("")
         resetAvailableGroupSelection()
         return
@@ -889,16 +889,16 @@ export default function MemberCheckinPage() {
               <div className="space-y-2">
                 <Label>Passwort</Label>
                 <PasswordInput
-                  value={memberPin}
+                  value={memberPassword}
                   onChange={(e) => {
-                    setMemberPin(e.target.value)
+                    setMemberPassword(e.target.value)
                     if (availableGroups.length > 0) {
                       resetAvailableGroupSelection()
                     }
                   }}
                   placeholder="Passwort"
                   className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
-                  inputMode="numeric"
+                  inputMode="text"
                   enterKeyHint="done"
                 />
                 <div className="text-right">

@@ -34,7 +34,7 @@ export default function MemberLoginForm() {
         body: JSON.stringify({
           action: "member_login",
           email,
-          pin: password,
+          password,
         }),
       })
 

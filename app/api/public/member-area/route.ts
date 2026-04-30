@@ -38,6 +38,7 @@ import { readCheckinSettings } from "@/lib/checkinSettingsDb"
 import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 
 type MemberAreaBody =
+  // Backward compatible during migration: accepts both password and legacy pin fields.
   | { action: "member_login"; email?: string; password?: string; pin?: string }
   | { action: "member_session" }
   | { action: "logout_member_session" }

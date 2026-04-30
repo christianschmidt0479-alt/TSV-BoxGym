@@ -56,7 +56,7 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
   const [registerLastName, setRegisterLastName] = useState("")
   const [registerBirthDate, setRegisterBirthDate] = useState("")
   const [registerGender, setRegisterGender] = useState("")
-  const [registerPin, setRegisterPin] = useState("")
+  const [registerPassword, setRegisterPassword] = useState("")
   const [registerEmail, setRegisterEmail] = useState("")
   const [registerPhone, setRegisterPhone] = useState("")
   const [registerBaseGroup, setRegisterBaseGroup] = useState<string>("")
@@ -131,7 +131,7 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
   async function handleMemberRegistration() {
     const firstName = registerFirstName.trim()
     const lastName = registerLastName.trim()
-    const pin = registerPin.trim()
+    const password = registerPassword.trim()
 
     setPrivacyError("")
     setApiError("")
@@ -151,7 +151,7 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
       return
     }
 
-    if (!isValidMemberPassword(pin)) {
+    if (!isValidMemberPassword(password)) {
       setApiError(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE)
       return
     }
@@ -183,7 +183,7 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
         lastName,
         birthDate: registerBirthDate,
         gender: registerGender,
-        password: pin,
+        password,
         email: registerEmail.trim(),
         phone: registerPhone.trim(),
         baseGroup: registerBaseGroup,
@@ -326,8 +326,8 @@ export default function MemberRegistrationForm({ registrationType = "trial", hea
             <div className="space-y-2">
               <Label>Passwort selbst wählen <span className="ml-1 text-zinc-800">*</span></Label>
               <PasswordInput
-                value={registerPin}
-                onChange={(e) => setRegisterPin(e.target.value)}
+                value={registerPassword}
+                onChange={(e) => setRegisterPassword(e.target.value)}
                 placeholder="Eigenes Passwort wählen"
                 className="h-14 rounded-2xl border-zinc-300 bg-white text-lg text-zinc-900"
               />

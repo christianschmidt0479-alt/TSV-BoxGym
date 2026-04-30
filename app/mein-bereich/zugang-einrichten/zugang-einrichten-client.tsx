@@ -123,12 +123,12 @@ export function ZugangEinrichtenClient() {
           <CardContent className="space-y-4">
             {done ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                Deine E-Mail-Adresse wurde bestätigt und dein Passwort wurde gesetzt. Du wirst gleich zum Login weitergeleitet.
+                Deine E-Mail-Adresse wurde bestätigt. Dein Passwort wurde gesetzt. Du wirst gleich zum Login weitergeleitet.
               </div>
             ) : (
               <>
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-                  Lege jetzt dein persönliches Passwort fest. Danach kannst du dich im Mitgliederbereich anmelden.
+                  Lege ein neues Passwort fest. Danach kannst du dich im Mitgliederbereich anmelden.
                 </div>
 
                 {error ? (

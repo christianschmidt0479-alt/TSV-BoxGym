@@ -150,7 +150,7 @@ export function PasswordResetClient() {
         throw new Error(result.error || "Passwort konnte nicht gesetzt werden.")
       }
 
-      setMessage("Dein Passwort wurde aktualisiert. Du wirst gleich zum Mitglieder-Login weitergeleitet.")
+      setMessage("Dein Passwort wurde gesetzt. Du wirst gleich zum Mitglieder-Login weitergeleitet.")
       setNewPassword("")
       setConfirmPassword("")
       setResetCompleted(true)

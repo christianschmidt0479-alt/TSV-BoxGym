@@ -195,6 +195,7 @@ export async function findMemberByEmail(email: string) {
   return data[0]
 }
 // Dubletten-Prioritätsregel: 1. verifiziert, 2. jüngster nicht-verifizierter, nicht-freigegebener, 3. jüngster
+// Legacy note: The members.member_pin column is still used during migration and stores password secrets/hashes.
 export async function findMemberByEmailAndPin(email: string, pin: string): Promise<MemberAuthResult | null> {
   const normalizedEmail = email.trim().toLowerCase()
   const pinTrimmed = pin ? pin.trim() : ""
