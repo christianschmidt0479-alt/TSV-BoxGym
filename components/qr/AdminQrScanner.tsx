@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 type Html5QrcodeInstance = {
   start: (
-    cameraConfig: { facingMode: "environment" | "user" } | string,
+    cameraConfig: { facingMode: "environment" | "user" | { exact: "environment" | "user" } } | string,
     configuration?: {
       fps?: number
       aspectRatio?: number
@@ -154,7 +154,7 @@ function getScannerConfig() {
     aspectRatio: CAMERA_ASPECT_RATIO,
     disableFlip: true,
     qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-      const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
+      const edge = Math.max(220, Math.min(360, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72)))
       return { width: edge, height: edge }
     },
   }
@@ -169,6 +169,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const autoStartAttemptedRef = useRef(false)
+  const activeCameraIdRef = useRef<string | null>(null)
 
   const [isStarting, setIsStarting] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
@@ -185,18 +186,24 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     tone: FeedbackTone
     message: string
   } | null>(null)
+  const [availableCameras, setAvailableCameras] = useState<Array<{ id: string; label: string }>>([])
+  const [activeCameraLabel, setActiveCameraLabel] = useState("-")
   const [devScannerInfo, setDevScannerInfo] = useState<{
     isIPhoneLike: boolean
     fps: number
     aspectRatio: string
     qrbox: string
     lastDecodeAt: string
+    cameras: string[]
+    activeCamera: string
   }>({
     isIPhoneLike: false,
     fps: CAMERA_FPS,
     aspectRatio: `${CAMERA_ASPECT_RATIO.toFixed(2)}`,
     qrbox: "-",
     lastDecodeAt: "-",
+    cameras: [],
+    activeCamera: "-",
   })
 
   const playBeep = useCallback((tone: FeedbackTone) => {
@@ -334,8 +341,13 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   }, [showFeedback])
 
   const startScanner = useCallback(async () => {
-    if (isStarting || isScanning) {
+    if (isStarting) {
       return
+    }
+
+    // Stop any existing scanner before starting a new one.
+    if (scannerRef.current) {
+      await stopScanner()
     }
 
     setIsStarting(true)
@@ -344,11 +356,15 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
 
     try {
       const { Html5Qrcode } = await import("html5-qrcode")
+
+      // Clear the container DOM to prevent html5-qrcode double-init errors.
+      const container = document.getElementById(READER_ID)
+      if (container) {
+        container.innerHTML = ""
+      }
+
       const scanner = new Html5Qrcode(READER_ID) as unknown as Html5QrcodeInstance
       scannerRef.current = scanner
-
-      let started = false
-      let firstError: unknown = null
 
       const isIPhoneLike = isIPhoneLikeDevice()
       if (process.env.NODE_ENV !== "production") {
@@ -363,7 +379,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       const scannerConfig = {
         ...getScannerConfig(),
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
+          const edge = Math.max(220, Math.min(360, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72)))
           if (process.env.NODE_ENV !== "production") {
             const nextQrBox = `${edge}x${edge}`
             setDevScannerInfo((previous) =>
@@ -374,40 +390,90 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
         },
       }
 
-      try {
-        await scanner.start(
-          { facingMode: "environment" },
-          scannerConfig,
-          handleDecoded,
-          () => {
-            // No-op to avoid noisy "no QR" status updates.
-          },
-        )
-        started = true
-      } catch (error) {
-        firstError = error
+      // Enumerate cameras for DEV panel and label-based fallback selection.
+      const getCamerasStatic = (Html5Qrcode as { getCameras?: () => Promise<Array<{ id: string; label: string }>> }).getCameras
+      let cameras: Array<{ id: string; label: string }> = []
+      if (typeof getCamerasStatic === "function") {
+        try {
+          cameras = await getCamerasStatic()
+          setAvailableCameras(cameras)
+          if (process.env.NODE_ENV !== "production") {
+            setDevScannerInfo((previous) => ({
+              ...previous,
+              cameras: cameras.map((c) => c.label || c.id),
+            }))
+          }
+        } catch {
+          // Camera enumeration may fail; continue with facingMode fallbacks.
+        }
+      }
+
+      // Check localStorage for a previously chosen camera.
+      const savedCameraId =
+        typeof localStorage !== "undefined" ? localStorage.getItem("admin-scanner-camera-id") : null
+      const savedCamera = savedCameraId ? cameras.find((c) => c.id === savedCameraId) : null
+
+      let started = false
+      let startedLabel = "-"
+
+      // 1. Preferred camera from localStorage (user switched manually before).
+      if (!started && savedCamera) {
+        try {
+          await scanner.start(savedCamera.id, scannerConfig, handleDecoded, () => {})
+          started = true
+          startedLabel = savedCamera.label || savedCamera.id
+          activeCameraIdRef.current = savedCamera.id
+        } catch {
+          // Saved camera unavailable; try next fallback.
+        }
+      }
+
+      // 2. Exact facingMode constraint (most reliable on iPhone for true rear camera).
+      if (!started) {
+        try {
+          await scanner.start({ facingMode: { exact: "environment" } }, scannerConfig, handleDecoded, () => {})
+          started = true
+          startedLabel = "Rückkamera (exact)"
+          activeCameraIdRef.current = null
+        } catch {
+          // exact constraint rejected by browser; fall through.
+        }
+      }
+
+      // 3. Loose facingMode: "environment" fallback.
+      if (!started) {
+        try {
+          await scanner.start({ facingMode: "environment" }, scannerConfig, handleDecoded, () => {})
+          started = true
+          startedLabel = "Rückkamera"
+          activeCameraIdRef.current = null
+        } catch {
+          // facingMode "environment" failed; fall through.
+        }
+      }
+
+      // 4. Back camera by label from getCameras(), then first available.
+      if (!started && cameras.length > 0) {
+        const backCamera =
+          cameras.find((c) => /back|rear|environment/i.test(c.label)) ?? cameras[0]
+        try {
+          await scanner.start(backCamera.id, scannerConfig, handleDecoded, () => {})
+          started = true
+          startedLabel = backCamera.label || backCamera.id
+          activeCameraIdRef.current = backCamera.id
+        } catch {
+          // All fallbacks exhausted.
+        }
       }
 
       if (!started) {
-        const getCameras = (Html5Qrcode as { getCameras?: () => Promise<Array<{ id: string; label: string }>> }).getCameras
-        const cameras = typeof getCameras === "function" ? await getCameras() : []
-        const preferred = cameras.find((camera) => /back|rear|environment/i.test(camera.label))
-        const fallbackCamera = preferred ?? cameras[0]
-
-        if (!fallbackCamera) {
-          throw firstError ?? new Error("No camera")
-        }
-
-        await scanner.start(
-          fallbackCamera.id,
-          scannerConfig,
-          handleDecoded,
-          () => {
-            // No-op to avoid noisy "no QR" status updates.
-          },
-        )
+        throw new Error("No camera available")
       }
 
+      setActiveCameraLabel(startedLabel)
+      if (process.env.NODE_ENV !== "production") {
+        setDevScannerInfo((previous) => ({ ...previous, activeCamera: startedLabel }))
+      }
       setIsScanning(true)
       setLastStatusText("Kamera aktiv")
     } catch (error) {
@@ -417,7 +483,25 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     } finally {
       setIsStarting(false)
     }
-  }, [handleDecoded, isScanning, isStarting, stopScanner])
+  }, [handleDecoded, isStarting, stopScanner])
+
+  const switchCamera = useCallback(async () => {
+    if (availableCameras.length < 2 || isStarting) {
+      return
+    }
+
+    const currentId = activeCameraIdRef.current
+    const currentIndex = currentId ? availableCameras.findIndex((c) => c.id === currentId) : -1
+    const nextIndex = (currentIndex + 1) % availableCameras.length
+    const nextCamera = availableCameras[nextIndex]
+
+    // Save preference so startScanner picks it up on restart.
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("admin-scanner-camera-id", nextCamera.id)
+    }
+
+    await startScanner()
+  }, [availableCameras, isStarting, startScanner])
 
   useEffect(() => {
     return () => {
@@ -537,7 +621,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   }, [lastScan])
 
   useEffect(() => {
-    if (!autoStart || autoStartAttemptedRef.current) {
+    if (!autoStart || autoStartAttemptedRef.current || isIPhoneLikeDevice()) {
       return
     }
 
@@ -617,9 +701,25 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               </div>
             )}
 
-            {autoStart && needsCameraPermission && (
+            {!isScanning && !isStarting && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/85">
+                <button
+                  type="button"
+                  onClick={() => { void startScanner() }}
+                  className="rounded-2xl bg-[#0f5f9b] px-8 py-4 text-lg font-bold text-white shadow-xl transition hover:bg-[#0c4f82] active:scale-95"
+                >
+                  Scanner starten
+                </button>
+                <p className="mt-3 px-6 text-center text-xs text-slate-400">
+                  Auf iPhone: Kamera startet erst nach Button-Klick.
+                </p>
+              </div>
+            )}
+
+            {needsCameraPermission && (
               <div className="absolute inset-x-3 bottom-3 z-20 rounded-xl border border-amber-300/70 bg-amber-800/50 px-3 py-3">
                 <div className="text-sm font-semibold text-amber-100">Kamerazugriff erforderlich</div>
+                <p className="mt-1 text-xs text-amber-200">Bitte Kamera erlauben und erneut starten.</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -627,13 +727,13 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                   }}
                   className="mt-2 h-10 rounded-lg bg-amber-400 px-4 text-sm font-bold text-amber-950 transition hover:bg-amber-300"
                 >
-                  Erneut versuchen
+                  Erneut starten
                 </button>
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 border-t border-sky-100/10 bg-slate-900/75 p-3">
+          <div className={`grid gap-2 border-t border-sky-100/10 bg-slate-900/75 p-3 ${availableCameras.length > 1 ? "grid-cols-3" : "grid-cols-2"}`}>
             <button
               type="button"
               onClick={() => {
@@ -655,6 +755,18 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
             >
               Stop
             </button>
+
+            {availableCameras.length > 1 && (
+              <button
+                type="button"
+                onClick={() => { void switchCamera() }}
+                disabled={!isScanning || isStarting}
+                title={`Aktiv: ${activeCameraLabel}`}
+                className="h-12 truncate rounded-xl bg-slate-600 px-3 text-sm font-bold text-white transition hover:bg-slate-500 disabled:cursor-not-allowed disabled:bg-slate-800"
+              >
+                Kamera ↔
+              </button>
+            )}
           </div>
         </section>
 
@@ -670,6 +782,15 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               <div>aspectRatio: {devScannerInfo.aspectRatio}</div>
               <div>qrbox: {devScannerInfo.qrbox}</div>
               <div>letzter Decode: {devScannerInfo.lastDecodeAt}</div>
+              <div>aktive Kamera: {devScannerInfo.activeCamera}</div>
+              {devScannerInfo.cameras.length > 0 && (
+                <div className="mt-1">
+                  <div className="font-semibold text-sky-200">Verfügbare Kameras ({devScannerInfo.cameras.length}):</div>
+                  {devScannerInfo.cameras.map((label, i) => (
+                    <div key={i} className="ml-2 truncate text-slate-300">{i + 1}. {label}</div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : null}
 
