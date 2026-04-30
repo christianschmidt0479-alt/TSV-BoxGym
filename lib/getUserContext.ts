@@ -1,4 +1,5 @@
 import { cookies } from "next/headers"
+import { cache } from "react"
 import { TRAINER_SESSION_COOKIE, verifyTrainerSessionToken, type ServerTrainerRole } from "@/lib/authSession"
 import { findMemberById } from "@/lib/boxgymDb"
 
@@ -29,7 +30,7 @@ export type UserContext = {
   isMember: boolean
 }
 
-export async function getUserContext(): Promise<UserContext | null> {
+export const getUserContext = cache(async (): Promise<UserContext | null> => {
   const cookieStore = await cookies()
   const token = cookieStore.get(TRAINER_SESSION_COOKIE)?.value
 
@@ -65,4 +66,4 @@ export async function getUserContext(): Promise<UserContext | null> {
     member,
     isMember,
   }
-}
+})

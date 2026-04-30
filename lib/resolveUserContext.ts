@@ -1,4 +1,5 @@
 import { cookies } from "next/headers"
+import { cache } from "react"
 import { verifyTrainerSessionToken } from "@/lib/authSession"
 import { readMemberSession } from "@/lib/publicAreaSession"
 
@@ -10,7 +11,7 @@ export type ResolvedUserContext = {
   memberId: string | null
 }
 
-export async function resolveUserContext(): Promise<ResolvedUserContext> {
+export const resolveUserContext = cache(async (): Promise<ResolvedUserContext> => {
   const cookieStore = await cookies()
 
   const memberSession = await readMemberSession(cookieStore)
@@ -40,4 +41,4 @@ export async function resolveUserContext(): Promise<ResolvedUserContext> {
     isAdmin,
     memberId,
   }
-}
+})

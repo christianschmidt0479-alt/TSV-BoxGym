@@ -93,7 +93,7 @@ export default function TrainerCheckinPage() {
           },
           body: JSON.stringify({
             page: 1,
-            pageSize: 2000,
+            pageSize: 500,
           }),
         })
 

@@ -96,8 +96,11 @@ function parseWeightInput(value: string) {
 
 export async function POST(request: Request) {
   try {
+    const isDev = process.env.NODE_ENV !== "production"
     const logResponseStatus = (statusCode: number) => {
-      console.log("CHECKIN RESPONSE STATUS", statusCode)
+      if (isDev) {
+        console.log("CHECKIN RESPONSE STATUS", statusCode)
+      }
     }
     const textResponse = (body: string, statusCode: number) => {
       logResponseStatus(statusCode)
@@ -123,10 +126,12 @@ export async function POST(request: Request) {
     const body = (await request.json()) as MemberCheckinBody
     const email = body.email?.trim().toLowerCase() ?? ""
     const password = body.password?.trim() ?? body.pin?.trim() ?? ""
-    console.log("CHECKIN INPUT", {
-      email,
-      hasPin: Boolean(password),
-    })
+    if (isDev) {
+      console.log("CHECKIN INPUT", {
+        email,
+        hasPin: Boolean(password),
+      })
+    }
 
     const checkinSettings = await readCheckinSettings()
     const checkinMode = getMemberCheckinMode(checkinSettings.disableCheckinTimeWindow)
@@ -232,19 +237,21 @@ export async function POST(request: Request) {
     const isNoOwnSessionToday = checkinAssignment.reason === "no_own_session_today"
     const isOutsideTimeWindow = checkinAssignment.reason === "outside_time_window"
     const checkinWindowAllowed = Boolean(checkinAssignment.allowed && effectiveGroupName)
-    console.log("CHECKIN ASSIGNMENT", {
-      groupName: effectiveGroupName,
-      session: checkinAssignment?.session,
-    })
-    console.log("CHECKIN SETTINGS", {
-      disableCheckinTimeWindow: checkinSettings?.disableCheckinTimeWindow,
-      disableNormalCheckinTimeWindow: checkinSettings?.disableNormalCheckinTimeWindow,
-      disableNormalWindowForTest,
-    })
-    console.log("GROUP CHECK", {
-      groupName: effectiveGroupName,
-      ferienmodus: checkinSettings.disableCheckinTimeWindow,
-    })
+    if (isDev) {
+      console.log("CHECKIN ASSIGNMENT", {
+        groupName: effectiveGroupName,
+        session: checkinAssignment?.session,
+      })
+      console.log("CHECKIN SETTINGS", {
+        disableCheckinTimeWindow: checkinSettings?.disableCheckinTimeWindow,
+        disableNormalCheckinTimeWindow: checkinSettings?.disableNormalCheckinTimeWindow,
+        disableNormalWindowForTest,
+      })
+      console.log("GROUP CHECK", {
+        groupName: effectiveGroupName,
+        ferienmodus: checkinSettings.disableCheckinTimeWindow,
+      })
+    }
 
     if (isNoOwnSessionToday && !effectiveGroupName) {
       return jsonResponse(
@@ -293,30 +300,34 @@ export async function POST(request: Request) {
     if (requiresWeight) {
       const parsedWeight = parseWeightInput(body.weight ?? "")
       if (parsedWeight == null || parsedWeight <= 30) {
-        console.log("Missing weight for member", resolvedMember.id)
+        if (isDev) {
+          console.log("Missing weight for member", resolvedMember.id)
+        }
       }
     }
 
-    const { data: existingMemberCheckins, error: existingMemberCheckinsError } = await supabase
-      .from("checkins")
-      .select("id, date, created_at")
-      .eq("member_id", resolvedMember.id)
+    const [
+      { count: existingCheckinCountRaw, error: countError },
+      { data: todayCheckinRow, error: todayError },
+    ] = await Promise.all([
+      supabase
+        .from("checkins")
+        .select("id", { count: "exact", head: true })
+        .eq("member_id", resolvedMember.id),
+      supabase
+        .from("checkins")
+        .select("id")
+        .eq("member_id", resolvedMember.id)
+        .eq("date", liveDate)
+        .limit(1)
+        .maybeSingle(),
+    ])
 
-    if (existingMemberCheckinsError) throw existingMemberCheckinsError
+    if (countError) throw countError
+    if (todayError) throw todayError
 
-    const existingCheckinCount = existingMemberCheckins?.length ?? 0
-    const hasCheckedInToday = (existingMemberCheckins ?? []).some((checkin) => {
-      const checkinDate = checkin.date
-      if (typeof checkinDate === "string" && checkinDate === liveDate) {
-        return true
-      }
-
-      if (typeof checkin.created_at === "string") {
-        return todayString(new Date(checkin.created_at)) === liveDate
-      }
-
-      return false
-    })
+    const existingCheckinCount = existingCheckinCountRaw ?? 0
+    const hasCheckedInToday = Boolean(todayCheckinRow)
 
     const checkinResult = await handleCheckin(
       {
@@ -339,7 +350,9 @@ export async function POST(request: Request) {
         groupAllowed: Boolean(effectiveGroupName),
       }
     )
-    console.log("CHECKIN CORE RESULT", checkinResult)
+    if (isDev) {
+      console.log("CHECKIN CORE RESULT", checkinResult)
+    }
 
     // TEMP LIVE MONITORING
     if (!checkinResult.ok) {
@@ -367,11 +380,13 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log("CHECKIN INSERT DATA", {
-      memberId: resolvedMember.id,
-      groupName: effectiveGroupName,
-      session: checkinAssignment?.session,
-    })
+    if (isDev) {
+      console.log("CHECKIN INSERT DATA", {
+        memberId: resolvedMember.id,
+        groupName: effectiveGroupName,
+        session: checkinAssignment?.session,
+      })
+    }
 
     try {
       await createCheckin({
@@ -459,7 +474,9 @@ export async function POST(request: Request) {
     if (process.env.NODE_ENV !== "production") {
       console.error('[member-flow][checkin][error] reason=exception' + masked, error)
     }
-    console.log("CHECKIN RESPONSE STATUS", 500)
+    if (process.env.NODE_ENV !== "production") {
+      console.log("CHECKIN RESPONSE STATUS", 500)
+    }
     return new NextResponse("Interner Fehler", { status: 500 })
   }
 }

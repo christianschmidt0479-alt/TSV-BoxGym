@@ -41,14 +41,13 @@ export default function DashboardPage() {
         credentials: "include",
         signal: controller.signal,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page: 1, pageSize: 999 }),
+        body: JSON.stringify({ page: 1, pageSize: 1 }),
       })
       if (!res.ok) return
 
       const result = await res.json()
-      const members: { is_approved?: boolean }[] = result.data ?? []
-      setTotalMembers(result.total ?? members.length)
-      setPendingApprovals(members.filter((m) => !m.is_approved).length)
+      setTotalMembers(result.total ?? 0)
+      setPendingApprovals(result.pendingCount ?? 0)
     }
 
     void load().catch((error: unknown) => {

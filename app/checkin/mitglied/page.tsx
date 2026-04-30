@@ -223,7 +223,9 @@ export default function MemberCheckinPage() {
 
     timeoutTimerRef.current = window.setTimeout(() => {
       if (!successRef.current && !errorRef.current) {
-        console.log("TIMEOUT ERROR")
+        if (process.env.NODE_ENV !== "production") {
+          console.log("TIMEOUT ERROR")
+        }
         markCheckinError("Zeitüberschreitung beim Check-in. Bitte erneut versuchen.")
       }
     }, 6000)
@@ -317,8 +319,9 @@ export default function MemberCheckinPage() {
     if (hasTriggered.current) return
 
     hasTriggered.current = true
-    console.log("AUTO CHECKIN TRIGGERED")
-    startCheckinProgress()
+    if (process.env.NODE_ENV !== "production") {
+      console.log("AUTO CHECKIN TRIGGERED")
+    }
     setAutoCheckinRunning(true)
     setAutoCheckinFailed(false)
     setCheckinError("")
@@ -405,7 +408,9 @@ export default function MemberCheckinPage() {
         }),
       })
 
-      console.log("CHECKIN RESPONSE", response.status)
+      if (process.env.NODE_ENV !== "production") {
+        console.log("CHECKIN RESPONSE", response.status)
+      }
 
       const rawBody = await response.text()
       const result = (() => {
@@ -518,7 +523,9 @@ export default function MemberCheckinPage() {
         return
       }
     } catch (error) {
-      console.error(error)
+      if (process.env.NODE_ENV !== "production") {
+        console.error(error)
+      }
       markCheckinError("Fehler beim Speichern des Check-ins.")
     } finally {
       if (!successRef.current) {
@@ -551,7 +558,9 @@ export default function MemberCheckinPage() {
         }),
       })
 
-      console.log("CHECKIN RESPONSE", response.status)
+      if (process.env.NODE_ENV !== "production") {
+        console.log("CHECKIN RESPONSE", response.status)
+      }
 
       const rawBody = await response.text()
       const result = (() => {

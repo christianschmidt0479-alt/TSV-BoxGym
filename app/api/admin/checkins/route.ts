@@ -38,17 +38,14 @@ export async function GET(request: Request) {
         time,
         created_at,
         members(
-          id,
           name,
           first_name,
           last_name,
-          birthdate,
-          is_trial,
-          is_approved,
-          base_group
+          is_trial
         )
       `)
       .order("created_at", { ascending: false })
+      .limit(500)
 
     if (response.error) throw response.error
 
@@ -58,7 +55,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       rows: response.data ?? [],
       todayRows,
-    })
+    }, { headers: { "Cache-Control": "no-store" } })
   } catch (error) {
     console.error("admin checkins failed", error)
     return new NextResponse("Internal server error", { status: 500 })

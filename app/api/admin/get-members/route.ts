@@ -65,34 +65,30 @@ export async function POST(req: Request) {
     const checkedInTodayByMemberId = new Set<string>()
     const todayBerlin = berlinDayKey(new Date())
 
-    if (memberIds.length > 0) {
-      const { data: pageCheckins, error: pageCheckinsError } = await supabase
-        .from("checkins")
-        .select("member_id, date, created_at")
-        .in("member_id", memberIds)
+    const [pageCheckinsResult, todayCheckinsResult, pendingCountResult] = await Promise.all([
+      memberIds.length > 0
+        ? supabase.from("checkins").select("member_id, date, created_at").in("member_id", memberIds)
+        : Promise.resolve({ data: [] as { member_id: string | null; date: string | null; created_at: string | null }[], error: null }),
+      supabase.from("checkins").select("member_id").eq("date", todayBerlin),
+      supabase.from("members").select("id", { count: "exact", head: true }).eq("is_approved", false),
+    ])
 
-      if (pageCheckinsError) {
-        console.error("SUPABASE ERROR:", pageCheckinsError)
-        return new Response(JSON.stringify({ error: true }), { status: 500 })
-      }
+    if (pageCheckinsResult.error) {
+      console.error("SUPABASE ERROR:", pageCheckinsResult.error)
+      return new Response(JSON.stringify({ error: true }), { status: 500 })
+    }
 
-      for (const row of pageCheckins ?? []) {
-        if (!row.member_id) continue
-        checkinCountByMemberId.set(row.member_id, (checkinCountByMemberId.get(row.member_id) ?? 0) + 1)
+    for (const row of pageCheckinsResult.data ?? []) {
+      if (!row.member_id) continue
+      checkinCountByMemberId.set(row.member_id, (checkinCountByMemberId.get(row.member_id) ?? 0) + 1)
 
-        if (isTodayCheckinInBerlin(row, todayBerlin)) {
-          checkedInTodayByMemberId.add(row.member_id)
-        }
+      if (isTodayCheckinInBerlin(row, todayBerlin)) {
+        checkedInTodayByMemberId.add(row.member_id)
       }
     }
 
-    const { data: todayCheckins, error: todayCheckinsError } = await supabase
-      .from("checkins")
-      .select("member_id")
-      .eq("date", todayBerlin)
-
-    if (todayCheckinsError) {
-      console.error("SUPABASE ERROR:", todayCheckinsError)
+    if (todayCheckinsResult.error) {
+      console.error("SUPABASE ERROR:", todayCheckinsResult.error)
       return new Response(JSON.stringify({ error: true }), { status: 500 })
     }
 
@@ -103,7 +99,7 @@ export async function POST(req: Request) {
     }))
 
     const totalTodayCount = new Set(
-      (todayCheckins ?? [])
+      (todayCheckinsResult.data ?? [])
         .map((row) => row.member_id)
         .filter((memberId): memberId is string => typeof memberId === "string" && memberId.length > 0)
     ).size
@@ -112,6 +108,7 @@ export async function POST(req: Request) {
       data: withCheckinCounts,
       total: count,
       totalTodayCount,
+      pendingCount: pendingCountResult.count ?? 0,
     }), { status: 200 })
   } catch (error) {
     console.error("API ERROR:", error)

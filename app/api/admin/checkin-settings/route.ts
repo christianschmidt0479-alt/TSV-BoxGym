@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     }
 
     const settings = await readCheckinSettings()
-    return NextResponse.json(settings)
+    return NextResponse.json(settings, { headers: { "Cache-Control": "no-store" } })
   } catch (error) {
     console.error("admin checkin settings read failed", error)
     return new NextResponse("Internal server error", { status: 500 })

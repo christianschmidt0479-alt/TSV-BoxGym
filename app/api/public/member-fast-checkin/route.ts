@@ -190,26 +190,28 @@ export async function POST(request: Request) {
       }
     }
 
-    const { data: existingMemberCheckins, error: existingMemberCheckinsError } = await supabase
-      .from("checkins")
-      .select("id, date, created_at")
-      .eq("member_id", member.id)
+    const [
+      { count: existingCheckinCountRaw, error: countError },
+      { data: todayCheckinRow, error: todayError },
+    ] = await Promise.all([
+      supabase
+        .from("checkins")
+        .select("id", { count: "exact", head: true })
+        .eq("member_id", member.id),
+      supabase
+        .from("checkins")
+        .select("id")
+        .eq("member_id", member.id)
+        .eq("date", liveDate)
+        .limit(1)
+        .maybeSingle(),
+    ])
 
-    if (existingMemberCheckinsError) throw existingMemberCheckinsError
+    if (countError) throw countError
+    if (todayError) throw todayError
 
-    const existingCheckinCount = existingMemberCheckins?.length ?? 0
-    const hasCheckedInToday = (existingMemberCheckins ?? []).some((checkin) => {
-      const checkinDate = checkin.date
-      if (typeof checkinDate === "string" && checkinDate === liveDate) {
-        return true
-      }
-
-      if (typeof checkin.created_at === "string") {
-        return todayString(new Date(checkin.created_at)) === liveDate
-      }
-
-      return false
-    })
+    const existingCheckinCount = existingCheckinCountRaw ?? 0
+    const hasCheckedInToday = Boolean(todayCheckinRow)
 
     const checkinResult = await handleCheckin(
       {

@@ -286,18 +286,18 @@ async function buildMemberSnapshot(member: MemberRecord) {
 
   const [
     checkinSettings,
-    { data: monthRows },
-    { data: previousMonthRows },
-    { data: yearRows },
+    { count: monthCount },
+    { count: previousMonthCount },
+    { count: yearCount },
     { data: allRows },
     { data: lastRow },
     { data: recentRows },
     { data: attendanceRows },
   ] = await Promise.all([
     readCheckinSettings(),
-    supabase.from("checkins").select("*").eq("member_id", member.id).eq("month_key", currentMonthKey),
-    supabase.from("checkins").select("*").eq("member_id", member.id).eq("month_key", previousMonthKey),
-    supabase.from("checkins").select("*").eq("member_id", member.id).eq("year", currentYear),
+    supabase.from("checkins").select("id", { count: "exact", head: true }).eq("member_id", member.id).eq("month_key", currentMonthKey),
+    supabase.from("checkins").select("id", { count: "exact", head: true }).eq("member_id", member.id).eq("month_key", previousMonthKey),
+    supabase.from("checkins").select("id", { count: "exact", head: true }).eq("member_id", member.id).eq("year", currentYear),
     supabase.from("checkins").select("date, group_name").eq("member_id", member.id).order("date", { ascending: false }),
     supabase
       .from("checkins")
@@ -314,9 +314,10 @@ async function buildMemberSnapshot(member: MemberRecord) {
       .limit(5),
     supabase
       .from("checkins")
-      .select("*")
+      .select("id, date, group_name, created_at, month_key")
       .eq("member_id", member.id)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .limit(200),
   ])
 
   let baseGroupMonthVisits = 0
@@ -399,9 +400,9 @@ async function buildMemberSnapshot(member: MemberRecord) {
 
   return {
     member: normalizedMember,
-    personalMonthVisits: monthRows?.length ?? 0,
-    previousMonthVisits: previousMonthRows?.length ?? 0,
-    personalYearVisits: yearRows?.length ?? 0,
+    personalMonthVisits: monthCount ?? 0,
+    previousMonthVisits: previousMonthCount ?? 0,
+    personalYearVisits: yearCount ?? 0,
     personalLastCheckin: (lastRow as CheckinRow | null) ?? null,
     memberAttendanceRows: (attendanceRows as CheckinRow[] | null) ?? [],
     recentCheckins: (recentRows as CheckinRow[] | null) ?? [],
