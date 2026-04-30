@@ -4,10 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 type Html5QrcodeInstance = {
   start: (
-    cameraConfig: { facingMode: "environment" | "user" } | string,
+    cameraConfig:
+      | string
+      | {
+          facingMode?: "environment" | "user" | { exact: "environment" | "user" }
+          width?: { ideal: number }
+          height?: { ideal: number }
+        },
     configuration?: {
       fps?: number
-      aspectRatio?: number
       disableFlip?: boolean
       qrbox?:
         | { width: number; height: number }
@@ -21,8 +26,9 @@ type Html5QrcodeInstance = {
 }
 
 const READER_ID = "verwaltung-tools-scanner-reader"
-const CAMERA_FPS = 14
-const CAMERA_ASPECT_RATIO = 16 / 9
+const CAMERA_FPS = 16
+const CAMERA_IDEAL_WIDTH = 1280
+const CAMERA_IDEAL_HEIGHT = 720
 const SCAN_LOCK_MS = 700
 const SCAN_DEDUPE_MS = 1800
 const FEEDBACK_VISIBLE_MS = 1200
@@ -151,10 +157,9 @@ function isIPhoneLikeDevice() {
 function getScannerConfig() {
   return {
     fps: CAMERA_FPS,
-    aspectRatio: CAMERA_ASPECT_RATIO,
     disableFlip: true,
     qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-      const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
+      const edge = Math.max(220, Math.min(320, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72)))
       return { width: edge, height: edge }
     },
   }
@@ -191,12 +196,14 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     aspectRatio: string
     qrbox: string
     lastDecodeAt: string
+    cameraResolution: string
   }>({
     isIPhoneLike: false,
     fps: CAMERA_FPS,
-    aspectRatio: `${CAMERA_ASPECT_RATIO.toFixed(2)}`,
+    aspectRatio: "unset",
     qrbox: "-",
     lastDecodeAt: "-",
+    cameraResolution: "-",
   })
 
   const playBeep = useCallback((tone: FeedbackTone) => {
@@ -356,14 +363,14 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
           ...previous,
           isIPhoneLike,
           fps: CAMERA_FPS,
-          aspectRatio: `${CAMERA_ASPECT_RATIO.toFixed(2)}`,
+          aspectRatio: "unset",
         }))
       }
 
       const scannerConfig = {
         ...getScannerConfig(),
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
+          const edge = Math.max(220, Math.min(320, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72)))
           if (process.env.NODE_ENV !== "production") {
             const nextQrBox = `${edge}x${edge}`
             setDevScannerInfo((previous) =>
@@ -374,18 +381,66 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
         },
       }
 
+      const exactEnvironmentConstraints = {
+        facingMode: { exact: "environment" as const },
+        width: { ideal: CAMERA_IDEAL_WIDTH },
+        height: { ideal: CAMERA_IDEAL_HEIGHT },
+      }
+      const environmentConstraints = {
+        facingMode: "environment" as const,
+        width: { ideal: CAMERA_IDEAL_WIDTH },
+        height: { ideal: CAMERA_IDEAL_HEIGHT },
+      }
+
+      const updateDevResolution = () => {
+        if (process.env.NODE_ENV === "production") {
+          return
+        }
+        const root = document.getElementById(READER_ID)
+        const video = root?.querySelector("video") as HTMLVideoElement | null
+        if (!video) {
+          return
+        }
+        const width = video.videoWidth
+        const height = video.videoHeight
+        if (width > 0 && height > 0) {
+          const resolution = `${width}x${height}`
+          setDevScannerInfo((previous) =>
+            previous.cameraResolution === resolution ? previous : { ...previous, cameraResolution: resolution }
+          )
+        }
+      }
+
       try {
         await scanner.start(
-          { facingMode: "environment" },
+          exactEnvironmentConstraints,
           scannerConfig,
           handleDecoded,
           () => {
             // No-op to avoid noisy "no QR" status updates.
           },
         )
+        updateDevResolution()
         started = true
       } catch (error) {
         firstError = error
+      }
+
+      if (!started) {
+        try {
+          await scanner.start(
+            environmentConstraints,
+            scannerConfig,
+            handleDecoded,
+            () => {
+              // No-op to avoid noisy "no QR" status updates.
+            },
+          )
+          updateDevResolution()
+          started = true
+        } catch (fallbackError) {
+          firstError = firstError ?? fallbackError
+        }
       }
 
       if (!started) {
@@ -406,6 +461,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
             // No-op to avoid noisy "no QR" status updates.
           },
         )
+        updateDevResolution()
       }
 
       setIsScanning(true)
@@ -669,6 +725,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               <div>fps: {devScannerInfo.fps}</div>
               <div>aspectRatio: {devScannerInfo.aspectRatio}</div>
               <div>qrbox: {devScannerInfo.qrbox}</div>
+              <div>kamera: {devScannerInfo.cameraResolution}</div>
               <div>letzter Decode: {devScannerInfo.lastDecodeAt}</div>
             </div>
           ) : null}
