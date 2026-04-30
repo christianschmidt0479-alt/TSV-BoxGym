@@ -188,6 +188,8 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   } | null>(null)
   const [availableCameras, setAvailableCameras] = useState<Array<{ id: string; label: string }>>([])
   const [activeCameraLabel, setActiveCameraLabel] = useState("-")
+  const [torchSupported, setTorchSupported] = useState(false)
+  const [torchOn, setTorchOn] = useState(false)
   const [devScannerInfo, setDevScannerInfo] = useState<{
     isIPhoneLike: boolean
     fps: number
@@ -381,7 +383,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       const scannerConfig = {
         ...getScannerConfig(),
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const edge = Math.max(220, Math.min(360, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72)))
+          const edge = Math.max(240, Math.min(380, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.78)))
           if (process.env.NODE_ENV !== "production") {
             const nextQrBox = `${edge}x${edge}`
             setDevScannerInfo((previous) =>
@@ -436,8 +438,17 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
           await scanner.start({ facingMode: { exact: "environment" } }, scannerConfig, handleDecoded, () => {})
           started = true
           startedLabel = "Rückkamera (exact)"
-          activeCameraIdRef.current = null
-        } catch {
+          activeCameraIdRef.current = null      
+      // Check torch support.
+      try {
+        const track = (scanner as any).getRunningTrack?.()
+        const caps = track?.getCapabilities?.()
+        if (caps?.torch) {
+          setTorchSupported(true)
+        }
+      } catch {
+        // Torch check failed; continue.
+      }        } catch {
           // exact constraint rejected by browser; fall through.
         }
       }
@@ -504,6 +515,30 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
 
     await startScanner()
   }, [availableCameras, isStarting, startScanner])
+
+  const resetScan = useCallback(() => {
+    setLastScan(null)
+    setValidationResult(null)
+    setValidationError("")
+    setTorchOn(false)
+    lastValidatedTokenRef.current = ""
+  }, [])
+
+  const toggleTorch = useCallback(async () => {
+    if (!scannerRef.current) return
+    try {
+      const track = (scannerRef.current as any).getRunningTrack?.()
+      if (!track) return
+      const caps = track.getCapabilities?.()
+      if (!caps?.torch) return
+      const settings = track.getSettings?.()
+      await track.applyConstraints({
+        advanced: [{ torch: !settings?.torch }],
+      })
+    } catch {
+      // Torch not supported or already failed
+    }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -669,7 +704,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
         </section>
 
         <section className="relative w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
-          <div className="relative aspect-square min-h-[280px] max-h-[420px] w-full max-w-[420px] overflow-hidden sm:min-h-[320px]">
+          <div className="relative aspect-square min-h-[240px] max-h-[320px] w-full max-w-[320px] overflow-hidden sm:min-h-[260px]">
             <div id={READER_ID} className="h-full w-full" />
 
             <div className="pointer-events-none absolute inset-0">
@@ -678,7 +713,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               <div className="absolute left-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
               <div className="absolute right-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
 
-              <div className="absolute left-1/2 top-1/2 aspect-square h-[72%] max-h-[300px] w-[72%] max-w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
+              <div className="absolute left-1/2 top-1/2 aspect-square h-[78%] max-h-[280px] w-[78%] max-w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
                 <div className="absolute inset-x-6 top-1/2 h-[2px] -translate-y-1/2 animate-pulse bg-sky-100/80" />
               </div>
             </div>
@@ -735,7 +770,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
             )}
           </div>
 
-          <div className={`grid gap-2 border-t border-sky-100/10 bg-slate-900/75 p-3 ${availableCameras.length > 1 ? "grid-cols-3" : "grid-cols-2"}`}>
+          <div className={`grid gap-2 border-t border-sky-100/10 bg-slate-900/75 p-3 ${torchSupported || availableCameras.length > 1 ? "grid-cols-4" : "grid-cols-2"}`}>
             <button
               type="button"
               onClick={() => {
@@ -757,6 +792,24 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
             >
               Stop
             </button>
+
+            {torchSupported && (
+              <button
+                type="button"
+                onClick={() => {
+                  void toggleTorch().then(() => setTorchOn((prev) => !prev))
+                }}
+                disabled={!isScanning}
+                title="Licht ein/aus"
+                className={`h-12 rounded-xl px-3 text-sm font-bold transition ${
+                  torchOn
+                    ? "bg-yellow-500 text-yellow-900 hover:bg-yellow-400"
+                    : "bg-slate-600 text-white hover:bg-slate-500"
+                } disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-400`}
+              >
+                💡
+              </button>
+            )}
 
             {availableCameras.length > 1 && (
               <button
@@ -843,6 +896,18 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               {validationError && <div className="mt-1 text-xs text-red-300">{validationError}</div>}
             </div>
           </div>
+          
+          {lastScan && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={resetScan}
+                className="w-full rounded-lg bg-slate-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-600"
+              >
+                Neuer Scan
+              </button>
+            </div>
+          )}
         </section>
       </div>
 

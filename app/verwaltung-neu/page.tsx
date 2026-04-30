@@ -43,7 +43,7 @@ export default function DashboardPage() {
           credentials: "include",
           signal: controller.signal,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ page: 1, pageSize: 1 }),
+          body: JSON.stringify({ page: 1, pageSize: 1, fields: ["id", "member_phase", "is_approved", "is_trial"] }),
         }),
         fetch("/api/admin/checkins?scope=today", {
           method: "GET",

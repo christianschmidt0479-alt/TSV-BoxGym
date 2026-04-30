@@ -81,40 +81,62 @@ export default function TrainerCheckinPage() {
   useEffect(() => {
     let active = true
 
-    async function loadMembers() {
+    async function loadData() {
+      const controller = new AbortController()
+
       try {
         setLoadingMembers(true)
+        setLoadingCheckins(true)
         setGlobalError("")
+        setCheckinsError("")
 
-        const res = await fetch("/api/admin/get-members", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            page: 1,
-            pageSize: 500,
+        // Parallelize both requests
+        const [membersRes, checkinsRes] = await Promise.all([
+          fetch("/api/admin/get-members", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              page: 1,
+              pageSize: 500,
+              fields: ["id", "name", "first_name", "last_name", "email", "base_group", "is_trial", "is_approved", "email_verified"],
+            }),
+            signal: controller.signal,
           }),
-        })
+          fetch("/api/admin/checkins", {
+            method: "GET",
+            signal: controller.signal,
+          }),
+        ])
 
-        const json = (await res.json()) as MembersApiResponse
-        if (!res.ok) {
-          throw new Error(json.error || "Mitglieder konnten nicht geladen werden")
+        const membersJson = (await membersRes.json()) as MembersApiResponse
+        const checkinsJson = (await checkinsRes.json()) as CheckinsApiResponse
+
+        if (!active) return
+
+        if (!membersRes.ok) {
+          throw new Error(membersJson.error || "Mitglieder konnten nicht geladen werden")
+        }
+        if (!checkinsRes.ok) {
+          throw new Error("Check-ins konnten nicht geladen werden")
         }
 
-        if (!active) return
-        setMembers(Array.isArray(json.data) ? json.data : [])
+        setMembers(Array.isArray(membersJson.data) ? membersJson.data : [])
+        setTodayCheckins(Array.isArray(checkinsJson.todayRows) ? checkinsJson.todayRows : [])
+        setCheckins(Array.isArray(checkinsJson.rows) ? checkinsJson.rows.slice(0, 30) : [])
       } catch (error) {
         if (!active) return
-        setGlobalError(error instanceof Error ? error.message : "Mitglieder konnten nicht geladen werden")
+        const errorMsg = error instanceof Error ? error.message : "Daten konnten nicht geladen werden"
+        setGlobalError(errorMsg)
+        setCheckinsError(errorMsg)
       } finally {
         if (active) {
           setLoadingMembers(false)
+          setLoadingCheckins(false)
         }
       }
     }
 
-    void loadMembers()
+    void loadData()
 
     return () => {
       active = false
@@ -122,7 +144,7 @@ export default function TrainerCheckinPage() {
   }, [])
 
   useEffect(() => {
-    void loadCheckins()
+    // Removed: void loadCheckins() - now parallelized in first useEffect
   }, [])
 
   const filteredMembers = useMemo(() => {
