@@ -11,6 +11,7 @@ type RoleFlags = {
 
 type ScanMemberResponse = {
   found: boolean
+  id: string | null
   name: string | null
   group: string | null
   status: string | null
@@ -20,6 +21,7 @@ type ScanMemberResponse = {
 function emptyResult(): ScanMemberResponse {
   return {
     found: false,
+    id: null,
     name: null,
     group: null,
     status: null,
@@ -83,7 +85,7 @@ export async function POST(request: Request) {
     const supabase = createServerSupabaseServiceClient()
     const { data, error } = await supabase
       .from("members")
-      .select("name, first_name, last_name, base_group, is_approved, is_trial, is_competition_member, member_qr_active")
+      .select("id, name, first_name, last_name, base_group, is_approved, is_trial, is_competition_member, member_qr_active")
       .eq("member_qr_token", token)
       .maybeSingle()
 
@@ -97,6 +99,7 @@ export async function POST(request: Request) {
 
     const response: ScanMemberResponse = {
       found: true,
+      id: data.id,
       name: buildName(data),
       group: data.base_group?.trim() || null,
       status: buildStatus(data),

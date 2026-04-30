@@ -44,6 +44,10 @@ export async function POST(request: Request) {
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
+    if (session.role !== "admin") {
+      return new NextResponse("Forbidden", { status: 403 })
+    }
+
     const rateLimit = await checkRateLimitAsync(`admin-member-qr-checkin:${getRequestIp(request)}`, 30, 60 * 1000)
     if (!rateLimit.ok) {
       return new NextResponse("Too many requests", { status: 429 })

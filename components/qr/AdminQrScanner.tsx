@@ -39,6 +39,7 @@ type QrClassification = {
 type MemberValidation = {
   source: "api" | "simulation"
   found: boolean
+  id: string | null
   name: string | null
   group: string | null
   status: string | null
@@ -57,6 +58,8 @@ type UiScanType = "Mitglied" | "Unbekannt" | "Ungueltig"
 type AdminQrScannerProps = {
   autoStart: boolean
 }
+
+type AdminCheckinUiStatus = "idle" | "success" | "duplicate" | "outside_time_window" | "needs_weight" | "member_not_found" | "forbidden" | "error"
 
 function classifyQrContent(text: string): QrClassification {
   const raw = text.trim()
@@ -197,6 +200,10 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const [viewportHeight, setViewportHeight] = useState<number | null>(null)
   const [scannerSizePx, setScannerSizePx] = useState(240)
   const [infoMaxHeightPx, setInfoMaxHeightPx] = useState<number | null>(null)
+  const [isCheckinSubmitting, setIsCheckinSubmitting] = useState(false)
+  const [checkinStatus, setCheckinStatus] = useState<AdminCheckinUiStatus>("idle")
+  const [checkinMessage, setCheckinMessage] = useState("")
+  const [checkinWeight, setCheckinWeight] = useState("")
   const [devScannerInfo, setDevScannerInfo] = useState<{
     isIPhoneLike: boolean
     fps: number
@@ -527,6 +534,9 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     setLastScan(null)
     setValidationResult(null)
     setValidationError("")
+    setCheckinStatus("idle")
+    setCheckinMessage("")
+    setCheckinWeight("")
     setTorchOn(false)
     lastValidatedTokenRef.current = ""
   }, [])
@@ -591,6 +601,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       setValidationResult({
         source: "simulation",
         found: true,
+        id: null,
         name: `Test Mitglied ${testInfo.suffix}`,
         group: "Testgruppe",
         status: "TESTDATEN",
@@ -621,6 +632,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
 
         const payload = (await response.json().catch(() => ({}))) as {
           found?: boolean
+          id?: string | null
           name?: string | null
           group?: string | null
           status?: string | null
@@ -639,6 +651,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
         setValidationResult({
           source: "api",
           found: Boolean(payload.found),
+          id: typeof payload.id === "string" ? payload.id : null,
           name: payload.name ?? null,
           group: payload.group ?? null,
           status: payload.status ?? null,
@@ -663,6 +676,12 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       abortController.abort()
     }
   }, [lastScan])
+
+  useEffect(() => {
+    setCheckinStatus("idle")
+    setCheckinMessage("")
+    setCheckinWeight("")
+  }, [lastScan?.classification.raw, validationResult?.id])
 
   useEffect(() => {
     if (!autoStart || autoStartAttemptedRef.current || isIPhoneLikeDevice()) {
@@ -759,6 +778,101 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     : "-"
   const needsCameraPermission = isCameraAccessRequired(errorText)
   const computedRootMinHeight = viewportHeight ? `${viewportHeight}px` : "100dvh"
+  const isRealMemberReadyForCheckin = Boolean(
+    lastScan?.classification.type === "member" &&
+      lastScan.classification.token &&
+      validationResult?.source === "api" &&
+      validationResult.found &&
+      !validationResult.isTestData &&
+      validationResult.id
+  )
+  const needsWeightInline = checkinStatus === "needs_weight"
+
+  const runAdminCheckin = useCallback(async (withWeight: boolean) => {
+    if (isCheckinSubmitting || !isRealMemberReadyForCheckin || !validationResult?.id) {
+      return
+    }
+
+    const trimmedWeight = checkinWeight.trim()
+    if (withWeight && !trimmedWeight) {
+      setCheckinStatus("needs_weight")
+      setCheckinMessage("Gewicht erforderlich")
+      return
+    }
+
+    setIsCheckinSubmitting(true)
+    setCheckinStatus("idle")
+    setCheckinMessage("")
+
+    try {
+      const response = await fetch("/api/admin/checkin/member-qr", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberId: validationResult.id,
+          weight: withWeight ? trimmedWeight : undefined,
+        }),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        status?: string
+        reason?: string
+      }
+
+      const reason = typeof payload.reason === "string" ? payload.reason : ""
+
+      if (response.status === 401 || response.status === 403) {
+        setCheckinStatus("forbidden")
+        setCheckinMessage("Nicht erlaubt")
+        return
+      }
+
+      if (payload.status === "success") {
+        setCheckinStatus("success")
+        setCheckinMessage("Check-in erfolgreich")
+        return
+      }
+
+      if (payload.status === "needs_weight" || reason === "weight_required") {
+        setCheckinStatus("needs_weight")
+        setCheckinMessage("Gewicht erforderlich")
+        return
+      }
+
+      if (reason === "DUPLICATE") {
+        setCheckinStatus("duplicate")
+        setCheckinMessage("Bereits eingecheckt")
+        return
+      }
+
+      if (reason === "outside_time_window") {
+        setCheckinStatus("outside_time_window")
+        setCheckinMessage("Außerhalb Zeitfenster")
+        return
+      }
+
+      if (reason === "member_not_found") {
+        setCheckinStatus("member_not_found")
+        setCheckinMessage("Mitglied nicht gefunden")
+        return
+      }
+
+      if (!response.ok) {
+        setCheckinStatus("error")
+        setCheckinMessage("Check-in fehlgeschlagen")
+        return
+      }
+
+      setCheckinStatus("error")
+      setCheckinMessage("Check-in fehlgeschlagen")
+    } catch {
+      setCheckinStatus("error")
+      setCheckinMessage("Check-in fehlgeschlagen")
+    } finally {
+      setIsCheckinSubmitting(false)
+    }
+  }, [checkinWeight, isCheckinSubmitting, isRealMemberReadyForCheckin, validationResult])
 
   const handleBack = useCallback(() => {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -961,9 +1075,58 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               <div className="text-[10px] uppercase tracking-wide text-slate-500">Rohwert</div>
               <div className="mt-0.5 truncate text-xs text-slate-300">{rawPreview}</div>
             </div>
+
+            {isRealMemberReadyForCheckin && (
+              <div className="col-span-2 rounded-lg border border-sky-300/30 bg-sky-950/40 px-2.5 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-sky-200/80">Admin Pilot</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { void runAdminCheckin(false) }}
+                    disabled={isCheckinSubmitting}
+                    className="h-9 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-900"
+                  >
+                    {isCheckinSubmitting ? "Check-in läuft..." : "Check-in auslösen"}
+                  </button>
+
+                  {needsWeightInline && (
+                    <>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={checkinWeight}
+                        onChange={(event) => setCheckinWeight(event.target.value)}
+                        placeholder="Gewicht in kg"
+                        className="h-9 w-28 rounded-lg border border-slate-600 bg-slate-950/70 px-2.5 text-xs text-slate-100 outline-none focus:border-sky-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { void runAdminCheckin(true) }}
+                        disabled={isCheckinSubmitting}
+                        className="h-9 rounded-lg bg-amber-500 px-3 text-xs font-bold text-amber-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-800 disabled:text-amber-200"
+                      >
+                        {isCheckinSubmitting ? "Check-in läuft..." : "Mit Gewicht einchecken"}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {checkinMessage && (
+                  <div className={`mt-2 text-xs font-semibold ${
+                    checkinStatus === "success"
+                      ? "text-emerald-300"
+                      : checkinStatus === "needs_weight"
+                        ? "text-amber-300"
+                        : "text-red-300"
+                  }`}>
+                    {checkinMessage}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <p className="mt-2 text-center text-[10px] text-slate-400">Nur Anzeige, kein Check-in.</p>
+          <p className="mt-2 text-center text-[10px] text-slate-400">Manueller Check-in im Admin-Pilot, kein Auto-Check-in.</p>
           </div>
         </section>
       </div>
