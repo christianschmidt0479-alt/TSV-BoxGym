@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 type Html5QrcodeInstance = {
@@ -161,6 +162,7 @@ function getScannerConfig() {
 }
 
 export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
+  const router = useRouter()
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const titleSectionRef = useRef<HTMLElement | null>(null)
   const buttonBarRef = useRef<HTMLDivElement | null>(null)
@@ -758,11 +760,29 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const needsCameraPermission = isCameraAccessRequired(errorText)
   const computedRootMinHeight = viewportHeight ? `${viewportHeight}px` : "100dvh"
 
+  const handleBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back()
+      return
+    }
+
+    router.push("/verwaltung-neu")
+  }, [router])
+
   return (
     <div className="relative z-[80] w-full overflow-hidden bg-gradient-to-b from-[#061421] via-[#0a1f33] to-[#0d1723] text-white" style={{ minHeight: computedRootMinHeight }}>
       <div className="mx-auto flex w-full max-w-[860px] flex-col px-3 pb-[max(env(safe-area-inset-bottom),10px)] pt-[max(env(safe-area-inset-top),10px)] sm:px-4" style={{ minHeight: computedRootMinHeight }}>
         <section ref={titleSectionRef} className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-3 py-2">
-          <h1 className="text-base font-black tracking-tight text-white sm:text-lg">QR Scanner</h1>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="h-9 rounded-lg border border-sky-200/20 bg-slate-950/60 px-3 text-sm font-semibold text-sky-100 transition hover:bg-slate-800/70"
+            >
+              ← Zurück
+            </button>
+            <h1 className="text-base font-black tracking-tight text-white sm:text-lg">QR Scanner</h1>
+          </div>
         </section>
 
         <section className="relative mt-2 w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
