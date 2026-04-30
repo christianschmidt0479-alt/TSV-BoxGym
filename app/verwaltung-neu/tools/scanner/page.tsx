@@ -501,7 +501,7 @@ export default function ToolsScannerPage() {
         </div>
 
         <section className="relative w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
-          <div className="relative h-[58svh] min-h-[320px] max-h-[62svh] w-full">
+          <div className="relative h-[45svh] min-h-[260px] max-h-[50svh] w-full sm:h-[47svh]">
             <div id={READER_ID} className="h-full w-full" />
 
             <div className="pointer-events-none absolute inset-0">
@@ -510,7 +510,7 @@ export default function ToolsScannerPage() {
               <div className="absolute left-0 top-[20%] h-[58%] w-[12%] bg-black/40" />
               <div className="absolute right-0 top-[20%] h-[58%] w-[12%] bg-black/40" />
 
-              <div className="absolute left-1/2 top-[49%] h-[36svh] w-[72vw] max-h-[320px] max-w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
+              <div className="absolute left-1/2 top-[49%] h-[28svh] w-[60vw] max-h-[250px] max-w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
                 <div className="absolute inset-x-6 top-1/2 h-[2px] -translate-y-1/2 animate-pulse bg-sky-100/80" />
               </div>
             </div>
@@ -566,6 +566,11 @@ export default function ToolsScannerPage() {
           <p className="mt-1 text-xs text-slate-300">Noch kein Check-in ausgeloest</p>
 
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+            <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-3 sm:col-span-2">
+              <div className="text-xs uppercase tracking-wide text-sky-200/80">Erkannter Nutzer</div>
+              <div className="mt-1 text-xl font-black tracking-tight text-white">{memberName}</div>
+            </div>
+
             <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
               <div className="text-xs uppercase tracking-wide text-slate-400">Scanstatus</div>
               <div className="mt-1 font-semibold text-slate-100">{lastStatusText}</div>
@@ -594,11 +599,6 @@ export default function ToolsScannerPage() {
             <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
               <div className="text-xs uppercase tracking-wide text-slate-400">Token</div>
               <div className="mt-1 break-all text-slate-100">{lastScan?.classification.token ? shortenToken(lastScan.classification.token) : "-"}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Name</div>
-              <div className="mt-1 font-semibold text-slate-100">{memberName}</div>
             </div>
 
             <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
