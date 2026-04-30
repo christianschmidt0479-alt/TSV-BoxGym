@@ -22,8 +22,9 @@ type Html5QrcodeInstance = {
 
 const READER_ID = "trainer-qr-scanner-v1-reader"
 const CAMERA_FPS = 14
-const SCAN_LOCK_MS = 700
-const SCAN_DEDUPE_MS = 1800
+const MOBILE_CAMERA_FPS = 18
+const SCAN_LOCK_MS = 650
+const SCAN_DEDUPE_MS = 1400
 const FEEDBACK_VISIBLE_MS = 1200
 
 type QrClassificationType = "member" | "unknown" | "invalid"
@@ -137,6 +138,24 @@ function getUiScanType(classification: QrClassification): UiScanType {
 
 function isCameraAccessRequired(errorText: string) {
   return errorText.toLowerCase().includes("kamerazugriff erforderlich")
+}
+
+function getScannerConfig() {
+  const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent
+  const isIPhoneLike = /iPhone|iPad|iPod/i.test(userAgent)
+
+  return {
+    fps: isIPhoneLike ? MOBILE_CAMERA_FPS : CAMERA_FPS,
+    aspectRatio: isIPhoneLike ? 4 / 3 : 16 / 9,
+    disableFlip: true,
+    qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+      const minEdge = isIPhoneLike ? 240 : 190
+      const maxEdge = isIPhoneLike ? 360 : 340
+      const scale = isIPhoneLike ? 0.8 : 0.68
+      const edge = Math.max(minEdge, Math.min(maxEdge, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * scale)))
+      return { width: edge, height: edge }
+    },
+  }
 }
 
 // Frozen trainer scanner baseline. Admin scanner evolves independently from here.
@@ -314,15 +333,7 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
       let started = false
       let firstError: unknown = null
 
-      const scannerConfig = {
-        fps: CAMERA_FPS,
-        aspectRatio: 16 / 9,
-        disableFlip: true,
-        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
-          return { width: edge, height: edge }
-        },
-      }
+      const scannerConfig = getScannerConfig()
 
       try {
         await scanner.start(
@@ -611,6 +622,7 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
         <section className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-sky-100/10 bg-slate-900/60 p-4">
           <h2 className="text-sm font-bold uppercase tracking-wide text-sky-100/90">Scanner-Informationen</h2>
           <p className="mt-1 text-xs text-slate-300">Pruefung nur lesend - kein Check-in, keine Datenbank-Schreiboperation.</p>
+          <p className="mt-1 text-xs text-slate-400">Tipp: QR-Code ruhig und vollstaendig im Rahmen halten.</p>
 
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-3 sm:col-span-2">

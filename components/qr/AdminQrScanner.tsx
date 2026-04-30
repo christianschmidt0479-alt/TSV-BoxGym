@@ -22,6 +22,7 @@ type Html5QrcodeInstance = {
 
 const READER_ID = "verwaltung-tools-scanner-reader"
 const CAMERA_FPS = 14
+const CAMERA_ASPECT_RATIO = 16 / 9
 const SCAN_LOCK_MS = 700
 const SCAN_DEDUPE_MS = 1800
 const FEEDBACK_VISIBLE_MS = 1200
@@ -139,6 +140,26 @@ function isCameraAccessRequired(errorText: string) {
   return errorText.toLowerCase().includes("kamerazugriff erforderlich")
 }
 
+function isIPhoneLikeDevice() {
+  if (typeof navigator === "undefined") {
+    return false
+  }
+
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+}
+
+function getScannerConfig() {
+  return {
+    fps: CAMERA_FPS,
+    aspectRatio: CAMERA_ASPECT_RATIO,
+    disableFlip: true,
+    qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+      const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
+      return { width: edge, height: edge }
+    },
+  }
+}
+
 export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const lastRawRef = useRef("")
@@ -164,6 +185,19 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     tone: FeedbackTone
     message: string
   } | null>(null)
+  const [devScannerInfo, setDevScannerInfo] = useState<{
+    isIPhoneLike: boolean
+    fps: number
+    aspectRatio: string
+    qrbox: string
+    lastDecodeAt: string
+  }>({
+    isIPhoneLike: false,
+    fps: CAMERA_FPS,
+    aspectRatio: `${CAMERA_ASPECT_RATIO.toFixed(2)}`,
+    qrbox: "-",
+    lastDecodeAt: "-",
+  })
 
   const playBeep = useCallback((tone: FeedbackTone) => {
     if (typeof window === "undefined") {
@@ -291,6 +325,9 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     }).format(new Date())
 
     setLastScan({ classification, at })
+    if (process.env.NODE_ENV !== "production") {
+      setDevScannerInfo((previous) => ({ ...previous, lastDecodeAt: at }))
+    }
     setValidationLoading(classification.type === "member")
     setValidationError("")
     setValidationResult(null)
@@ -313,12 +350,26 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       let started = false
       let firstError: unknown = null
 
+      const isIPhoneLike = isIPhoneLikeDevice()
+      if (process.env.NODE_ENV !== "production") {
+        setDevScannerInfo((previous) => ({
+          ...previous,
+          isIPhoneLike,
+          fps: CAMERA_FPS,
+          aspectRatio: `${CAMERA_ASPECT_RATIO.toFixed(2)}`,
+        }))
+      }
+
       const scannerConfig = {
-        fps: CAMERA_FPS,
-        aspectRatio: 16 / 9,
-        disableFlip: true,
+        ...getScannerConfig(),
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
           const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
+          if (process.env.NODE_ENV !== "production") {
+            const nextQrBox = `${edge}x${edge}`
+            setDevScannerInfo((previous) =>
+              previous.qrbox === nextQrBox ? previous : { ...previous, qrbox: nextQrBox }
+            )
+          }
           return { width: edge, height: edge }
         },
       }
@@ -610,6 +661,17 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
         <section className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-sky-100/10 bg-slate-900/60 p-4">
           <h2 className="text-sm font-bold uppercase tracking-wide text-sky-100/90">Scanner-Informationen</h2>
           <p className="mt-1 text-xs text-slate-300">Nur lesende QR-Pruefung, keine Check-in-Ausloesung.</p>
+          <p className="mt-1 text-xs text-slate-400">Tipp: QR-Code ruhig und vollstaendig im Rahmen halten.</p>
+          {process.env.NODE_ENV !== "production" ? (
+            <div className="mt-2 rounded-xl border border-sky-300/20 bg-slate-950/60 px-3 py-2 text-xs text-slate-200">
+              <div className="font-semibold text-sky-100">DEV Scanner-Profil</div>
+              <div className="mt-1">iOS erkannt: {devScannerInfo.isIPhoneLike ? "ja" : "nein"}</div>
+              <div>fps: {devScannerInfo.fps}</div>
+              <div>aspectRatio: {devScannerInfo.aspectRatio}</div>
+              <div>qrbox: {devScannerInfo.qrbox}</div>
+              <div>letzter Decode: {devScannerInfo.lastDecodeAt}</div>
+            </div>
+          ) : null}
 
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-3 sm:col-span-2">
