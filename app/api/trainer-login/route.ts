@@ -3,6 +3,7 @@ import { findMemberById } from "@/lib/boxgymDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { verifyAuthSecret } from "@/lib/authSecret"
 import { TRAINER_SESSION_COOKIE, createTrainerSessionToken } from "@/lib/authSession"
+import { isAllowedOrigin } from "@/lib/apiSecurity"
 import { clearMemberAreaSessionCookie } from "@/lib/publicAreaSession"
 import { ratelimit } from "@/lib/ratelimit"
 
@@ -25,6 +26,10 @@ type TrainerAccountRow = {
 
 export async function POST(request: Request) {
   try {
+    if (!isAllowedOrigin(request)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
     const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown"
     const { success } = await ratelimit.limit(`trainer-login:${ip}`)
     if (!success) {

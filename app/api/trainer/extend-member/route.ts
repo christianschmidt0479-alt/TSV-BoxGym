@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { verifyTrainerSessionToken } from "@/lib/authSession"
+import { isAllowedOrigin } from "@/lib/apiSecurity"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 /**
@@ -13,6 +14,10 @@ import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
  * Requires: valid trainer_session cookie
  */
 export async function POST(request: NextRequest) {
+  if (!isAllowedOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   // Auth: require valid trainer session
   const cookieStore = await cookies()
   const sessionToken = cookieStore.get("trainer_session")?.value

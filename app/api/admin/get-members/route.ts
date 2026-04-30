@@ -2,7 +2,47 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
 import { verifyTrainerSessionToken } from "@/lib/authSession"
+import { isAllowedOrigin } from "@/lib/apiSecurity"
 import { isTodayCheckinInBerlin } from "@/lib/dateFormat"
+
+const ALLOWED_MEMBER_FIELDS = new Set([
+  "id",
+  "name",
+  "first_name",
+  "last_name",
+  "birthdate",
+  "email",
+  "phone",
+  "guardian_name",
+  "email_verified",
+  "email_verified_at",
+  "privacy_accepted_at",
+  "is_trial",
+  "is_approved",
+  "base_group",
+  "office_list_status",
+  "office_list_group",
+  "office_list_checked_at",
+  "is_competition_member",
+  "has_competition_pass",
+  "member_phase",
+  "created_at",
+])
+
+const DEFAULT_MEMBER_SELECT = [
+  "id",
+  "name",
+  "first_name",
+  "last_name",
+  "email",
+  "base_group",
+  "office_list_group",
+  "is_trial",
+  "is_approved",
+  "email_verified",
+  "member_phase",
+  "created_at",
+].join(", ")
 
 function berlinDayKey(date: Date) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -15,6 +55,10 @@ function berlinDayKey(date: Date) {
 
 export async function POST(req: Request) {
   try {
+    if (!isAllowedOrigin(req)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
     const session = (await cookies()).get("trainer_session")
 
     if (!session) {
@@ -23,7 +67,7 @@ export async function POST(req: Request) {
 
     const valid = await verifyTrainerSessionToken(session.value)
 
-    if (!valid || valid.role !== "admin") {
+    if (!valid || valid.accountRole !== "admin") {
       return NextResponse.json({ ok: false, error: "Keine Berechtigung" }, { status: 403 })
     }
 
@@ -56,23 +100,14 @@ export async function POST(req: Request) {
     const from = (safePage - 1) * safePageSize
     const to = from + safePageSize - 1
 
-    const allowedFields = new Set([
-      "id",
-      "name",
-      "first_name",
-      "last_name",
-      "email",
-      "base_group",
-      "office_list_group",
-      "is_trial",
-      "is_approved",
-      "email_verified",
-      "member_phase",
-      "created_at",
-    ])
-
     const selectedFields = Array.isArray(fields)
-      ? Array.from(new Set(fields.filter((value) => allowedFields.has(value))))
+      ? Array.from(
+          new Set(
+            fields.filter(
+              (value): value is string => typeof value === "string" && ALLOWED_MEMBER_FIELDS.has(value)
+            )
+          )
+        )
       : []
 
     if (!selectedFields.includes("id")) {
@@ -81,7 +116,7 @@ export async function POST(req: Request) {
 
     const selectColumns = selectedFields.length > 0
       ? selectedFields.join(", ")
-      : "id, name, first_name, last_name, email, base_group, office_list_group, is_trial, is_approved, email_verified, member_phase, created_at"
+      : DEFAULT_MEMBER_SELECT
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

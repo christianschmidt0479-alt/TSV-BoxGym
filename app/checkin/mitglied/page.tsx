@@ -901,6 +901,14 @@ export default function MemberCheckinPage() {
                   inputMode="numeric"
                   enterKeyHint="done"
                 />
+                <div className="text-right">
+                  <Link
+                    href="/mein-bereich/passwort-vergessen?from=checkin"
+                    className="text-sm font-semibold text-[#154c83] underline decoration-[#154c83]/40 underline-offset-2 hover:decoration-[#154c83]"
+                  >
+                    Passwort vergessen?
+                  </Link>
+                </div>
               </div>
 
               {checkinMode === "normal" && availableGroups.length > 0 ? (

@@ -1,10 +1,15 @@
 
 import { NextResponse } from "next/server"
 import { readTrainerSessionFromRequest } from "@/lib/authSession"
+import { isAllowedOrigin } from "@/lib/apiSecurity"
 import { updateTrainerAccountPin } from "@/lib/trainerDb"
 import { TRAINER_PIN_REGEX } from "@/lib/trainerPin"
 
 export async function POST(request: Request) {
+  if (!isAllowedOrigin(request)) {
+    return new NextResponse("Forbidden", { status: 403 })
+  }
+
   const session = await readTrainerSessionFromRequest(request as any)
   if (!session || !session.linkedMemberId) {
     return new NextResponse("Nicht eingeloggt.", { status: 401 })

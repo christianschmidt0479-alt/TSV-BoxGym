@@ -2,9 +2,14 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
 import { verifyTrainerSessionToken } from "@/lib/authSession"
+import { isAllowedOrigin } from "@/lib/apiSecurity"
 
 export async function POST(req: Request) {
   try {
+    if (!isAllowedOrigin(req)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
     const session = (await cookies()).get("trainer_session")
 
     if (!session) {
@@ -13,7 +18,7 @@ export async function POST(req: Request) {
 
     const valid = await verifyTrainerSessionToken(session.value)
 
-    if (!valid || valid.role !== "admin") {
+    if (!valid || valid.accountRole !== "admin") {
       return NextResponse.json({ ok: false, error: "Keine Berechtigung" }, { status: 403 })
     }
 
