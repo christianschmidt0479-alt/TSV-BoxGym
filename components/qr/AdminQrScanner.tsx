@@ -682,19 +682,18 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       ? `${lastScan.classification.raw.slice(0, 26)}...${lastScan.classification.raw.slice(-12)}`
       : lastScan.classification.raw
     : "-"
-  const isIPhone = isIPhoneLikeDevice()
   const needsCameraPermission = isCameraAccessRequired(errorText)
 
   return (
-    <div className="relative z-[80] min-h-[100svh] w-full overflow-x-hidden bg-gradient-to-b from-[#061421] via-[#0a1f33] to-[#0d1723] text-white">
-      <div className="mx-auto flex min-h-[100svh] w-full max-w-[860px] flex-col gap-1.5 px-2.5 pb-[max(env(safe-area-inset-bottom),8px)] pt-[max(env(safe-area-inset-top),8px)] sm:px-4">
-        <section className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-3 py-1.5">
+    <div className="fixed inset-0 z-[80] h-[100svh] w-screen overflow-hidden bg-gradient-to-b from-[#061421] via-[#0a1f33] to-[#0d1723] text-white">
+      <div className="mx-auto flex h-full w-full max-w-[860px] flex-col px-3 pb-3 pt-[max(env(safe-area-inset-top),10px)] sm:px-4">
+        <section className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-3 py-2">
           <h1 className="text-base font-black tracking-tight text-white sm:text-lg">QR Scanner</h1>
         </section>
 
-        <section className="relative w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
-          <div className="flex w-full items-start justify-center px-1 pb-1 pt-2">
-            <div className="relative aspect-square h-[clamp(220px,30svh,260px)] w-[clamp(220px,30svh,260px)] max-h-[280px] max-w-[280px] overflow-hidden rounded-2xl">
+        <section className="relative mt-2 w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
+          <div className="flex w-full items-center justify-center py-2">
+            <div className="relative aspect-square h-[clamp(260px,34svh,300px)] w-[clamp(260px,34svh,300px)] max-h-[320px] max-w-[320px] overflow-hidden rounded-2xl">
             <div id={READER_ID} className="h-full w-full" />
 
             <div className="pointer-events-none absolute inset-0">
@@ -703,10 +702,8 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               <div className="absolute left-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
               <div className="absolute right-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
 
-              <div className="absolute inset-0 m-auto aspect-square h-[78%] max-h-[220px] w-[78%] max-w-[220px] rounded-[20px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_24px_rgba(5,20,34,0.8)]">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="mx-5 h-[2px] w-full animate-pulse bg-sky-100/80" />
-                </div>
+              <div className="absolute left-1/2 top-1/2 aspect-square h-[78%] max-h-[280px] w-[78%] max-w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
+                <div className="absolute inset-x-6 top-1/2 h-[2px] -translate-y-1/2 animate-pulse bg-sky-100/80" />
               </div>
             </div>
 
@@ -760,14 +757,14 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-1.5 border-t border-sky-100/10 bg-slate-900/75 p-1.5">
+          <div className="flex flex-wrap items-center justify-center gap-2 border-t border-sky-100/10 bg-slate-900/75 p-2">
             <button
               type="button"
               onClick={() => {
                 void startScanner()
               }}
               disabled={isStarting || isScanning}
-              className="h-9 rounded-lg bg-[#0f5f9b] px-3 text-xs font-bold text-white transition hover:bg-[#0c4f82] disabled:cursor-not-allowed disabled:bg-[#365f7b]"
+              className="h-10 rounded-lg bg-[#0f5f9b] px-4 text-sm font-bold text-white transition hover:bg-[#0c4f82] disabled:cursor-not-allowed disabled:bg-[#365f7b]"
             >
               {isStarting ? "Starte..." : "Start"}
             </button>
@@ -778,7 +775,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 void stopScanner()
               }}
               disabled={!isScanning}
-              className="h-9 rounded-lg bg-slate-700 px-3 text-xs font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
+              className="h-10 rounded-lg bg-slate-700 px-4 text-sm font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
             >
               Stop
             </button>
@@ -787,7 +784,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               type="button"
               onClick={resetScan}
               disabled={!lastScan}
-              className="h-9 rounded-lg bg-slate-700 px-3 text-xs font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
+              className="h-10 rounded-lg bg-slate-700 px-4 text-sm font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
             >
               Neuer Scan
             </button>
@@ -800,7 +797,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 }}
                 disabled={!isScanning}
                 title="Licht ein/aus"
-                className={`h-9 rounded-lg px-2.5 text-xs font-bold transition ${
+                className={`h-10 rounded-lg px-3 text-sm font-bold transition ${
                   torchOn
                     ? "bg-yellow-500 text-yellow-900 hover:bg-yellow-400"
                     : "bg-slate-600 text-white hover:bg-slate-500"
@@ -816,7 +813,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 onClick={() => { void switchCamera() }}
                 disabled={!isScanning || isStarting}
                 title={`Aktiv: ${activeCameraLabel}`}
-                className="h-9 truncate rounded-lg bg-slate-600 px-2.5 text-xs font-bold text-white transition hover:bg-slate-500 disabled:cursor-not-allowed disabled:bg-slate-800"
+                className="h-10 truncate rounded-lg bg-slate-600 px-3 text-sm font-bold text-white transition hover:bg-slate-500 disabled:cursor-not-allowed disabled:bg-slate-800"
               >
                 Kamera ↔
               </button>
@@ -824,62 +821,58 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-sky-100/10 bg-slate-900/60 p-2">
-          <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-2.5 py-2">
+        <section className="mt-2 rounded-2xl border border-sky-100/10 bg-slate-900/60 p-2.5">
+          <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-2.5">
             <div className="text-[10px] uppercase tracking-wide text-sky-200/80">Name</div>
             <div className="mt-0.5 text-lg font-black tracking-tight text-white sm:text-xl">{memberName}</div>
           </div>
 
-          <div className="mt-1.5 grid grid-cols-2 gap-1 text-sm">
-            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5">
+          <div className="mt-2 grid grid-cols-2 gap-1.5 text-sm">
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Gruppe</div>
               <div className="mt-0.5 font-semibold text-slate-100">{memberGroup}</div>
             </div>
 
-            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5">
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Status</div>
               <div className="mt-0.5 font-semibold text-slate-100">{validationLoading ? "Pruefung laeuft..." : memberStatus}</div>
               {validationError && <div className="mt-0.5 text-[11px] text-red-300">{validationError}</div>}
             </div>
 
-            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5">
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">QR-Typ</div>
               <div className="mt-0.5 font-semibold text-slate-100">{latestScanType}</div>
             </div>
 
-            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5">
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Quelle</div>
               <div className="mt-0.5 font-semibold text-slate-100">{memberSource}</div>
             </div>
 
-            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5">
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Zeit</div>
               <div className="mt-0.5 font-semibold text-slate-100">{lastScan?.at || "-"}</div>
             </div>
 
-            <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5">
+            <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Token</div>
               <div className="mt-0.5 truncate text-sm font-semibold text-slate-100">{lastScan?.classification.token ? shortenToken(lastScan.classification.token) : "-"}</div>
             </div>
 
-            <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2 py-1.5">
+            <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-500">Rohwert</div>
               <div className="mt-0.5 truncate text-xs text-slate-300">{rawPreview}</div>
             </div>
           </div>
 
-          {isIPhone && (
-            <p className="mt-1.5 text-center text-[10px] text-slate-400">
-              Tipp: Fuer Vollbild auf iPhone ueber Teilen -&gt; Zum Home-Bildschirm hinzufuegen.
-            </p>
-          )}
-          <p className="mt-1 text-center text-[10px] text-slate-400">Nur Anzeige, kein Check-in.</p>
+          <p className="mt-2 text-center text-[10px] text-slate-400">Nur Anzeige, kein Check-in.</p>
         </section>
       </div>
 
       <style jsx global>{`
         #${READER_ID} {
-          position: relative;
+          position: absolute;
+          inset: 0;
           height: 100%;
           width: 100%;
           overflow: hidden;
