@@ -773,7 +773,8 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     <div className="relative z-[80] w-full overflow-hidden bg-gradient-to-b from-[#061421] via-[#0a1f33] to-[#0d1723] text-white" style={{ minHeight: computedRootMinHeight }}>
       <div className="mx-auto flex w-full max-w-[860px] flex-col px-3 pb-[max(env(safe-area-inset-bottom),10px)] pt-[max(env(safe-area-inset-top),10px)] sm:px-4" style={{ minHeight: computedRootMinHeight }}>
         <section ref={titleSectionRef} className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-3 py-2">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-between gap-2.5">
+            <h1 className="text-base font-black tracking-tight text-white sm:text-lg">QR Scanner</h1>
             <button
               type="button"
               onClick={handleBack}
@@ -781,7 +782,6 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
             >
               ← Zurück
             </button>
-            <h1 className="text-base font-black tracking-tight text-white sm:text-lg">QR Scanner</h1>
           </div>
         </section>
 
