@@ -5,7 +5,14 @@ import { useCallback, useEffect, useRef, useState } from "react"
 type Html5QrcodeInstance = {
   start: (
     cameraConfig: { facingMode: "environment" | "user" } | string,
-    configuration?: { fps?: number; aspectRatio?: number },
+    configuration?: {
+      fps?: number
+      aspectRatio?: number
+      disableFlip?: boolean
+      qrbox?:
+        | { width: number; height: number }
+        | ((viewfinderWidth: number, viewfinderHeight: number) => { width: number; height: number })
+    },
     qrCodeSuccessCallback?: (decodedText: string) => void,
     qrCodeErrorCallback?: (errorMessage: string) => void,
   ) => Promise<unknown>
@@ -14,7 +21,9 @@ type Html5QrcodeInstance = {
 }
 
 const READER_ID = "trainer-qr-scanner-v1-reader"
-const SCAN_LOCK_MS = 1000
+const CAMERA_FPS = 14
+const SCAN_LOCK_MS = 700
+const SCAN_DEDUPE_MS = 1800
 const FEEDBACK_VISIBLE_MS = 1200
 
 type QrClassificationType = "member" | "unknown" | "invalid"
@@ -134,6 +143,7 @@ function isCameraAccessRequired(errorText: string) {
 export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScannerV1Props) {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const lastRawRef = useRef("")
+  const lastRawAtRef = useRef(0)
   const lastValidatedTokenRef = useRef("")
   const scanLockUntilRef = useRef(0)
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -234,9 +244,58 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
     }
 
     scannerRef.current = null
+    lastRawRef.current = ""
+    lastRawAtRef.current = 0
     setIsScanning(false)
     setLastStatusText("Kamera aus")
   }, [])
+
+  const handleDecoded = useCallback((decodedText: string) => {
+    const now = Date.now()
+    if (now < scanLockUntilRef.current) {
+      return
+    }
+
+    const normalized = decodedText.trim()
+    if (!normalized) {
+      return
+    }
+
+    if (normalized === lastRawRef.current && now - lastRawAtRef.current < SCAN_DEDUPE_MS) {
+      return
+    }
+
+    lastRawRef.current = normalized
+    lastRawAtRef.current = now
+    lastValidatedTokenRef.current = ""
+    const classification = classifyQrContent(normalized)
+    scanLockUntilRef.current = now + SCAN_LOCK_MS
+
+    const tone: FeedbackTone =
+      classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
+    const message =
+      classification.type === "member"
+        ? (getTestTokenInfo(classification.token ?? "") ? "TEST-QR ERKANNT" : "MITGLIED ERKANNT")
+        : classification.type === "unknown"
+          ? "UNBEKANNTER QR-CODE"
+          : "UNGUELTIGER QR-CODE"
+
+    // Immediate haptic/audio feedback before any async API validation.
+    showFeedback(tone, message)
+
+    const at = new Intl.DateTimeFormat("de-DE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZone: "Europe/Berlin",
+    }).format(new Date())
+
+    setLastScan({ classification, at })
+    setValidationLoading(classification.type === "member")
+    setValidationError("")
+    setValidationResult(null)
+  }, [showFeedback])
 
   const startScanner = useCallback(async () => {
     if (isStarting || isScanning) {
@@ -255,46 +314,21 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
       let started = false
       let firstError: unknown = null
 
+      const scannerConfig = {
+        fps: CAMERA_FPS,
+        aspectRatio: 16 / 9,
+        disableFlip: true,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
+          return { width: edge, height: edge }
+        },
+      }
+
       try {
         await scanner.start(
           { facingMode: "environment" },
-          { fps: 10, aspectRatio: 16 / 9 },
-          (decodedText: string) => {
-            if (Date.now() < scanLockUntilRef.current) {
-              return
-            }
-
-            const normalized = decodedText.trim()
-            if (!normalized || normalized === lastRawRef.current) {
-              return
-            }
-
-            lastRawRef.current = normalized
-            lastValidatedTokenRef.current = ""
-            const classification = classifyQrContent(normalized)
-            scanLockUntilRef.current = Date.now() + SCAN_LOCK_MS
-
-            const tone: FeedbackTone =
-              classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
-            const message =
-              classification.type === "member"
-                ? (getTestTokenInfo(classification.token ?? "") ? "TEST-QR ERKANNT" : "MITGLIED ERKANNT")
-                : classification.type === "unknown"
-                  ? "UNBEKANNTER QR-CODE"
-                  : "UNGUELTIGER QR-CODE"
-            showFeedback(tone, message)
-
-            const at = new Intl.DateTimeFormat("de-DE", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: false,
-              timeZone: "Europe/Berlin",
-            }).format(new Date())
-            setLastScan({ classification, at })
-            setValidationError("")
-            setValidationResult(null)
-          },
+          scannerConfig,
+          handleDecoded,
           () => {
             // No-op to avoid noisy "no QR" status updates.
           },
@@ -316,43 +350,8 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
 
         await scanner.start(
           fallbackCamera.id,
-          { fps: 10, aspectRatio: 16 / 9 },
-          (decodedText: string) => {
-            if (Date.now() < scanLockUntilRef.current) {
-              return
-            }
-
-            const normalized = decodedText.trim()
-            if (!normalized || normalized === lastRawRef.current) {
-              return
-            }
-
-            lastRawRef.current = normalized
-            lastValidatedTokenRef.current = ""
-            const classification = classifyQrContent(normalized)
-            scanLockUntilRef.current = Date.now() + SCAN_LOCK_MS
-
-            const tone: FeedbackTone =
-              classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
-            const message =
-              classification.type === "member"
-                ? (getTestTokenInfo(classification.token ?? "") ? "TEST-QR ERKANNT" : "MITGLIED ERKANNT")
-                : classification.type === "unknown"
-                  ? "UNBEKANNTER QR-CODE"
-                  : "UNGUELTIGER QR-CODE"
-            showFeedback(tone, message)
-
-            const at = new Intl.DateTimeFormat("de-DE", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: false,
-              timeZone: "Europe/Berlin",
-            }).format(new Date())
-            setLastScan({ classification, at })
-            setValidationError("")
-            setValidationResult(null)
-          },
+          scannerConfig,
+          handleDecoded,
           () => {
             // No-op to avoid noisy "no QR" status updates.
           },
@@ -368,7 +367,7 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
     } finally {
       setIsStarting(false)
     }
-  }, [isScanning, isStarting, showFeedback, stopScanner])
+  }, [handleDecoded, isScanning, isStarting, stopScanner])
 
   useEffect(() => {
     return () => {
