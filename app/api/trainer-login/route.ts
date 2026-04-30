@@ -3,7 +3,13 @@ import { findMemberById } from "@/lib/boxgymDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { verifyAuthSecret } from "@/lib/authSecret"
 import { TRAINER_SESSION_COOKIE, createTrainerSessionToken } from "@/lib/authSession"
-import { isAllowedOrigin } from "@/lib/apiSecurity"
+import {
+  clearLoginFailuresAsync,
+  delayFailedLogin,
+  getLoginLockStateAsync,
+  isAllowedOrigin,
+  registerLoginFailureAsync,
+} from "@/lib/apiSecurity"
 import { clearMemberAreaSessionCookie } from "@/lib/publicAreaSession"
 import { ratelimit } from "@/lib/ratelimit"
 
@@ -50,6 +56,15 @@ export async function POST(request: Request) {
     const body = rawBody as TrainerLoginBody
     const email = (body.email ?? "").trim().toLowerCase()
     const inputPassword = (body.password ?? "").trim()
+    const loginIdentifier = email || "__email__"
+    const loginKey = `trainer:${loginIdentifier}`
+
+    const lockState = await getLoginLockStateAsync(loginKey, 10)
+    if (lockState.blocked) {
+      await delayFailedLogin()
+      const minutes = Math.max(1, Math.ceil((lockState.retryAfterMs ?? 0) / 60000))
+      return NextResponse.json({ error: `Zu viele Fehlversuche. Bitte ${minutes} Minuten warten.` }, { status: 429 })
+    }
 
     if (!email || !inputPassword) {
       return NextResponse.json({ error: "E-Mail und Passwort sind erforderlich" }, { status: 400 })
@@ -71,18 +86,26 @@ export async function POST(request: Request) {
     const account = (trainer as TrainerAccountRow | null) ?? null
 
     if (!account) {
+      await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
+      await delayFailedLogin()
       return NextResponse.json({ error: "Login fehlgeschlagen" }, { status: 401 })
     }
 
     if (!account.email_verified || !account.is_approved) {
+      await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
+      await delayFailedLogin()
       return NextResponse.json({ error: "Login fehlgeschlagen" }, { status: 401 })
     }
 
     const isValid = await verifyAuthSecret(inputPassword, account.password_hash)
 
     if (!isValid) {
+      await registerLoginFailureAsync(loginKey, 10, 15 * 60 * 1000, 15 * 60 * 1000)
+      await delayFailedLogin()
       return NextResponse.json({ error: "Login fehlgeschlagen" }, { status: 401 })
     }
+
+    await clearLoginFailuresAsync(loginKey)
 
     const role = account.role === "admin" ? "admin" : "trainer"
     const linkedMemberId = account.linked_member_id ?? null
