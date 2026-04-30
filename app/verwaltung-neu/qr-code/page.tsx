@@ -3,7 +3,6 @@
 import Link from "next/link"
 import QRCode from "react-qr-code"
 import { useRef } from "react"
-import { ScannerTestClient } from "@/components/tools/ScannerTestClient"
 
 export default function QRCodePage() {
   const QR_DOWNLOAD_SIZE = 1024
@@ -125,17 +124,6 @@ export default function QRCodePage() {
     <>
       <div className="flex justify-center items-start p-0">
         <div className="w-full max-w-xl mx-auto">
-          <div className="mb-10 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-zinc-900">Trainer QR-Check-in (Vorbereitung)</h2>
-            <p className="mt-1 text-sm text-zinc-600">
-              Persönlichen Mitglieder-QR scannen, Mitgliedsdaten prüfen und Check-in auslösen.
-              Testphase ohne neue Check-in-Logik.
-            </p>
-            <div className="mt-4">
-              <ScannerTestClient mode="member" enableMemberCheckinAction />
-            </div>
-          </div>
-
           {/* CHECK-IN */}
           <div className="bg-white p-8 border border-gray-200 rounded-xl text-center">
             <h1 className="text-xl font-semibold mb-6">TSV BoxGym Check-in</h1>
