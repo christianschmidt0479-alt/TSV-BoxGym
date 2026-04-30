@@ -15,6 +15,43 @@ type Html5QrcodeInstance = {
 
 const READER_ID = "verwaltung-tools-scanner-reader"
 
+type QrClassificationType = "member" | "unknown" | "invalid"
+
+type QrClassification = {
+  type: QrClassificationType
+  raw: string
+  token?: string
+}
+
+function classifyQrContent(text: string): QrClassification {
+  const raw = text.trim()
+
+  if (raw.length < 3) {
+    return { type: "invalid", raw }
+  }
+
+  const memberPrefix = /^TSVBOXGYM:MEMBER:([A-Za-z0-9_-]+)$/i.exec(raw)
+  if (memberPrefix?.[1]) {
+    return { type: "member", raw, token: memberPrefix[1] }
+  }
+
+  const lowered = raw.toLowerCase()
+  if (lowered.includes("/checkin") || lowered.includes("/mein-bereich/qr-code")) {
+    let token: string | undefined
+
+    try {
+      const url = new URL(raw)
+      token = url.searchParams.get("token") ?? undefined
+    } catch {
+      token = undefined
+    }
+
+    return { type: "member", raw, token }
+  }
+
+  return { type: "unknown", raw }
+}
+
 function mapCameraError(error: unknown) {
   if (!(error instanceof Error)) {
     return "Kamera konnte nicht gestartet werden."
@@ -35,9 +72,13 @@ function mapCameraError(error: unknown) {
 
 export default function ToolsScannerPage() {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
+  const lastRawRef = useRef("")
   const [isStarting, setIsStarting] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
-  const [resultText, setResultText] = useState("")
+  const [lastScan, setLastScan] = useState<{
+    classification: QrClassification
+    at: string
+  } | null>(null)
   const [errorText, setErrorText] = useState("")
 
   const stopScanner = useCallback(async () => {
@@ -84,7 +125,21 @@ export default function ToolsScannerPage() {
           { facingMode: "environment" },
           { fps: 10, aspectRatio: 16 / 9 },
           (decodedText: string) => {
-            setResultText(decodedText)
+            const normalized = decodedText.trim()
+            if (!normalized || normalized === lastRawRef.current) {
+              return
+            }
+
+            lastRawRef.current = normalized
+            const classification = classifyQrContent(normalized)
+            const at = new Intl.DateTimeFormat("de-DE", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: false,
+              timeZone: "Europe/Berlin",
+            }).format(new Date())
+            setLastScan({ classification, at })
           },
           () => {
             // No-op to avoid noisy "no QR" status updates.
@@ -109,7 +164,21 @@ export default function ToolsScannerPage() {
           fallbackCamera.id,
           { fps: 10, aspectRatio: 16 / 9 },
           (decodedText: string) => {
-            setResultText(decodedText)
+            const normalized = decodedText.trim()
+            if (!normalized || normalized === lastRawRef.current) {
+              return
+            }
+
+            lastRawRef.current = normalized
+            const classification = classifyQrContent(normalized)
+            const at = new Intl.DateTimeFormat("de-DE", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: false,
+              timeZone: "Europe/Berlin",
+            }).format(new Date())
+            setLastScan({ classification, at })
           },
           () => {
             // No-op to avoid noisy "no QR" status updates.
@@ -182,9 +251,39 @@ export default function ToolsScannerPage() {
 
       <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
         <h2 className="text-lg font-semibold text-zinc-900">Ergebnis</h2>
-        <div className="mt-3 break-all rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
-          {resultText || "Noch kein QR-Code erkannt."}
-        </div>
+        {lastScan ? (
+          <div className="mt-3 space-y-3">
+            <div
+              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
+                lastScan.classification.type === "member"
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                  : lastScan.classification.type === "unknown"
+                    ? "border-amber-300 bg-amber-50 text-amber-800"
+                    : "border-red-300 bg-red-50 text-red-700"
+              }`}
+            >
+              Typ: {lastScan.classification.type === "member" ? "Mitglied" : lastScan.classification.type === "unknown" ? "Unbekannt" : "Ungültig"}
+            </div>
+
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
+              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Rohwert</div>
+              <div className="mt-1 break-all">{lastScan.classification.raw}</div>
+            </div>
+
+            {lastScan.classification.token && (
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
+                <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Token</div>
+                <div className="mt-1 break-all">{lastScan.classification.token}</div>
+              </div>
+            )}
+
+            <div className="text-xs text-zinc-500">Letzter Scan: {lastScan.at}</div>
+          </div>
+        ) : (
+          <div className="mt-3 break-all rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
+            Noch kein QR-Code erkannt.
+          </div>
+        )}
       </section>
     </div>
   )
