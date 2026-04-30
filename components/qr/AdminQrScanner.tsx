@@ -61,6 +61,15 @@ type AdminQrScannerProps = {
 
 type AdminCheckinUiStatus = "idle" | "success" | "duplicate" | "outside_time_window" | "needs_weight" | "member_not_found" | "forbidden" | "error"
 
+type LastCheckinResult = {
+  memberId: string
+  name: string
+  group: string
+  timestamp: string
+  result: "success" | "duplicate" | "error"
+  reason?: string
+}
+
 function looksLikeDirectMemberToken(value: string) {
   return /^[A-Fa-f0-9]{32}$/.test(value) || /^TEST-\d{3}$/i.test(value)
 }
@@ -143,6 +152,21 @@ function shortenToken(token: string) {
   return `${token.slice(0, 8)}...${token.slice(-6)}`
 }
 
+function formatCheckinReason(reason?: string) {
+  switch (reason) {
+    case "outside_time_window":
+      return "Außerhalb Zeitfenster"
+    case "weight_required":
+      return "Gewicht erforderlich"
+    case "forbidden":
+      return "Nicht erlaubt"
+    case "member_not_found":
+      return "Mitglied nicht gefunden"
+    default:
+      return "Allgemeiner Fehler"
+  }
+}
+
 function mapCameraError(error: unknown) {
   if (!(error instanceof Error)) {
     return "Kamera konnte nicht gestartet werden."
@@ -209,6 +233,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const autoStartAttemptedRef = useRef(false)
+  const checkinCooldownUntilRef = useRef(0)
 
   const [isStarting, setIsStarting] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
@@ -234,6 +259,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const [checkinStatus, setCheckinStatus] = useState<AdminCheckinUiStatus>("idle")
   const [checkinMessage, setCheckinMessage] = useState("")
   const [checkinWeight, setCheckinWeight] = useState("")
+  const [lastCheckinResult, setLastCheckinResult] = useState<LastCheckinResult | null>(null)
   const [devScannerInfo, setDevScannerInfo] = useState<{
     isIPhoneLike: boolean
     fps: number
@@ -499,6 +525,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     setCheckinStatus("idle")
     setCheckinMessage("")
     setCheckinWeight("")
+    setLastCheckinResult(null)
     setTorchOn(false)
     lastValidatedTokenRef.current = ""
   }, [])
@@ -643,6 +670,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     setCheckinStatus("idle")
     setCheckinMessage("")
     setCheckinWeight("")
+    setLastCheckinResult(null)
   }, [lastScan?.classification.raw, validationResult?.id])
 
   useEffect(() => {
@@ -773,6 +801,11 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       return
     }
 
+    if (Date.now() < checkinCooldownUntilRef.current) {
+      setCheckinMessage("Bitte kurz warten...")
+      return
+    }
+
     const trimmedWeight = checkinWeight.trim()
     if (withWeight && !trimmedWeight) {
       setCheckinStatus("needs_weight")
@@ -798,57 +831,152 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       const payload = (await response.json().catch(() => ({}))) as {
         status?: string
         reason?: string
+        checkedInAt?: string
+        groupName?: string
       }
 
       const reason = typeof payload.reason === "string" ? payload.reason : ""
+      const resultTime = typeof payload.checkedInAt === "string" && payload.checkedInAt.trim()
+        ? payload.checkedInAt.trim()
+        : new Intl.DateTimeFormat("de-DE", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+            timeZone: "Europe/Berlin",
+          }).format(new Date())
+      const resultGroup = (typeof payload.groupName === "string" && payload.groupName.trim())
+        ? payload.groupName.trim()
+        : validationResult.group || "-"
+      const resultName = validationResult.name || "-"
 
       if (response.status === 401 || response.status === 403) {
         setCheckinStatus("forbidden")
         setCheckinMessage("Nicht erlaubt")
+        setLastCheckinResult({
+          memberId: validationResult.id,
+          name: resultName,
+          group: resultGroup,
+          timestamp: resultTime,
+          result: "error",
+          reason: "forbidden",
+        })
         return
       }
 
       if (payload.status === "success") {
         setCheckinStatus("success")
         setCheckinMessage("Check-in erfolgreich")
+        setLastCheckinResult({
+          memberId: validationResult.id,
+          name: resultName,
+          group: resultGroup,
+          timestamp: resultTime,
+          result: "success",
+        })
+        checkinCooldownUntilRef.current = Date.now() + 1500
         return
       }
 
       if (payload.status === "needs_weight" || reason === "weight_required") {
         setCheckinStatus("needs_weight")
         setCheckinMessage("Gewicht erforderlich")
+        setLastCheckinResult({
+          memberId: validationResult.id,
+          name: resultName,
+          group: resultGroup,
+          timestamp: resultTime,
+          result: "error",
+          reason: "weight_required",
+        })
         return
       }
 
       if (reason === "DUPLICATE") {
         setCheckinStatus("duplicate")
-        setCheckinMessage("Bereits eingecheckt")
+        setCheckinMessage(resultTime ? `Bereits eingecheckt${resultTime ? ` (${resultTime})` : ""}` : "Bereits eingecheckt")
+        setLastCheckinResult({
+          memberId: validationResult.id,
+          name: resultName,
+          group: resultGroup,
+          timestamp: resultTime,
+          result: "duplicate",
+          reason: "DUPLICATE",
+        })
         return
       }
 
       if (reason === "outside_time_window") {
         setCheckinStatus("outside_time_window")
         setCheckinMessage("Außerhalb Zeitfenster")
+        setLastCheckinResult({
+          memberId: validationResult.id,
+          name: resultName,
+          group: resultGroup,
+          timestamp: resultTime,
+          result: "error",
+          reason: "outside_time_window",
+        })
         return
       }
 
       if (reason === "member_not_found") {
         setCheckinStatus("member_not_found")
         setCheckinMessage("Mitglied nicht gefunden")
+        setLastCheckinResult({
+          memberId: validationResult.id,
+          name: resultName,
+          group: resultGroup,
+          timestamp: resultTime,
+          result: "error",
+          reason: "member_not_found",
+        })
         return
       }
 
       if (!response.ok) {
         setCheckinStatus("error")
         setCheckinMessage("Check-in fehlgeschlagen")
+        setLastCheckinResult({
+          memberId: validationResult.id,
+          name: resultName,
+          group: resultGroup,
+          timestamp: resultTime,
+          result: "error",
+          reason: reason || "checkin_failed",
+        })
         return
       }
 
       setCheckinStatus("error")
       setCheckinMessage("Check-in fehlgeschlagen")
+      setLastCheckinResult({
+        memberId: validationResult.id,
+        name: resultName,
+        group: resultGroup,
+        timestamp: resultTime,
+        result: "error",
+        reason: reason || "checkin_failed",
+      })
     } catch {
       setCheckinStatus("error")
       setCheckinMessage("Check-in fehlgeschlagen")
+      if (validationResult?.id) {
+        setLastCheckinResult({
+          memberId: validationResult.id,
+          name: validationResult.name || "-",
+          group: validationResult.group || "-",
+          timestamp: new Intl.DateTimeFormat("de-DE", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+            timeZone: "Europe/Berlin",
+          }).format(new Date()),
+          result: "error",
+          reason: "network_error",
+        })
+      }
     } finally {
       setIsCheckinSubmitting(false)
     }
@@ -1094,6 +1222,41 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                         : "text-red-300"
                   }`}>
                     {checkinMessage}
+                  </div>
+                )}
+
+                {lastCheckinResult && (
+                  <div className={`mt-2 rounded-lg border px-3 py-2 ${
+                    lastCheckinResult.result === "success"
+                      ? "border-emerald-300/40 bg-emerald-900/25"
+                      : lastCheckinResult.result === "duplicate"
+                        ? "border-amber-300/40 bg-amber-900/20"
+                        : "border-rose-300/40 bg-rose-900/20"
+                  }`}>
+                    <div className={`text-sm font-black ${
+                      lastCheckinResult.result === "success"
+                        ? "text-emerald-200"
+                        : lastCheckinResult.result === "duplicate"
+                          ? "text-amber-200"
+                          : "text-rose-200"
+                    }`}>
+                      {lastCheckinResult.result === "success"
+                        ? "Check-in erfolgreich"
+                        : lastCheckinResult.result === "duplicate"
+                          ? "Bereits eingecheckt"
+                          : "Check-in fehlgeschlagen"}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-200">Name: {lastCheckinResult.name}</div>
+                    <div className="text-xs text-slate-200">Gruppe: {lastCheckinResult.group}</div>
+                    <div className="text-xs text-slate-200">Uhrzeit: {lastCheckinResult.timestamp}</div>
+                    {(lastCheckinResult.result === "success" || lastCheckinResult.result === "duplicate") && (
+                      <div className="mt-1 inline-flex rounded-full border border-emerald-300/50 bg-emerald-800/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-100">
+                        Heute eingecheckt
+                      </div>
+                    )}
+                    {lastCheckinResult.result === "error" && lastCheckinResult.reason && (
+                      <div className="mt-1 text-[11px] text-rose-200">Grund: {formatCheckinReason(lastCheckinResult.reason)}</div>
+                    )}
                   </div>
                 )}
               </div>

@@ -17,6 +17,8 @@ type ApiResult = {
   status: "success" | "needs_selection" | "needs_weight" | "blocked" | "error"
   message: string
   reason?: string
+  checkedInAt?: string
+  groupName?: string
   availableGroups?: Array<{ group: string; time: string }>
   member?: {
     id: string
@@ -31,6 +33,34 @@ type ApiResult = {
 
 function json(body: ApiResult, status = 200) {
   return NextResponse.json(body, { status })
+}
+
+async function readTodayCheckinSnapshot({
+  supabase,
+  memberId,
+  date,
+}: {
+  supabase: ReturnType<typeof createServerSupabaseServiceClient>
+  memberId: string
+  date: string
+}) {
+  const { data, error } = await supabase
+    .from("checkins")
+    .select("time, group_name")
+    .eq("member_id", memberId)
+    .eq("date", date)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    checkedInAt: typeof data?.time === "string" ? data.time : undefined,
+    groupName: typeof data?.group_name === "string" ? data.group_name : undefined,
+  }
 }
 
 export async function POST(request: Request) {
@@ -61,6 +91,13 @@ export async function POST(request: Request) {
         message: "Mitglied-ID fehlt.",
         reason: "member_id_missing",
       }, 400)
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[admin-scanner-checkin] attempt", {
+        memberId,
+        hasWeight: Boolean(body.weight?.trim()),
+      })
     }
 
     const supabase = createServerSupabaseServiceClient()
@@ -100,6 +137,9 @@ export async function POST(request: Request) {
     })
 
     if (assignment.reason === "no_own_session_today" && !assignment.groupName) {
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[admin-scanner-checkin] result", { memberId, status: "needs_selection", reason: "no_own_session_today" })
+      }
       return json({
         status: "needs_selection",
         message: "Auswahl erforderlich - noch nicht aktiv.",
@@ -111,6 +151,9 @@ export async function POST(request: Request) {
 
     const bypassTimeWindow = Boolean(checkinSettings.disableCheckinTimeWindow || disableNormalWindowForTest)
     if (assignment.reason === "outside_time_window" && !bypassTimeWindow) {
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[admin-scanner-checkin] result", { memberId, status: "blocked", reason: "outside_time_window" })
+      }
       return json({
         status: "blocked",
         message: "Check-in ist außerhalb des Zeitfensters nicht möglich.",
@@ -121,6 +164,9 @@ export async function POST(request: Request) {
 
     const requiresWeight = Boolean(member.is_competition_member) || isWeightRequiredGroup(assignment.groupName)
     if (requiresWeight && !(body.weight?.trim() ?? "")) {
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[admin-scanner-checkin] result", { memberId, status: "needs_weight", reason: "weight_required" })
+      }
       return json({
         status: "needs_weight",
         message: "Gewicht erforderlich.",
@@ -154,9 +200,19 @@ export async function POST(request: Request) {
     }
 
     if (forwardedResponse.ok && payload.ok === true) {
+      const snapshot = await readTodayCheckinSnapshot({
+        supabase,
+        memberId,
+        date: liveDate,
+      })
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[admin-scanner-checkin] result", { memberId, status: "success" })
+      }
       return json({
         status: "success",
         message: "Mitglied erfolgreich eingecheckt.",
+        checkedInAt: snapshot.checkedInAt,
+        groupName: snapshot.groupName || assignment.groupName || undefined,
         member,
       }, 200)
     }
@@ -172,15 +228,28 @@ export async function POST(request: Request) {
     }
 
     if (payload.reason === "DUPLICATE") {
+      const snapshot = await readTodayCheckinSnapshot({
+        supabase,
+        memberId,
+        date: liveDate,
+      })
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[admin-scanner-checkin] result", { memberId, status: "blocked", reason: "DUPLICATE" })
+      }
       return json({
         status: "blocked",
         message: "Heute bereits eingecheckt.",
         reason: "DUPLICATE",
+        checkedInAt: snapshot.checkedInAt,
+        groupName: snapshot.groupName || assignment.groupName || undefined,
         member,
       }, 400)
     }
 
     if (payload.reason === "outside_time_window") {
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[admin-scanner-checkin] result", { memberId, status: "blocked", reason: "outside_time_window" })
+      }
       return json({
         status: "blocked",
         message: "Check-in ist außerhalb des Zeitfensters nicht möglich.",
@@ -190,6 +259,9 @@ export async function POST(request: Request) {
     }
 
     if (payload.reason === "group_not_allowed") {
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[admin-scanner-checkin] result", { memberId, status: "blocked", reason: "group_not_allowed" })
+      }
       return json({
         status: "blocked",
         message: "Für dieses Mitglied ist aktuell keine eindeutige Einheit verfügbar.",
@@ -199,6 +271,9 @@ export async function POST(request: Request) {
     }
 
     if (payload.reason === "email_not_verified") {
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[admin-scanner-checkin] result", { memberId, status: "blocked", reason: "email_not_verified" })
+      }
       return json({
         status: "blocked",
         message: "E-Mail des Mitglieds ist noch nicht bestätigt.",
@@ -207,6 +282,13 @@ export async function POST(request: Request) {
       }, 400)
     }
 
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[admin-scanner-checkin] result", {
+        memberId,
+        status: "error",
+        reason: typeof payload.reason === "string" ? payload.reason : "checkin_failed",
+      })
+    }
     return json({
       status: "error",
       message: typeof payload.error === "string" ? payload.error : "Check-in fehlgeschlagen.",
