@@ -13,6 +13,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.tsvboxgym.de"),
   title: "TSV BoxGym",
   description: "Mitgliederbereich TSV Falkensee BoxGym",
   icons: {
