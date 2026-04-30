@@ -56,20 +56,30 @@ export function HeaderClient({ user }: Props) {
   return (
     <div style={headerStyle} className="sticky top-0 z-50 relative">
       {/* TOP ROW */}
-      <div className="flex items-center min-h-14 px-4 md:pr-[420px]">
+      <div className="flex flex-row items-center justify-between flex-nowrap min-h-14 px-4">
         {/* LEFT: LOGO */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <img
             src="/logo.png"
             alt="TSV BoxGym"
-            style={{ height: 48, width: "auto", objectFit: "contain" }}
+            style={{ height: 48, maxHeight: 40, width: "auto", objectFit: "contain" }}
           />
-          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
-            <span style={{ fontWeight: 700, fontSize: 16 }}>TSV Falkensee</span>
-            <span style={{ fontWeight: 700, fontSize: 14, opacity: 0.9 }}>BoxGym</span>
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1, minWidth: 0 }}>
+            <span style={{ fontWeight: 700, fontSize: 16, whiteSpace: "nowrap" }}>TSV Falkensee</span>
+            <span style={{ fontWeight: 700, fontSize: 14, opacity: 0.9, whiteSpace: "nowrap" }}>BoxGym</span>
           </div>
         </div>
-        {/* Right side bleibt leer, Platz für absolute Actions */}
+
+        {!isLoggedIn && (
+          <Link href="/" style={{ textDecoration: "none", flexShrink: 0 }}>
+            <button
+              className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-red-600 hover:bg-red-700 transition whitespace-nowrap"
+              type="button"
+            >
+              Startseite
+            </button>
+          </Link>
+        )}
       </div>
 
       {/* RIGHT: ROLE-BASED NAV (absolut zentriert im Header) */}
@@ -77,13 +87,6 @@ export function HeaderClient({ user }: Props) {
         className="flex items-center gap-2 flex-wrap md:absolute md:right-4 md:top-1/2 md:-translate-y-1/2 sm:justify-end"
         style={{ pointerEvents: "auto" }}
       >
-        {!isLoggedIn && (
-          <Link href="/" style={{ textDecoration: "none" }}>
-            <button className="h-9 px-3 rounded-lg flex items-center justify-center text-sm bg-red-600 hover:bg-red-700 transition whitespace-nowrap" type="button">
-              Startseite
-            </button>
-          </Link>
-        )}
 
         {isMember && (
           <Link
