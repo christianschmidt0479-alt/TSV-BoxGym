@@ -23,6 +23,20 @@ type QrClassification = {
   token?: string
 }
 
+type MemberValidation = {
+  source: "api" | "simulation"
+  found: boolean
+  name: string | null
+  group: string | null
+  status: string | null
+  roleFlags: {
+    isCompetitionMember: boolean
+    isPerformanceGroup: boolean
+    isTrial: boolean
+  }
+  isTestData: boolean
+}
+
 function classifyQrContent(text: string): QrClassification {
   const raw = text.trim()
 
@@ -52,6 +66,26 @@ function classifyQrContent(text: string): QrClassification {
   return { type: "unknown", raw }
 }
 
+function getTestTokenInfo(token: string) {
+  const match = /^TEST-(\d{3})$/i.exec(token.trim())
+  if (!match?.[1]) {
+    return null
+  }
+
+  return {
+    suffix: match[1],
+    number: Number.parseInt(match[1], 10),
+  }
+}
+
+function shortenToken(token: string) {
+  if (token.length <= 16) {
+    return token
+  }
+
+  return `${token.slice(0, 8)}...${token.slice(-6)}`
+}
+
 function mapCameraError(error: unknown) {
   if (!(error instanceof Error)) {
     return "Kamera konnte nicht gestartet werden."
@@ -73,12 +107,16 @@ function mapCameraError(error: unknown) {
 export default function ToolsScannerPage() {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const lastRawRef = useRef("")
+  const lastValidatedTokenRef = useRef("")
   const [isStarting, setIsStarting] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [lastScan, setLastScan] = useState<{
     classification: QrClassification
     at: string
   } | null>(null)
+  const [validationLoading, setValidationLoading] = useState(false)
+  const [validationError, setValidationError] = useState("")
+  const [validationResult, setValidationResult] = useState<MemberValidation | null>(null)
   const [errorText, setErrorText] = useState("")
 
   const stopScanner = useCallback(async () => {
@@ -131,6 +169,7 @@ export default function ToolsScannerPage() {
             }
 
             lastRawRef.current = normalized
+            lastValidatedTokenRef.current = ""
             const classification = classifyQrContent(normalized)
             const at = new Intl.DateTimeFormat("de-DE", {
               hour: "2-digit",
@@ -140,6 +179,8 @@ export default function ToolsScannerPage() {
               timeZone: "Europe/Berlin",
             }).format(new Date())
             setLastScan({ classification, at })
+            setValidationError("")
+            setValidationResult(null)
           },
           () => {
             // No-op to avoid noisy "no QR" status updates.
@@ -170,6 +211,7 @@ export default function ToolsScannerPage() {
             }
 
             lastRawRef.current = normalized
+            lastValidatedTokenRef.current = ""
             const classification = classifyQrContent(normalized)
             const at = new Intl.DateTimeFormat("de-DE", {
               hour: "2-digit",
@@ -179,6 +221,8 @@ export default function ToolsScannerPage() {
               timeZone: "Europe/Berlin",
             }).format(new Date())
             setLastScan({ classification, at })
+            setValidationError("")
+            setValidationResult(null)
           },
           () => {
             // No-op to avoid noisy "no QR" status updates.
@@ -201,12 +245,106 @@ export default function ToolsScannerPage() {
     }
   }, [stopScanner])
 
+  useEffect(() => {
+    if (!lastScan || lastScan.classification.type !== "member" || !lastScan.classification.token) {
+      setValidationLoading(false)
+      setValidationError("")
+      setValidationResult(null)
+      return
+    }
+
+    const token = lastScan.classification.token.trim()
+    if (!token || token === lastValidatedTokenRef.current) {
+      return
+    }
+
+    const testInfo = getTestTokenInfo(token)
+    if (testInfo) {
+      lastValidatedTokenRef.current = token
+      setValidationLoading(false)
+      setValidationError("")
+      setValidationResult({
+        source: "simulation",
+        found: true,
+        name: `Test Mitglied ${testInfo.suffix}`,
+        group: "Testgruppe",
+        status: "TESTDATEN",
+        roleFlags: {
+          isCompetitionMember: false,
+          isPerformanceGroup: false,
+          isTrial: true,
+        },
+        isTestData: true,
+      })
+      return
+    }
+
+    const abortController = new AbortController()
+    setValidationLoading(true)
+    setValidationError("")
+    setValidationResult(null)
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/admin/scan-member-qr", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+          signal: abortController.signal,
+        })
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          found?: boolean
+          name?: string | null
+          group?: string | null
+          status?: string | null
+          roleFlags?: {
+            isCompetitionMember?: boolean
+            isPerformanceGroup?: boolean
+            isTrial?: boolean
+          }
+        }
+
+        if (!response.ok) {
+          throw new Error("validierung_fehlgeschlagen")
+        }
+
+        lastValidatedTokenRef.current = token
+        setValidationResult({
+          source: "api",
+          found: Boolean(payload.found),
+          name: payload.name ?? null,
+          group: payload.group ?? null,
+          status: payload.status ?? null,
+          roleFlags: {
+            isCompetitionMember: Boolean(payload.roleFlags?.isCompetitionMember),
+            isPerformanceGroup: Boolean(payload.roleFlags?.isPerformanceGroup),
+            isTrial: Boolean(payload.roleFlags?.isTrial),
+          },
+          isTestData: false,
+        })
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return
+        }
+        setValidationError("Validierung konnte nicht geladen werden.")
+      } finally {
+        setValidationLoading(false)
+      }
+    })()
+
+    return () => {
+      abortController.abort()
+    }
+  }, [lastScan])
+
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
         <h1 className="text-2xl font-bold text-zinc-900">Scanner (Test)</h1>
         <p className="mt-1 text-sm text-zinc-600">
-          Isolierter QR-Scanner ohne Check-in, ohne API und ohne Speicherung.
+          Isolierter QR-Scanner als Pruef-Tool ohne Check-in und ohne Datenaenderung.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -273,7 +411,60 @@ export default function ToolsScannerPage() {
             {lastScan.classification.token && (
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
                 <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Token</div>
-                <div className="mt-1 break-all">{lastScan.classification.token}</div>
+                <div className="mt-1 break-all">{shortenToken(lastScan.classification.token)}</div>
+              </div>
+            )}
+
+            {lastScan.classification.type === "member" && lastScan.classification.token && (
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Validierung</div>
+                  {validationResult?.isTestData && (
+                    <span className="rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                      TESTDATEN
+                    </span>
+                  )}
+                </div>
+
+                {validationLoading && <div className="mt-2 text-sm text-zinc-600">Pruefung laeuft...</div>}
+
+                {validationError && (
+                  <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-sm text-red-700">
+                    {validationError}
+                  </div>
+                )}
+
+                {validationResult && !validationLoading && (
+                  <div className="mt-2 space-y-1">
+                    <div>
+                      <span className="font-semibold">Mitglied:</span>{" "}
+                      {validationResult.found ? "Gefunden" : "Nicht gefunden"}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Name:</span>{" "}
+                      {validationResult.name || "-"}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Gruppe:</span>{" "}
+                      {validationResult.group || "-"}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Status:</span>{" "}
+                      {validationResult.status || (validationResult.found ? "Unbekannt" : "Nicht vorhanden")}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Rollenflags:</span>{" "}
+                      {[
+                        validationResult.roleFlags.isCompetitionMember ? "Wettkaempfer" : null,
+                        validationResult.roleFlags.isPerformanceGroup ? "Leistungsgruppe" : null,
+                        validationResult.roleFlags.isTrial ? "Probemitglied" : null,
+                      ].filter(Boolean).join(", ") || "Keine"}
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      Quelle: {validationResult.source === "simulation" ? "Lokale Simulation" : "Read-only API"}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
