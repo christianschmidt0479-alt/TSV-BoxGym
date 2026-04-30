@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
-import { getTodayIsoDateInBerlin, isTodayCheckinInBerlin } from "@/lib/dateFormat"
+import { getBerlinDayRangeUtc, getTodayIsoDateInBerlin, isTodayCheckinInBerlin } from "@/lib/dateFormat"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 
 function getServerSupabase() {
@@ -25,8 +25,13 @@ export async function GET(request: Request) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
+    const scope = new URL(request.url).searchParams.get("scope")
+    const todayOnly = scope === "today"
+    const todayIsoDate = getTodayIsoDateInBerlin()
+    const { startIso, endIso } = getBerlinDayRangeUtc()
+
     const supabase = getServerSupabase()
-    const response = await supabase
+    let query = supabase
       .from("checkins")
       .select(`
         id,
@@ -44,13 +49,26 @@ export async function GET(request: Request) {
           is_trial
         )
       `)
+
+    if (todayOnly) {
+      query = query.or(`date.eq.${todayIsoDate},and(created_at.gte.${startIso},created_at.lte.${endIso})`)
+    }
+
+    const response = await query
       .order("created_at", { ascending: false })
-      .limit(100)
+      .limit(todayOnly ? 200 : 100)
 
     if (response.error) throw response.error
 
-    const todayIsoDate = getTodayIsoDateInBerlin()
     const todayRows = (response.data ?? []).filter((row) => isTodayCheckinInBerlin(row, todayIsoDate))
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[admin/checkins] rows", {
+        dbRows: response.data?.length ?? 0,
+        todayOnly,
+        todayRows: todayRows.length,
+      })
+    }
 
     return NextResponse.json({
       rows: response.data ?? [],
