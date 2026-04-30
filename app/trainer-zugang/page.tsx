@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { ErrorBox } from "@/components/ErrorBox"
@@ -97,6 +98,14 @@ export default function TrainerLoginPage() {
               autoComplete="current-password"
               required
             />
+            <div className="text-right">
+              <Link
+                href="/trainer-zugang/passwort-vergessen"
+                className="text-sm font-semibold text-[#154c83] underline decoration-[#154c83]/40 underline-offset-2 hover:decoration-[#154c83]"
+              >
+                Passwort vergessen?
+              </Link>
+            </div>
           </div>
 
           <Button
