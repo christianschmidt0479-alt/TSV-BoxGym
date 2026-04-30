@@ -90,8 +90,6 @@ function logOriginDecision(
     console.warn("[apiSecurity.isAllowedOrigin] BLOCK", payload)
     return
   }
-
-  console.info("[apiSecurity.isAllowedOrigin] ALLOW", payload)
 }
 
 function isDevLocalhost3000Host(request: Request) {
