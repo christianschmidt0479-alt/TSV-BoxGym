@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 type Html5QrcodeInstance = {
@@ -22,8 +23,8 @@ type Html5QrcodeInstance = {
 
 const READER_ID = "trainer-qr-scanner-v1-reader"
 const CAMERA_FPS = 14
-const SCAN_LOCK_MS = 400
-const SCAN_DEDUPE_MS = 800
+const SCAN_LOCK_MS = 600
+const SCAN_DEDUPE_MS = 1200
 const FEEDBACK_VISIBLE_MS = 1200
 
 type QrClassificationType = "member" | "unknown" | "invalid"
@@ -141,7 +142,10 @@ function isCameraAccessRequired(errorText: string) {
 
 // Frozen trainer scanner baseline. Admin scanner evolves independently from here.
 export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScannerV1Props) {
+  const router = useRouter()
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
+  const titleSectionRef = useRef<HTMLElement | null>(null)
+  const buttonBarRef = useRef<HTMLDivElement | null>(null)
   const lastRawRef = useRef("")
   const lastRawAtRef = useRef(0)
   const lastValidatedTokenRef = useRef("")
@@ -165,6 +169,9 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
     tone: FeedbackTone
     message: string
   } | null>(null)
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
+  const [scannerSizePx, setScannerSizePx] = useState(240)
+  const [infoMaxHeightPx, setInfoMaxHeightPx] = useState<number | null>(null)
 
   const playBeep = useCallback((tone: FeedbackTone) => {
     if (typeof window === "undefined") {
@@ -495,6 +502,69 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
     void startScanner()
   }, [autoStart, startScanner])
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+    const recomputeLayout = () => {
+      const visibleHeight = Math.max(0, Math.floor(window.visualViewport?.height ?? window.innerHeight))
+      setViewportHeight(visibleHeight)
+
+      const titleHeight = titleSectionRef.current?.offsetHeight ?? 56
+      const buttonBarHeight = buttonBarRef.current?.offsetHeight ?? 44
+      const reservedForInfo = 220
+      const verticalChrome = 70
+
+      const availableScanner = visibleHeight - titleHeight - buttonBarHeight - reservedForInfo - verticalChrome
+      const nextScannerSize = clamp(availableScanner, 180, 300)
+      setScannerSizePx(nextScannerSize)
+
+      const availableInfo = visibleHeight - titleHeight - buttonBarHeight - nextScannerSize - verticalChrome
+      setInfoMaxHeightPx(Math.max(140, Math.floor(availableInfo)))
+    }
+
+    let rafId: number | null = null
+    const scheduleRecompute = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+      }
+      rafId = requestAnimationFrame(() => {
+        recomputeLayout()
+        rafId = null
+      })
+    }
+
+    scheduleRecompute()
+    window.addEventListener("resize", scheduleRecompute)
+    window.addEventListener("orientationchange", scheduleRecompute)
+    window.visualViewport?.addEventListener("resize", scheduleRecompute)
+    window.visualViewport?.addEventListener("scroll", scheduleRecompute)
+
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+      }
+      window.removeEventListener("resize", scheduleRecompute)
+      window.removeEventListener("orientationchange", scheduleRecompute)
+      window.visualViewport?.removeEventListener("resize", scheduleRecompute)
+      window.visualViewport?.removeEventListener("scroll", scheduleRecompute)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!autoStart || typeof document === "undefined") {
+      return
+    }
+
+    document.body.classList.add("trainer-scanner-fullscreen")
+    return () => {
+      document.body.classList.remove("trainer-scanner-fullscreen")
+    }
+  }, [autoStart])
+
   const latestScanType = lastScan ? getUiScanType(lastScan.classification) : "-"
   const memberName = validationResult?.name || "-"
   const memberGroup = validationResult?.group || "-"
@@ -503,94 +573,119 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
     : "-"
   const memberSource = validationResult
     ? validationResult.source === "simulation"
-      ? "Test (Lokale Simulation)"
-      : "Read-only API"
+      ? "Test"
+      : "API"
+    : "-"
+  const rawPreview = lastScan?.classification.raw
+    ? lastScan.classification.raw.length > 44
+      ? `${lastScan.classification.raw.slice(0, 26)}...${lastScan.classification.raw.slice(-12)}`
+      : lastScan.classification.raw
     : "-"
   const needsCameraPermission = isCameraAccessRequired(errorText)
+  const computedRootMinHeight = viewportHeight ? `${viewportHeight}px` : "100dvh"
+
+  const handleBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back()
+      return
+    }
+    router.push("/trainer")
+  }, [router])
 
   return (
-    <div className="fixed inset-0 z-[80] h-[100svh] w-screen overflow-hidden bg-gradient-to-b from-[#10243d] via-[#16385a] to-[#0d1723] text-white">
-      <div className="mx-auto flex h-full w-full max-w-[860px] flex-col px-3 pb-3 pt-[max(env(safe-area-inset-top),10px)] sm:px-4">
-        <div className="mb-2 flex items-center justify-between px-1 text-xs">
-          <div className="rounded-full border border-sky-200/20 bg-slate-900/70 px-3 py-1.5 font-semibold text-slate-100">
-            Kamera: {isScanning ? "aktiv" : "aus"}
+    <div className="relative z-[80] w-full overflow-hidden bg-gradient-to-b from-[#10243d] via-[#16385a] to-[#0d1723] text-white" style={{ minHeight: computedRootMinHeight }}>
+      <div className="mx-auto flex w-full max-w-[860px] flex-col px-3 pb-[max(env(safe-area-inset-bottom),10px)] pt-[max(env(safe-area-inset-top),10px)] sm:px-4" style={{ minHeight: computedRootMinHeight }}>
+        <section ref={titleSectionRef} className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-3 py-2">
+          <div className="flex items-center justify-between gap-2.5">
+            <h1 className="text-base font-black tracking-tight text-white sm:text-lg">QR Scanner - Testfunktion</h1>
+            <button
+              type="button"
+              onClick={handleBack}
+              className="h-9 rounded-lg border border-sky-200/20 bg-slate-950/60 px-3 text-sm font-semibold text-sky-100 transition hover:bg-slate-800/70"
+            >
+              ← Zurück
+            </button>
           </div>
-          <div className="rounded-full border border-sky-200/20 bg-slate-900/70 px-3 py-1.5 text-slate-200">
-            Status: {lastStatusText}
-          </div>
-        </div>
-
-        <section className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-4 py-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-white">QR Scanner - Testfunktion</h1>
-              <p className="mt-1 text-sm text-slate-300">Pruefung nur lesend - kein Check-in</p>
-            </div>
-            <div className="rounded-full border border-sky-200/20 bg-slate-950/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-100">
-              Version 1.0
-            </div>
-          </div>
+          <p className="mt-1 text-xs text-slate-300">Version 1.1 Test · Nur Prüfung - kein Check-in</p>
+          <div className="mt-1 text-[11px] text-slate-400">Scan-Schutz aktiv: Lock {SCAN_LOCK_MS}ms · Dedupe {SCAN_DEDUPE_MS}ms</div>
         </section>
 
-        <section className="relative w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
-          <div className="relative aspect-square min-h-[240px] max-h-[320px] w-full max-w-[320px] overflow-hidden sm:min-h-[260px]">
-            <div id={READER_ID} className="h-full w-full" />
+        <section className="relative mt-2 w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
+          <div className="flex w-full items-start justify-center py-2">
+            <div
+              className="relative aspect-square overflow-hidden rounded-2xl"
+              style={{ width: `${scannerSizePx}px`, height: `${scannerSizePx}px`, maxWidth: "300px", maxHeight: "300px" }}
+            >
+              <div id={READER_ID} className="h-full w-full" />
 
-            <div className="pointer-events-none absolute inset-0">
-              <div className="absolute left-0 top-0 h-[13%] w-full bg-black/40" />
-              <div className="absolute bottom-0 left-0 h-[13%] w-full bg-black/40" />
-              <div className="absolute left-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
-              <div className="absolute right-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
+              <div className="pointer-events-none absolute inset-0">
+                <div className="absolute left-0 top-0 h-[13%] w-full bg-black/40" />
+                <div className="absolute bottom-0 left-0 h-[13%] w-full bg-black/40" />
+                <div className="absolute left-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
+                <div className="absolute right-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
 
-              <div className="absolute left-1/2 top-1/2 aspect-square h-[78%] max-h-[280px] w-[78%] max-w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
-                <div className="absolute inset-x-6 top-1/2 h-[2px] -translate-y-1/2 animate-pulse bg-sky-100/80" />
-              </div>
-            </div>
-
-            {feedback && (
-              <div className="absolute left-3 right-3 top-3 z-20">
-                <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg backdrop-blur ${
-                  feedback.tone === "success"
-                    ? "border-emerald-300/60 bg-emerald-500/20 text-emerald-50"
-                    : feedback.tone === "warning"
-                      ? "border-amber-300/60 bg-amber-500/20 text-amber-50"
-                      : "border-rose-300/60 bg-rose-500/20 text-rose-50"
-                }`}>
-                  {feedback.message}
+                <div className="absolute inset-0 m-auto aspect-square h-[78%] w-[78%] rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
+                  <div className="absolute inset-x-6 top-1/2 h-[2px] animate-pulse bg-sky-100/80" />
                 </div>
               </div>
-            )}
 
-            {errorText && (
-              <div className="absolute left-3 right-3 top-16 z-20 rounded-xl border border-red-300/70 bg-red-700/30 px-3 py-2 text-sm font-semibold text-red-100">
-                {errorText}
-              </div>
-            )}
+              {feedback && (
+                <div className="absolute left-3 right-3 top-3 z-20">
+                  <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg backdrop-blur ${
+                    feedback.tone === "success"
+                      ? "border-emerald-300/60 bg-emerald-500/20 text-emerald-50"
+                      : feedback.tone === "warning"
+                        ? "border-amber-300/60 bg-amber-500/20 text-amber-50"
+                        : "border-rose-300/60 bg-rose-500/20 text-rose-50"
+                  }`}>
+                    {feedback.message}
+                  </div>
+                </div>
+              )}
 
-            {autoStart && needsCameraPermission && (
-              <div className="absolute inset-x-3 bottom-3 z-20 rounded-xl border border-amber-300/70 bg-amber-800/50 px-3 py-3">
-                <div className="text-sm font-semibold text-amber-100">Kamerazugriff erforderlich</div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void startScanner()
-                  }}
-                  className="mt-2 h-10 rounded-lg bg-amber-400 px-4 text-sm font-bold text-amber-950 transition hover:bg-amber-300"
-                >
-                  Erneut versuchen
-                </button>
-              </div>
-            )}
+              {errorText && (
+                <div className="absolute left-3 right-3 top-16 z-20 rounded-xl border border-red-300/70 bg-red-700/30 px-3 py-2 text-sm font-semibold text-red-100">
+                  {errorText}
+                </div>
+              )}
+
+              {!isScanning && !isStarting && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/85">
+                  <button
+                    type="button"
+                    onClick={() => { void startScanner() }}
+                    className="rounded-xl bg-[#0f5f9b] px-6 py-3 text-base font-bold text-white shadow-xl transition hover:bg-[#0c4f82] active:scale-95"
+                  >
+                    Scanner starten
+                  </button>
+                </div>
+              )}
+
+              {autoStart && needsCameraPermission && (
+                <div className="absolute inset-x-3 bottom-3 z-20 rounded-xl border border-amber-300/70 bg-amber-800/50 px-3 py-3">
+                  <div className="text-sm font-semibold text-amber-100">Kamerazugriff erforderlich</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void startScanner()
+                    }}
+                    className="mt-2 h-10 rounded-lg bg-amber-400 px-4 text-sm font-bold text-amber-950 transition hover:bg-amber-300"
+                  >
+                    Erneut versuchen
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 border-t border-sky-100/10 bg-slate-900/75 p-3 sm:grid-cols-4">
+          <div ref={buttonBarRef} className="flex flex-wrap items-center justify-center gap-1.5 border-t border-sky-100/10 bg-slate-900/75 p-1.5">
             <button
               type="button"
               onClick={() => {
                 void startScanner()
               }}
               disabled={isStarting || isScanning}
-              className="h-12 rounded-xl bg-[#0f5f9b] px-4 text-base font-bold text-white transition hover:bg-[#0c4f82] disabled:cursor-not-allowed disabled:bg-[#365f7b]"
+              className="h-9 rounded-lg bg-[#0f5f9b] px-3 text-xs font-bold text-white transition hover:bg-[#0c4f82] disabled:cursor-not-allowed disabled:bg-[#365f7b]"
             >
               {isStarting ? "Starte..." : "Start"}
             </button>
@@ -601,71 +696,91 @@ export default function TrainerQrScannerV1({ autoStart = true }: TrainerQrScanne
                 void stopScanner()
               }}
               disabled={!isScanning}
-              className="h-12 rounded-xl bg-slate-700 px-4 text-base font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
+              className="h-9 rounded-lg bg-slate-700 px-3 text-xs font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
             >
               Stop
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setLastScan(null)
+                setValidationResult(null)
+                setValidationError("")
+                lastValidatedTokenRef.current = ""
+              }}
+              disabled={!lastScan}
+              className="h-9 rounded-lg bg-slate-700 px-3 text-xs font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
+            >
+              Neuer Scan
             </button>
           </div>
         </section>
 
-        <section className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-sky-100/10 bg-slate-900/60 p-4">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-sky-100/90">Scanner-Informationen</h2>
-          <p className="mt-1 text-xs text-slate-300">Pruefung nur lesend - kein Check-in, keine Datenbank-Schreiboperation.</p>
+        <section className="mt-2 min-h-0 flex-1 overflow-hidden rounded-2xl border border-sky-100/10 bg-slate-900/60 p-2">
+          <div className="h-full overflow-y-auto" style={{ maxHeight: infoMaxHeightPx ? `${infoMaxHeightPx}px` : undefined }}>
+          <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-wide text-sky-200/80">Name</div>
+            <div className="mt-0.5 text-lg font-black tracking-tight text-white sm:text-xl">{memberName}</div>
+          </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+          <div className="mt-2 grid grid-cols-2 gap-1.5 text-sm">
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Gruppe</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{memberGroup}</div>
+            </div>
+
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Status</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{validationLoading ? "Pruefung laeuft..." : memberStatus}</div>
+              {validationError && <div className="mt-0.5 text-[11px] text-red-300">{validationError}</div>}
+            </div>
+
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">QR-Typ</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{latestScanType}</div>
+            </div>
+
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Quelle</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{memberSource}</div>
+            </div>
+
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Zeit</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{lastScan?.at || "-"}</div>
+            </div>
+
+            <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Token</div>
+              <div className="mt-0.5 truncate text-sm font-semibold text-slate-100">{lastScan?.classification.token ? shortenToken(lastScan.classification.token) : "-"}</div>
+            </div>
+
+            <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">Rohwert</div>
+              <div className="mt-0.5 truncate text-xs text-slate-300">{rawPreview}</div>
+            </div>
+
             <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-3 sm:col-span-2">
-              <div className="text-xs uppercase tracking-wide text-sky-200/80">Erkannter Nutzer</div>
-              <div className="mt-1 text-xl font-black tracking-tight text-white">{memberName}</div>
+              <div className="text-xs uppercase tracking-wide text-sky-200/80">Scannerstatus</div>
+              <div className="mt-1 font-semibold text-white">{lastStatusText}</div>
             </div>
+          </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Scanstatus</div>
-              <div className="mt-1 font-semibold text-slate-100">{lastStatusText}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Letzter Scan</div>
-              <div className="mt-1 font-semibold text-slate-100">{lastScan?.at || "-"}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">QR-Typ</div>
-              <div className="mt-1 font-semibold text-slate-100">{latestScanType}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Quelle</div>
-              <div className="mt-1 font-semibold text-slate-100">{memberSource}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Rohwert</div>
-              <div className="mt-1 break-all text-slate-100">{lastScan?.classification.raw || "-"}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Token</div>
-              <div className="mt-1 break-all text-slate-100">{lastScan?.classification.token ? shortenToken(lastScan.classification.token) : "-"}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Gruppe</div>
-              <div className="mt-1 font-semibold text-slate-100">{memberGroup}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Status</div>
-              <div className="mt-1 font-semibold text-slate-100">{validationLoading ? "Pruefung laeuft..." : memberStatus}</div>
-              {validationError && <div className="mt-1 text-xs text-red-300">{validationError}</div>}
-            </div>
+          <p className="mt-2 text-center text-[10px] text-slate-400">Nur Prüfung - kein Check-in.</p>
           </div>
         </section>
       </div>
 
       <style jsx global>{`
+        body.trainer-scanner-fullscreen [data-app-header],
+        body.trainer-scanner-fullscreen [data-app-footer],
+        body.trainer-scanner-fullscreen [data-app-version] {
+          display: none !important;
+        }
+
         #${READER_ID} {
-          position: absolute;
-          inset: 0;
+          position: relative;
           height: 100%;
           width: 100%;
           overflow: hidden;
