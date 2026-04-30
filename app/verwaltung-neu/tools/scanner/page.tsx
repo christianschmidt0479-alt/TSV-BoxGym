@@ -14,6 +14,8 @@ type Html5QrcodeInstance = {
 }
 
 const READER_ID = "verwaltung-tools-scanner-reader"
+const SCAN_LOCK_MS = 1000
+const FEEDBACK_VISIBLE_MS = 1200
 
 type QrClassificationType = "member" | "unknown" | "invalid"
 
@@ -36,6 +38,8 @@ type MemberValidation = {
   }
   isTestData: boolean
 }
+
+type FeedbackTone = "success" | "warning" | "error"
 
 function classifyQrContent(text: string): QrClassification {
   const raw = text.trim()
@@ -108,6 +112,9 @@ export default function ToolsScannerPage() {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const lastRawRef = useRef("")
   const lastValidatedTokenRef = useRef("")
+  const scanLockUntilRef = useRef(0)
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
   const [isStarting, setIsStarting] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [lastScan, setLastScan] = useState<{
@@ -118,6 +125,63 @@ export default function ToolsScannerPage() {
   const [validationError, setValidationError] = useState("")
   const [validationResult, setValidationResult] = useState<MemberValidation | null>(null)
   const [errorText, setErrorText] = useState("")
+  const [lastStatusText, setLastStatusText] = useState("Bereit")
+  const [feedback, setFeedback] = useState<{
+    tone: FeedbackTone
+    message: string
+  } | null>(null)
+
+  const playBeep = useCallback((tone: FeedbackTone) => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const AudioCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioCtor) {
+      return
+    }
+
+    const audioContext = audioContextRef.current ?? new AudioCtor()
+    audioContextRef.current = audioContext
+
+    if (audioContext.state === "suspended") {
+      void audioContext.resume()
+    }
+
+    const now = audioContext.currentTime
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+
+    oscillator.type = tone === "success" ? "triangle" : tone === "warning" ? "sine" : "square"
+    oscillator.frequency.setValueAtTime(tone === "success" ? 880 : tone === "warning" ? 620 : 320, now)
+    gainNode.gain.setValueAtTime(0.0001, now)
+    gainNode.gain.exponentialRampToValueAtTime(0.12, now + 0.02)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.16)
+
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+    oscillator.start(now)
+    oscillator.stop(now + 0.17)
+  }, [])
+
+  const showFeedback = useCallback((tone: FeedbackTone, message: string) => {
+    setFeedback({ tone, message })
+    setLastStatusText(message)
+
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(100)
+    }
+
+    playBeep(tone)
+
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current)
+    }
+
+    feedbackTimerRef.current = setTimeout(() => {
+      setFeedback(null)
+    }, FEEDBACK_VISIBLE_MS)
+  }, [playBeep])
 
   const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current
@@ -140,6 +204,7 @@ export default function ToolsScannerPage() {
 
     scannerRef.current = null
     setIsScanning(false)
+    setLastStatusText("Kamera aus")
   }, [])
 
   const startScanner = useCallback(async () => {
@@ -149,6 +214,7 @@ export default function ToolsScannerPage() {
 
     setIsStarting(true)
     setErrorText("")
+    setLastStatusText("Kamera startet...")
 
     try {
       const { Html5Qrcode } = await import("html5-qrcode")
@@ -163,6 +229,10 @@ export default function ToolsScannerPage() {
           { facingMode: "environment" },
           { fps: 10, aspectRatio: 16 / 9 },
           (decodedText: string) => {
+            if (Date.now() < scanLockUntilRef.current) {
+              return
+            }
+
             const normalized = decodedText.trim()
             if (!normalized || normalized === lastRawRef.current) {
               return
@@ -171,6 +241,18 @@ export default function ToolsScannerPage() {
             lastRawRef.current = normalized
             lastValidatedTokenRef.current = ""
             const classification = classifyQrContent(normalized)
+            scanLockUntilRef.current = Date.now() + SCAN_LOCK_MS
+
+            const tone: FeedbackTone =
+              classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
+            const message =
+              classification.type === "member"
+                ? "MITGLIED ERKANNT"
+                : classification.type === "unknown"
+                  ? "UNBEKANNT"
+                  : "UNGUELTIG"
+            showFeedback(tone, message)
+
             const at = new Intl.DateTimeFormat("de-DE", {
               hour: "2-digit",
               minute: "2-digit",
@@ -205,6 +287,10 @@ export default function ToolsScannerPage() {
           fallbackCamera.id,
           { fps: 10, aspectRatio: 16 / 9 },
           (decodedText: string) => {
+            if (Date.now() < scanLockUntilRef.current) {
+              return
+            }
+
             const normalized = decodedText.trim()
             if (!normalized || normalized === lastRawRef.current) {
               return
@@ -213,6 +299,18 @@ export default function ToolsScannerPage() {
             lastRawRef.current = normalized
             lastValidatedTokenRef.current = ""
             const classification = classifyQrContent(normalized)
+            scanLockUntilRef.current = Date.now() + SCAN_LOCK_MS
+
+            const tone: FeedbackTone =
+              classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
+            const message =
+              classification.type === "member"
+                ? "MITGLIED ERKANNT"
+                : classification.type === "unknown"
+                  ? "UNBEKANNT"
+                  : "UNGUELTIG"
+            showFeedback(tone, message)
+
             const at = new Intl.DateTimeFormat("de-DE", {
               hour: "2-digit",
               minute: "2-digit",
@@ -231,19 +329,38 @@ export default function ToolsScannerPage() {
       }
 
       setIsScanning(true)
+      setLastStatusText("Kamera aktiv")
     } catch (error) {
       await stopScanner()
       setErrorText(mapCameraError(error))
+      setLastStatusText("Kamerafehler")
     } finally {
       setIsStarting(false)
     }
-  }, [isScanning, isStarting, stopScanner])
+  }, [isScanning, isStarting, showFeedback, stopScanner])
 
   useEffect(() => {
     return () => {
       void stopScanner()
+      if (feedbackTimerRef.current) {
+        clearTimeout(feedbackTimerRef.current)
+        feedbackTimerRef.current = null
+      }
     }
   }, [stopScanner])
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow
+    const previousOverscroll = document.body.style.overscrollBehavior
+
+    document.body.style.overflow = "hidden"
+    document.body.style.overscrollBehavior = "none"
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow
+      document.body.style.overscrollBehavior = previousOverscroll
+    }
+  }, [])
 
   useEffect(() => {
     if (!lastScan || lastScan.classification.type !== "member" || !lastScan.classification.token) {
@@ -340,142 +457,119 @@ export default function ToolsScannerPage() {
   }, [lastScan])
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-        <h1 className="text-2xl font-bold text-zinc-900">Scanner (Test)</h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          Isolierter QR-Scanner als Pruef-Tool ohne Check-in und ohne Datenaenderung.
-        </p>
+    <div className="fixed inset-0 z-[80] h-[100svh] w-screen overflow-hidden bg-black text-white">
+      <div id={READER_ID} className="h-full w-full" />
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              void startScanner()
-            }}
-            disabled={isStarting || isScanning}
-            className="inline-flex items-center justify-center rounded-lg bg-[#154c83] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0f3f70] disabled:cursor-not-allowed disabled:bg-[#7f9dbb]"
-          >
-            {isStarting ? "Starte..." : "Kamera starten"}
-          </button>
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-0 top-0 h-[22%] w-full bg-black/45" />
+        <div className="absolute bottom-0 left-0 h-[28%] w-full bg-black/45" />
+        <div className="absolute left-0 top-[22%] h-[50%] w-[13%] bg-black/45" />
+        <div className="absolute right-0 top-[22%] h-[50%] w-[13%] bg-black/45" />
 
-          <button
-            type="button"
-            onClick={() => {
-              void stopScanner()
-            }}
-            disabled={!isScanning}
-            className="inline-flex items-center justify-center rounded-lg bg-zinc-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
-          >
-            Kamera stoppen
-          </button>
+        <div className="absolute left-1/2 top-[47%] h-[38svh] w-[74vw] max-w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-3xl border-4 border-white/80 shadow-[0_0_0_2px_rgba(255,255,255,0.2),0_0_40px_rgba(0,0,0,0.5)]">
+          <div className="absolute inset-x-6 top-1/2 h-0.5 -translate-y-1/2 animate-pulse bg-white/90" />
         </div>
+      </div>
 
-        {errorText && (
-          <div className="mt-4 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {errorText}
+      <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-4 pt-[max(env(safe-area-inset-top),12px)] text-xs">
+        <div className="rounded-full bg-black/55 px-3 py-1 font-semibold">
+          Kamera: {isScanning ? "aktiv" : "aus"}
+        </div>
+        <div className="rounded-full bg-black/55 px-3 py-1">Status: {lastStatusText}</div>
+      </div>
+
+      {feedback && (
+        <div className={`absolute inset-0 z-20 flex items-center justify-center px-6 text-center ${
+          feedback.tone === "success"
+            ? "bg-emerald-500/25"
+            : feedback.tone === "warning"
+              ? "bg-amber-500/28"
+              : "bg-red-600/28"
+        }`}>
+          <div className={`rounded-2xl border px-5 py-4 text-2xl font-black tracking-wide sm:text-3xl ${
+            feedback.tone === "success"
+              ? "border-emerald-200 bg-emerald-100/90 text-emerald-900"
+              : feedback.tone === "warning"
+                ? "border-amber-200 bg-amber-100/90 text-amber-900"
+                : "border-red-200 bg-red-100/90 text-red-900"
+          }`}>
+            {feedback.message}
           </div>
-        )}
-      </section>
-
-      <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-zinc-900">Kamera</h2>
-        <p className="mt-1 text-sm text-zinc-600">Kamera startet nur manuell per Button.</p>
-
-        <div className="mt-3 w-full overflow-hidden rounded-xl border border-zinc-200 bg-black p-2">
-          <div id={READER_ID} className="w-full" />
         </div>
-      </section>
+      )}
 
-      <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-zinc-900">Ergebnis</h2>
-        {lastScan ? (
-          <div className="mt-3 space-y-3">
-            <div
-              className={`rounded-xl border px-3 py-2 text-sm font-semibold ${
-                lastScan.classification.type === "member"
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                  : lastScan.classification.type === "unknown"
-                    ? "border-amber-300 bg-amber-50 text-amber-800"
-                    : "border-red-300 bg-red-50 text-red-700"
-              }`}
+      {errorText && (
+        <div className="absolute left-4 right-4 top-16 z-20 rounded-xl border border-red-300 bg-red-100/95 px-3 py-2 text-sm font-semibold text-red-800">
+          {errorText}
+        </div>
+      )}
+
+      <div className="absolute inset-x-0 bottom-0 z-20 px-4 pb-[max(env(safe-area-inset-bottom),14px)]">
+        <div className="rounded-2xl border border-white/20 bg-black/70 p-3 backdrop-blur">
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void startScanner()
+              }}
+              disabled={isStarting || isScanning}
+              className="h-12 rounded-xl bg-emerald-600 px-4 text-base font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-900/60"
             >
-              Typ: {lastScan.classification.type === "member" ? "Mitglied" : lastScan.classification.type === "unknown" ? "Unbekannt" : "Ungültig"}
-            </div>
+              {isStarting ? "Starte..." : "Start"}
+            </button>
 
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
-              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Rohwert</div>
-              <div className="mt-1 break-all">{lastScan.classification.raw}</div>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                void stopScanner()
+              }}
+              disabled={!isScanning}
+              className="h-12 rounded-xl bg-zinc-700 px-4 text-base font-bold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-900/60"
+            >
+              Stop
+            </button>
+          </div>
 
-            {lastScan.classification.token && (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
-                <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Token</div>
-                <div className="mt-1 break-all">{shortenToken(lastScan.classification.token)}</div>
+          {lastScan && (
+            <div className="space-y-1 text-xs text-zinc-200">
+              <div>
+                Typ: {lastScan.classification.type === "member" ? "Mitglied" : lastScan.classification.type === "unknown" ? "Unbekannt" : "Ungueltig"}
               </div>
-            )}
-
-            {lastScan.classification.type === "member" && lastScan.classification.token && (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Validierung</div>
-                  {validationResult?.isTestData && (
-                    <span className="rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                      TESTDATEN
-                    </span>
-                  )}
+              {lastScan.classification.token && <div>Token: {shortenToken(lastScan.classification.token)}</div>}
+              {validationLoading && <div>Pruefung laeuft...</div>}
+              {validationError && <div className="text-red-300">{validationError}</div>}
+              {validationResult && (
+                <div>
+                  Quelle: {validationResult.source === "simulation" ? "Lokale Simulation" : "Read-only API"}
+                  {" · "}Status: {validationResult.status || (validationResult.found ? "Unbekannt" : "Nicht vorhanden")}
                 </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
-                {validationLoading && <div className="mt-2 text-sm text-zinc-600">Pruefung laeuft...</div>}
+      <style jsx global>{`
+        #${READER_ID} {
+          position: absolute;
+          inset: 0;
+          height: 100svh;
+          width: 100vw;
+          overflow: hidden;
+          background: #000;
+        }
 
-                {validationError && (
-                  <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-sm text-red-700">
-                    {validationError}
-                  </div>
-                )}
+        #${READER_ID} > div {
+          height: 100%;
+          width: 100%;
+        }
 
-                {validationResult && !validationLoading && (
-                  <div className="mt-2 space-y-1">
-                    <div>
-                      <span className="font-semibold">Mitglied:</span>{" "}
-                      {validationResult.found ? "Gefunden" : "Nicht gefunden"}
-                    </div>
-                    <div>
-                      <span className="font-semibold">Name:</span>{" "}
-                      {validationResult.name || "-"}
-                    </div>
-                    <div>
-                      <span className="font-semibold">Gruppe:</span>{" "}
-                      {validationResult.group || "-"}
-                    </div>
-                    <div>
-                      <span className="font-semibold">Status:</span>{" "}
-                      {validationResult.status || (validationResult.found ? "Unbekannt" : "Nicht vorhanden")}
-                    </div>
-                    <div>
-                      <span className="font-semibold">Rollenflags:</span>{" "}
-                      {[
-                        validationResult.roleFlags.isCompetitionMember ? "Wettkaempfer" : null,
-                        validationResult.roleFlags.isPerformanceGroup ? "Leistungsgruppe" : null,
-                        validationResult.roleFlags.isTrial ? "Probemitglied" : null,
-                      ].filter(Boolean).join(", ") || "Keine"}
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      Quelle: {validationResult.source === "simulation" ? "Lokale Simulation" : "Read-only API"}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="text-xs text-zinc-500">Letzter Scan: {lastScan.at}</div>
-          </div>
-        ) : (
-          <div className="mt-3 break-all rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-900">
-            Noch kein QR-Code erkannt.
-          </div>
-        )}
-      </section>
+        #${READER_ID} video {
+          height: 100% !important;
+          width: 100% !important;
+          object-fit: cover;
+        }
+      `}</style>
     </div>
   )
 }
