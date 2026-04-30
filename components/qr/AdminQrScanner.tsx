@@ -5,7 +5,14 @@ import { useCallback, useEffect, useRef, useState } from "react"
 type Html5QrcodeInstance = {
   start: (
     cameraConfig: { facingMode: "environment" | "user" } | string,
-    configuration?: { fps?: number; aspectRatio?: number },
+    configuration?: {
+      fps?: number
+      aspectRatio?: number
+      disableFlip?: boolean
+      qrbox?:
+        | { width: number; height: number }
+        | ((viewfinderWidth: number, viewfinderHeight: number) => { width: number; height: number })
+    },
     qrCodeSuccessCallback?: (decodedText: string) => void,
     qrCodeErrorCallback?: (errorMessage: string) => void,
   ) => Promise<unknown>
@@ -14,7 +21,10 @@ type Html5QrcodeInstance = {
 }
 
 const READER_ID = "verwaltung-tools-scanner-reader"
-const SCAN_LOCK_MS = 1000
+const CAMERA_FPS = 14
+const CAMERA_ASPECT_RATIO = 16 / 9
+const SCAN_LOCK_MS = 700
+const SCAN_DEDUPE_MS = 1800
 const FEEDBACK_VISIBLE_MS = 1200
 
 type QrClassificationType = "member" | "unknown" | "invalid"
@@ -130,9 +140,30 @@ function isCameraAccessRequired(errorText: string) {
   return errorText.toLowerCase().includes("kamerazugriff erforderlich")
 }
 
+function isIPhoneLikeDevice() {
+  if (typeof navigator === "undefined") {
+    return false
+  }
+
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+}
+
+function getScannerConfig() {
+  return {
+    fps: CAMERA_FPS,
+    aspectRatio: CAMERA_ASPECT_RATIO,
+    disableFlip: true,
+    qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+      const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
+      return { width: edge, height: edge }
+    },
+  }
+}
+
 export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const lastRawRef = useRef("")
+  const lastRawAtRef = useRef(0)
   const lastValidatedTokenRef = useRef("")
   const scanLockUntilRef = useRef(0)
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -154,6 +185,19 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     tone: FeedbackTone
     message: string
   } | null>(null)
+  const [devScannerInfo, setDevScannerInfo] = useState<{
+    isIPhoneLike: boolean
+    fps: number
+    aspectRatio: string
+    qrbox: string
+    lastDecodeAt: string
+  }>({
+    isIPhoneLike: false,
+    fps: CAMERA_FPS,
+    aspectRatio: `${CAMERA_ASPECT_RATIO.toFixed(2)}`,
+    qrbox: "-",
+    lastDecodeAt: "-",
+  })
 
   const playBeep = useCallback((tone: FeedbackTone) => {
     if (typeof window === "undefined") {
@@ -233,9 +277,61 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     }
 
     scannerRef.current = null
+    lastRawRef.current = ""
+    lastRawAtRef.current = 0
     setIsScanning(false)
     setLastStatusText("Kamera aus")
   }, [])
+
+  const handleDecoded = useCallback((decodedText: string) => {
+    const now = Date.now()
+    if (now < scanLockUntilRef.current) {
+      return
+    }
+
+    const normalized = decodedText.trim()
+    if (!normalized) {
+      return
+    }
+
+    if (normalized === lastRawRef.current && now - lastRawAtRef.current < SCAN_DEDUPE_MS) {
+      return
+    }
+
+    lastRawRef.current = normalized
+    lastRawAtRef.current = now
+    lastValidatedTokenRef.current = ""
+    const classification = classifyQrContent(normalized)
+    scanLockUntilRef.current = now + SCAN_LOCK_MS
+
+    const tone: FeedbackTone =
+      classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
+    const message =
+      classification.type === "member"
+        ? (getTestTokenInfo(classification.token ?? "") ? "TEST-QR ERKANNT" : "MITGLIED ERKANNT")
+        : classification.type === "unknown"
+          ? "UNBEKANNTER QR-CODE"
+          : "UNGUELTIGER QR-CODE"
+
+    // Immediate haptic/audio feedback before any async API validation.
+    showFeedback(tone, message)
+
+    const at = new Intl.DateTimeFormat("de-DE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZone: "Europe/Berlin",
+    }).format(new Date())
+
+    setLastScan({ classification, at })
+    if (process.env.NODE_ENV !== "production") {
+      setDevScannerInfo((previous) => ({ ...previous, lastDecodeAt: at }))
+    }
+    setValidationLoading(classification.type === "member")
+    setValidationError("")
+    setValidationResult(null)
+  }, [showFeedback])
 
   const startScanner = useCallback(async () => {
     if (isStarting || isScanning) {
@@ -254,46 +350,35 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       let started = false
       let firstError: unknown = null
 
+      const isIPhoneLike = isIPhoneLikeDevice()
+      if (process.env.NODE_ENV !== "production") {
+        setDevScannerInfo((previous) => ({
+          ...previous,
+          isIPhoneLike,
+          fps: CAMERA_FPS,
+          aspectRatio: `${CAMERA_ASPECT_RATIO.toFixed(2)}`,
+        }))
+      }
+
+      const scannerConfig = {
+        ...getScannerConfig(),
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const edge = Math.max(190, Math.min(340, Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.68)))
+          if (process.env.NODE_ENV !== "production") {
+            const nextQrBox = `${edge}x${edge}`
+            setDevScannerInfo((previous) =>
+              previous.qrbox === nextQrBox ? previous : { ...previous, qrbox: nextQrBox }
+            )
+          }
+          return { width: edge, height: edge }
+        },
+      }
+
       try {
         await scanner.start(
           { facingMode: "environment" },
-          { fps: 10, aspectRatio: 16 / 9 },
-          (decodedText: string) => {
-            if (Date.now() < scanLockUntilRef.current) {
-              return
-            }
-
-            const normalized = decodedText.trim()
-            if (!normalized || normalized === lastRawRef.current) {
-              return
-            }
-
-            lastRawRef.current = normalized
-            lastValidatedTokenRef.current = ""
-            const classification = classifyQrContent(normalized)
-            scanLockUntilRef.current = Date.now() + SCAN_LOCK_MS
-
-            const tone: FeedbackTone =
-              classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
-            const message =
-              classification.type === "member"
-                ? (getTestTokenInfo(classification.token ?? "") ? "TEST-QR ERKANNT" : "MITGLIED ERKANNT")
-                : classification.type === "unknown"
-                  ? "UNBEKANNTER QR-CODE"
-                  : "UNGUELTIGER QR-CODE"
-            showFeedback(tone, message)
-
-            const at = new Intl.DateTimeFormat("de-DE", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: false,
-              timeZone: "Europe/Berlin",
-            }).format(new Date())
-            setLastScan({ classification, at })
-            setValidationError("")
-            setValidationResult(null)
-          },
+          scannerConfig,
+          handleDecoded,
           () => {
             // No-op to avoid noisy "no QR" status updates.
           },
@@ -315,43 +400,8 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
 
         await scanner.start(
           fallbackCamera.id,
-          { fps: 10, aspectRatio: 16 / 9 },
-          (decodedText: string) => {
-            if (Date.now() < scanLockUntilRef.current) {
-              return
-            }
-
-            const normalized = decodedText.trim()
-            if (!normalized || normalized === lastRawRef.current) {
-              return
-            }
-
-            lastRawRef.current = normalized
-            lastValidatedTokenRef.current = ""
-            const classification = classifyQrContent(normalized)
-            scanLockUntilRef.current = Date.now() + SCAN_LOCK_MS
-
-            const tone: FeedbackTone =
-              classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
-            const message =
-              classification.type === "member"
-                ? (getTestTokenInfo(classification.token ?? "") ? "TEST-QR ERKANNT" : "MITGLIED ERKANNT")
-                : classification.type === "unknown"
-                  ? "UNBEKANNTER QR-CODE"
-                  : "UNGUELTIGER QR-CODE"
-            showFeedback(tone, message)
-
-            const at = new Intl.DateTimeFormat("de-DE", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: false,
-              timeZone: "Europe/Berlin",
-            }).format(new Date())
-            setLastScan({ classification, at })
-            setValidationError("")
-            setValidationResult(null)
-          },
+          scannerConfig,
+          handleDecoded,
           () => {
             // No-op to avoid noisy "no QR" status updates.
           },
@@ -367,7 +417,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     } finally {
       setIsStarting(false)
     }
-  }, [isScanning, isStarting, showFeedback, stopScanner])
+  }, [handleDecoded, isScanning, isStarting, stopScanner])
 
   useEffect(() => {
     return () => {
@@ -520,6 +570,18 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
           </div>
         </div>
 
+        <section className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-lg font-black tracking-tight text-white">QR Scanner</h1>
+              <p className="mt-1 text-sm text-slate-300">Read-only-Pruefung ohne Check-in</p>
+            </div>
+            <div className="rounded-full border border-sky-200/20 bg-slate-950/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-100">
+              Version 1.0
+            </div>
+          </div>
+        </section>
+
         <section className="relative w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
           <div className="relative h-[45svh] min-h-[260px] max-h-[50svh] w-full sm:h-[47svh]">
             <div id={READER_ID} className="h-full w-full" />
@@ -598,7 +660,18 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
 
         <section className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-sky-100/10 bg-slate-900/60 p-4">
           <h2 className="text-sm font-bold uppercase tracking-wide text-sky-100/90">Scanner-Informationen</h2>
-          <p className="mt-1 text-xs text-slate-300">Noch kein Check-in ausgeloest</p>
+          <p className="mt-1 text-xs text-slate-300">Nur lesende QR-Pruefung, keine Check-in-Ausloesung.</p>
+          <p className="mt-1 text-xs text-slate-400">Tipp: QR-Code ruhig und vollstaendig im Rahmen halten.</p>
+          {process.env.NODE_ENV !== "production" ? (
+            <div className="mt-2 rounded-xl border border-sky-300/20 bg-slate-950/60 px-3 py-2 text-xs text-slate-200">
+              <div className="font-semibold text-sky-100">DEV Scanner-Profil</div>
+              <div className="mt-1">iOS erkannt: {devScannerInfo.isIPhoneLike ? "ja" : "nein"}</div>
+              <div>fps: {devScannerInfo.fps}</div>
+              <div>aspectRatio: {devScannerInfo.aspectRatio}</div>
+              <div>qrbox: {devScannerInfo.qrbox}</div>
+              <div>letzter Decode: {devScannerInfo.lastDecodeAt}</div>
+            </div>
+          ) : null}
 
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-3 sm:col-span-2">
