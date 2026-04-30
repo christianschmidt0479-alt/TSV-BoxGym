@@ -674,37 +674,26 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     : "-"
   const memberSource = validationResult
     ? validationResult.source === "simulation"
-      ? "Test (Lokale Simulation)"
-      : "Read-only API"
+      ? "Test"
+      : "API"
+    : "-"
+  const rawPreview = lastScan?.classification.raw
+    ? lastScan.classification.raw.length > 44
+      ? `${lastScan.classification.raw.slice(0, 26)}...${lastScan.classification.raw.slice(-12)}`
+      : lastScan.classification.raw
     : "-"
   const needsCameraPermission = isCameraAccessRequired(errorText)
 
   return (
     <div className="fixed inset-0 z-[80] h-[100svh] w-screen overflow-hidden bg-gradient-to-b from-[#061421] via-[#0a1f33] to-[#0d1723] text-white">
       <div className="mx-auto flex h-full w-full max-w-[860px] flex-col px-3 pb-3 pt-[max(env(safe-area-inset-top),10px)] sm:px-4">
-        <div className="mb-2 flex items-center justify-between px-1 text-xs">
-          <div className="rounded-full border border-sky-200/20 bg-slate-900/70 px-3 py-1.5 font-semibold text-slate-100">
-            Kamera: {isScanning ? "aktiv" : "aus"}
-          </div>
-          <div className="rounded-full border border-sky-200/20 bg-slate-900/70 px-3 py-1.5 text-slate-200">
-            Status: {lastStatusText}
-          </div>
-        </div>
-
-        <section className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-white">QR Scanner</h1>
-              <p className="mt-1 text-sm text-slate-300">Read-only-Pruefung ohne Check-in</p>
-            </div>
-            <div className="rounded-full border border-sky-200/20 bg-slate-950/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-100">
-              Version 1.0
-            </div>
-          </div>
+        <section className="rounded-2xl border border-sky-100/10 bg-slate-900/60 px-3 py-2">
+          <h1 className="text-base font-black tracking-tight text-white sm:text-lg">QR Scanner</h1>
         </section>
 
-        <section className="relative w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
-          <div className="relative aspect-square min-h-[240px] max-h-[320px] w-full max-w-[320px] overflow-hidden sm:min-h-[260px]">
+        <section className="relative mt-2 w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
+          <div className="flex w-full items-center justify-center py-2">
+            <div className="relative aspect-square h-[clamp(260px,34svh,300px)] w-[clamp(260px,34svh,300px)] max-h-[320px] max-w-[320px] overflow-hidden rounded-2xl">
             <div id={READER_ID} className="h-full w-full" />
 
             <div className="pointer-events-none absolute inset-0">
@@ -743,13 +732,10 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 <button
                   type="button"
                   onClick={() => { void startScanner() }}
-                  className="rounded-2xl bg-[#0f5f9b] px-8 py-4 text-lg font-bold text-white shadow-xl transition hover:bg-[#0c4f82] active:scale-95"
+                  className="rounded-xl bg-[#0f5f9b] px-6 py-3 text-base font-bold text-white shadow-xl transition hover:bg-[#0c4f82] active:scale-95"
                 >
                   Scanner starten
                 </button>
-                <p className="mt-3 px-6 text-center text-xs text-slate-400">
-                  Auf iPhone: Kamera startet erst nach Button-Klick.
-                </p>
               </div>
             )}
 
@@ -768,16 +754,17 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 </button>
               </div>
             )}
+            </div>
           </div>
 
-          <div className={`grid gap-2 border-t border-sky-100/10 bg-slate-900/75 p-3 ${torchSupported || availableCameras.length > 1 ? "grid-cols-4" : "grid-cols-2"}`}>
+          <div className="flex flex-wrap items-center justify-center gap-2 border-t border-sky-100/10 bg-slate-900/75 p-2">
             <button
               type="button"
               onClick={() => {
                 void startScanner()
               }}
               disabled={isStarting || isScanning}
-              className="h-12 rounded-xl bg-[#0f5f9b] px-4 text-base font-bold text-white transition hover:bg-[#0c4f82] disabled:cursor-not-allowed disabled:bg-[#365f7b]"
+              className="h-10 rounded-lg bg-[#0f5f9b] px-4 text-sm font-bold text-white transition hover:bg-[#0c4f82] disabled:cursor-not-allowed disabled:bg-[#365f7b]"
             >
               {isStarting ? "Starte..." : "Start"}
             </button>
@@ -788,9 +775,18 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 void stopScanner()
               }}
               disabled={!isScanning}
-              className="h-12 rounded-xl bg-slate-700 px-4 text-base font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
+              className="h-10 rounded-lg bg-slate-700 px-4 text-sm font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
             >
               Stop
+            </button>
+
+            <button
+              type="button"
+              onClick={resetScan}
+              disabled={!lastScan}
+              className="h-10 rounded-lg bg-slate-700 px-4 text-sm font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
+            >
+              Neuer Scan
             </button>
 
             {torchSupported && (
@@ -801,7 +797,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 }}
                 disabled={!isScanning}
                 title="Licht ein/aus"
-                className={`h-12 rounded-xl px-3 text-sm font-bold transition ${
+                className={`h-10 rounded-lg px-3 text-sm font-bold transition ${
                   torchOn
                     ? "bg-yellow-500 text-yellow-900 hover:bg-yellow-400"
                     : "bg-slate-600 text-white hover:bg-slate-500"
@@ -817,7 +813,7 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
                 onClick={() => { void switchCamera() }}
                 disabled={!isScanning || isStarting}
                 title={`Aktiv: ${activeCameraLabel}`}
-                className="h-12 truncate rounded-xl bg-slate-600 px-3 text-sm font-bold text-white transition hover:bg-slate-500 disabled:cursor-not-allowed disabled:bg-slate-800"
+                className="h-10 truncate rounded-lg bg-slate-600 px-3 text-sm font-bold text-white transition hover:bg-slate-500 disabled:cursor-not-allowed disabled:bg-slate-800"
               >
                 Kamera ↔
               </button>
@@ -825,89 +821,51 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
           </div>
         </section>
 
-        <section className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-sky-100/10 bg-slate-900/60 p-4">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-sky-100/90">Scanner-Informationen</h2>
-          <p className="mt-1 text-xs text-slate-300">Nur lesende QR-Pruefung, keine Check-in-Ausloesung.</p>
-          <p className="mt-1 text-xs text-slate-400">Tipp: QR-Code ruhig und vollstaendig im Rahmen halten.</p>
-          {process.env.NODE_ENV !== "production" ? (
-            <div className="mt-2 rounded-xl border border-sky-300/20 bg-slate-950/60 px-3 py-2 text-xs text-slate-200">
-              <div className="font-semibold text-sky-100">DEV Scanner-Profil</div>
-              <div className="mt-1">iOS erkannt: {devScannerInfo.isIPhoneLike ? "ja" : "nein"}</div>
-              <div>fps: {devScannerInfo.fps}</div>
-              <div>aspectRatio: {devScannerInfo.aspectRatio}</div>
-              <div>qrbox: {devScannerInfo.qrbox}</div>
-              <div>letzter Decode: {devScannerInfo.lastDecodeAt}</div>
-              <div>aktive Kamera: {devScannerInfo.activeCamera}</div>
-              {devScannerInfo.cameras.length > 0 && (
-                <div className="mt-1">
-                  <div className="font-semibold text-sky-200">Verfügbare Kameras ({devScannerInfo.cameras.length}):</div>
-                  {devScannerInfo.cameras.map((label, i) => (
-                    <div key={i} className="ml-2 truncate text-slate-300">{i + 1}. {label}</div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
+        <section className="mt-2 rounded-2xl border border-sky-100/10 bg-slate-900/60 p-2.5">
+          <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-wide text-sky-200/80">Name</div>
+            <div className="mt-0.5 text-lg font-black tracking-tight text-white sm:text-xl">{memberName}</div>
+          </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-            <div className="rounded-xl border border-sky-200/20 bg-gradient-to-r from-sky-950/60 to-slate-950/70 px-3 py-3 sm:col-span-2">
-              <div className="text-xs uppercase tracking-wide text-sky-200/80">Erkannter Nutzer</div>
-              <div className="mt-1 text-xl font-black tracking-tight text-white">{memberName}</div>
+          <div className="mt-2 grid grid-cols-2 gap-1.5 text-sm">
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Gruppe</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{memberGroup}</div>
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Scanstatus</div>
-              <div className="mt-1 font-semibold text-slate-100">{lastStatusText}</div>
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Status</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{validationLoading ? "Pruefung laeuft..." : memberStatus}</div>
+              {validationError && <div className="mt-0.5 text-[11px] text-red-300">{validationError}</div>}
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Letzter Scan</div>
-              <div className="mt-1 font-semibold text-slate-100">{lastScan?.at || "-"}</div>
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">QR-Typ</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{latestScanType}</div>
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">QR-Typ</div>
-              <div className="mt-1 font-semibold text-slate-100">{latestScanType}</div>
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Quelle</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{memberSource}</div>
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Quelle</div>
-              <div className="mt-1 font-semibold text-slate-100">{memberSource}</div>
+            <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Zeit</div>
+              <div className="mt-0.5 font-semibold text-slate-100">{lastScan?.at || "-"}</div>
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Rohwert</div>
-              <div className="mt-1 break-all text-slate-100">{lastScan?.classification.raw || "-"}</div>
+            <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Token</div>
+              <div className="mt-0.5 truncate text-sm font-semibold text-slate-100">{lastScan?.classification.token ? shortenToken(lastScan.classification.token) : "-"}</div>
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Token</div>
-              <div className="mt-1 break-all text-slate-100">{lastScan?.classification.token ? shortenToken(lastScan.classification.token) : "-"}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Gruppe</div>
-              <div className="mt-1 font-semibold text-slate-100">{memberGroup}</div>
-            </div>
-
-            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">Status</div>
-              <div className="mt-1 font-semibold text-slate-100">{validationLoading ? "Pruefung laeuft..." : memberStatus}</div>
-              {validationError && <div className="mt-1 text-xs text-red-300">{validationError}</div>}
+            <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">Rohwert</div>
+              <div className="mt-0.5 truncate text-xs text-slate-300">{rawPreview}</div>
             </div>
           </div>
-          
-          {lastScan && (
-            <div className="mt-3">
-              <button
-                type="button"
-                onClick={resetScan}
-                className="w-full rounded-lg bg-slate-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-600"
-              >
-                Neuer Scan
-              </button>
-            </div>
-          )}
+
+          <p className="mt-2 text-center text-[10px] text-slate-400">Nur Anzeige, kein Check-in.</p>
         </section>
       </div>
 

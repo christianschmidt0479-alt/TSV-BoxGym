@@ -38,20 +38,78 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: "Invalid request" }), { status: 400 })
     }
 
-    const { page = 1, pageSize = 10 } = body as { page?: number; pageSize?: number }
+    const {
+      page = 1,
+      pageSize = 10,
+      fields,
+      summaryOnly = false,
+      includeTodayTotal = true,
+    } = body as {
+      page?: number
+      pageSize?: number
+      fields?: string[]
+      summaryOnly?: boolean
+      includeTodayTotal?: boolean
+    }
     const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
     const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : 10
     const from = (safePage - 1) * safePageSize
     const to = from + safePageSize - 1
+
+    const allowedFields = new Set([
+      "id",
+      "name",
+      "first_name",
+      "last_name",
+      "email",
+      "base_group",
+      "office_list_group",
+      "is_trial",
+      "is_approved",
+      "email_verified",
+      "member_phase",
+      "created_at",
+    ])
+
+    const selectedFields = Array.isArray(fields)
+      ? Array.from(new Set(fields.filter((value) => allowedFields.has(value))))
+      : []
+
+    if (!selectedFields.includes("id")) {
+      selectedFields.unshift("id")
+    }
+
+    const selectColumns = selectedFields.length > 0
+      ? selectedFields.join(", ")
+      : "id, name, first_name, last_name, email, base_group, office_list_group, is_trial, is_approved, email_verified, member_phase, created_at"
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
+    if (summaryOnly) {
+      const [membersCountResult, pendingCountResult] = await Promise.all([
+        supabase.from("members").select("id", { count: "exact", head: true }),
+        supabase.from("members").select("id", { count: "exact", head: true }).eq("is_approved", false),
+      ])
+
+      if (membersCountResult.error || pendingCountResult.error) {
+        console.error("SUPABASE ERROR:", membersCountResult.error ?? pendingCountResult.error)
+        return new Response(JSON.stringify({ error: true }), { status: 500 })
+      }
+
+      return new Response(JSON.stringify({
+        data: [],
+        total: membersCountResult.count ?? 0,
+        totalTodayCount: 0,
+        pendingCount: pendingCountResult.count ?? 0,
+      }), { status: 200 })
+    }
+
     const { data: members, error, count } = await supabase
       .from("members")
-      .select("id, name, first_name, last_name, email, base_group, office_list_group, is_trial, is_approved, email_verified, member_phase, created_at", { count: "exact" })
+      .select(selectColumns, { count: "exact" })
       .range(from, to)
 
     if (error) {
@@ -59,7 +117,12 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: true }), { status: 500 })
     }
 
-    const memberIds = (members ?? []).map((member) => member.id).filter((id) => typeof id === "string" && id.length > 0)
+    const membersList = ((members ?? []) as unknown as Array<Record<string, unknown>>)
+      .filter((member): member is Record<string, unknown> & { id: string } =>
+        typeof member.id === "string" && member.id.length > 0
+      )
+
+    const memberIds = membersList.map((member) => member.id)
 
     const checkinCountByMemberId = new Map<string, number>()
     const checkedInTodayByMemberId = new Set<string>()
@@ -69,7 +132,9 @@ export async function POST(req: Request) {
       memberIds.length > 0
         ? supabase.from("checkins").select("member_id, date, created_at").in("member_id", memberIds)
         : Promise.resolve({ data: [] as { member_id: string | null; date: string | null; created_at: string | null }[], error: null }),
-      supabase.from("checkins").select("member_id").eq("date", todayBerlin),
+      includeTodayTotal
+        ? supabase.from("checkins").select("member_id").eq("date", todayBerlin)
+        : Promise.resolve({ data: [] as { member_id: string | null }[], error: null }),
       supabase.from("members").select("id", { count: "exact", head: true }).eq("is_approved", false),
     ])
 
@@ -92,7 +157,7 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: true }), { status: 500 })
     }
 
-    const withCheckinCounts = (members ?? []).map((member) => ({
+    const withCheckinCounts = membersList.map((member) => ({
       ...member,
       checkinCount: checkinCountByMemberId.get(member.id) ?? 0,
       checkedInToday: checkedInTodayByMemberId.has(member.id),

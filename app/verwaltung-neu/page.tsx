@@ -36,26 +36,14 @@ export default function DashboardPage() {
     const controller = new AbortController()
 
     async function loadDashboard() {
-      // All three requests fire in parallel on mount to avoid waterfall latency.
-      const [membersRes, checkinsRes, settingsRes] = await Promise.all([
-        fetch("/api/admin/get-members", {
-          method: "POST",
-          credentials: "include",
-          signal: controller.signal,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ page: 1, pageSize: 1, fields: ["id", "member_phase", "is_approved", "is_trial"] }),
-        }),
-        fetch("/api/admin/checkins?scope=today", {
-          method: "GET",
-          credentials: "include",
-          signal: controller.signal,
-        }),
-        fetch("/api/admin/checkin-settings", {
-          method: "GET",
-          credentials: "include",
-          signal: controller.signal,
-        }),
-      ])
+      // Prioritize KPI tiles for faster first usable render.
+      const membersRes = await fetch("/api/admin/get-members", {
+        method: "POST",
+        credentials: "include",
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summaryOnly: true }),
+      })
 
       if (membersRes.ok) {
         const result = (await membersRes.json()) as { total?: number; pendingCount?: number }
@@ -63,25 +51,45 @@ export default function DashboardPage() {
         setPendingApprovals(result.pendingCount ?? 0)
       }
 
-      if (checkinsRes.ok) {
-        const result = (await checkinsRes.json()) as AdminCheckinsResponse
-        setTodayCheckins(Array.isArray(result.todayRows) ? result.todayRows : [])
-      } else {
-        setTodayCheckins([])
-      }
-      setLoadingTodayCheckins(false)
+      // Defer non-critical dashboard sections by one frame.
+      requestAnimationFrame(() => {
+        void Promise.allSettled([
+          (async () => {
+            const checkinsRes = await fetch("/api/admin/checkins?scope=today&compact=1&limit=40", {
+              method: "GET",
+              credentials: "include",
+              signal: controller.signal,
+            })
 
-      if (settingsRes.ok) {
-        const result = (await settingsRes.json()) as {
-          disableCheckinTimeWindow?: boolean
-          disableNormalCheckinTimeWindow?: boolean
-        }
-        setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
-        setDisableNormalCheckinTimeWindow(Boolean(result.disableNormalCheckinTimeWindow))
-      } else {
-        setCheckinSettingsError("Check-in Einstellungen konnten nicht geladen werden.")
-      }
-      setCheckinSettingsLoading(false)
+            if (checkinsRes.ok) {
+              const result = (await checkinsRes.json()) as AdminCheckinsResponse
+              setTodayCheckins(Array.isArray(result.todayRows) ? result.todayRows : [])
+            } else {
+              setTodayCheckins([])
+            }
+            setLoadingTodayCheckins(false)
+          })(),
+          (async () => {
+            const settingsRes = await fetch("/api/admin/checkin-settings", {
+              method: "GET",
+              credentials: "include",
+              signal: controller.signal,
+            })
+
+            if (settingsRes.ok) {
+              const result = (await settingsRes.json()) as {
+                disableCheckinTimeWindow?: boolean
+                disableNormalCheckinTimeWindow?: boolean
+              }
+              setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
+              setDisableNormalCheckinTimeWindow(Boolean(result.disableNormalCheckinTimeWindow))
+            } else {
+              setCheckinSettingsError("Check-in Einstellungen konnten nicht geladen werden.")
+            }
+            setCheckinSettingsLoading(false)
+          })(),
+        ])
+      })
     }
 
     void loadDashboard().catch((error: unknown) => {

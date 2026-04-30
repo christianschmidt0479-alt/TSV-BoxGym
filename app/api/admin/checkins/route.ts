@@ -25,10 +25,20 @@ export async function GET(request: Request) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
-    const scope = new URL(request.url).searchParams.get("scope")
+    const searchParams = new URL(request.url).searchParams
+    const scope = searchParams.get("scope")
+    const compact = searchParams.get("compact") === "1"
+    const rawLimit = Number.parseInt(searchParams.get("limit") ?? "", 10)
     const todayOnly = scope === "today"
     const todayIsoDate = getTodayIsoDateInBerlin()
     const { startIso, endIso } = getBerlinDayRangeUtc()
+    const queryLimit = Number.isFinite(rawLimit)
+      ? Math.max(1, Math.min(rawLimit, todayOnly ? 200 : 100))
+      : todayOnly
+        ? compact
+          ? 40
+          : 200
+        : 100
 
     const supabase = getServerSupabase()
     let query = supabase
@@ -50,13 +60,32 @@ export async function GET(request: Request) {
         )
       `)
 
+    if (todayOnly && compact) {
+      query = supabase
+        .from("checkins")
+        .select(`
+          id,
+          member_id,
+          group_name,
+          date,
+          time,
+          created_at,
+          members(
+            name,
+            first_name,
+            last_name,
+            is_trial
+          )
+        `)
+    }
+
     if (todayOnly) {
       query = query.or(`date.eq.${todayIsoDate},and(created_at.gte.${startIso},created_at.lte.${endIso})`)
     }
 
     const response = await query
       .order("created_at", { ascending: false })
-      .limit(todayOnly ? 200 : 100)
+      .limit(queryLimit)
 
     if (response.error) throw response.error
 
