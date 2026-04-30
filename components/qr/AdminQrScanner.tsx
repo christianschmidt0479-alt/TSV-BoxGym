@@ -22,9 +22,9 @@ type Html5QrcodeInstance = {
 
 const READER_ID = "verwaltung-tools-scanner-reader"
 const CAMERA_FPS = 14
-const CAMERA_ASPECT_RATIO = 16 / 9
-const SCAN_LOCK_MS = 700
-const SCAN_DEDUPE_MS = 1800
+const CAMERA_ASPECT_RATIO = 1
+const SCAN_LOCK_MS = 400
+const SCAN_DEDUPE_MS = 800
 const FEEDBACK_VISIBLE_MS = 1200
 
 type QrClassificationType = "member" | "unknown" | "invalid"
@@ -292,16 +292,18 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
 
   const handleDecoded = useCallback((decodedText: string) => {
     const now = Date.now()
-    if (now < scanLockUntilRef.current) {
-      return
-    }
-
     const normalized = decodedText.trim()
     if (!normalized) {
       return
     }
 
-    if (normalized === lastRawRef.current && now - lastRawAtRef.current < SCAN_DEDUPE_MS) {
+    const isSameQr = normalized === lastRawRef.current
+
+    if (isSameQr && now < scanLockUntilRef.current) {
+      return
+    }
+
+    if (isSameQr && now - lastRawAtRef.current < SCAN_DEDUPE_MS) {
       return
     }
 
@@ -667,16 +669,16 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
         </section>
 
         <section className="relative w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
-          <div className="relative h-[45svh] min-h-[260px] max-h-[50svh] w-full sm:h-[47svh]">
+          <div className="relative aspect-square min-h-[280px] max-h-[420px] w-full max-w-[420px] overflow-hidden sm:min-h-[320px]">
             <div id={READER_ID} className="h-full w-full" />
 
             <div className="pointer-events-none absolute inset-0">
-              <div className="absolute left-0 top-0 h-[20%] w-full bg-black/40" />
-              <div className="absolute bottom-0 left-0 h-[22%] w-full bg-black/40" />
-              <div className="absolute left-0 top-[20%] h-[58%] w-[12%] bg-black/40" />
-              <div className="absolute right-0 top-[20%] h-[58%] w-[12%] bg-black/40" />
+              <div className="absolute left-0 top-0 h-[13%] w-full bg-black/40" />
+              <div className="absolute bottom-0 left-0 h-[13%] w-full bg-black/40" />
+              <div className="absolute left-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
+              <div className="absolute right-0 top-[13%] h-[74%] w-[13%] bg-black/40" />
 
-              <div className="absolute left-1/2 top-[49%] h-[28svh] w-[60vw] max-h-[250px] max-w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
+              <div className="absolute left-1/2 top-1/2 aspect-square h-[72%] max-h-[300px] w-[72%] max-w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-[24px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
                 <div className="absolute inset-x-6 top-1/2 h-[2px] -translate-y-1/2 animate-pulse bg-sky-100/80" />
               </div>
             </div>
