@@ -23,6 +23,24 @@ test.describe("public production smoke", () => {
     await expect(page).toHaveURL(/\/trainer-zugang$/)
   })
 
+  test("registration pages are reachable and render forms", async ({ page }) => {
+    await page.goto("/registrieren/mitglied")
+    await expect(page.getByRole("heading", { name: /Mitglied|Registrier/i }).first()).toBeVisible()
+
+    await page.goto("/registrieren/probe")
+    await expect(page.getByRole("heading", { name: /Probetraining|Probe|Registrier/i }).first()).toBeVisible()
+  })
+
+  test("member area login page is reachable", async ({ page }) => {
+    await page.goto("/mein-bereich/login")
+    await expect(page.getByRole("heading", { name: /Login|Anmelden|Mein Bereich/i }).first()).toBeVisible()
+  })
+
+  test("trainer-zugang is reachable", async ({ page }) => {
+    await page.goto("/trainer-zugang")
+    await expect(page.locator('input[type="email"], input[type="text"]').first()).toBeVisible()
+  })
+
   test("public APIs respond with expected smoke-test statuses", async ({ request }) => {
     const settingsResponse = await request.get("/api/public/checkin-settings")
     expect(settingsResponse.ok()).toBeTruthy()
@@ -56,5 +74,9 @@ test.describe("public production smoke", () => {
 
     const emptyTrialCheckinResponse = await postJson(request, "/api/public/trial-checkin", {})
     expect(emptyTrialCheckinResponse.status()).toBe(403)
+
+    // Registration API: missing/invalid body must not produce 500
+    const emptyRegisterResponse = await postJson(request, "/api/public/member-register", {})
+    expect([400, 403]).toContain(emptyRegisterResponse.status())
   })
 })

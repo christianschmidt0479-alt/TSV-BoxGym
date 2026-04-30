@@ -35,101 +35,63 @@ export default function DashboardPage() {
   useEffect(() => {
     const controller = new AbortController()
 
-    async function load() {
-      const res = await fetch("/api/admin/get-members", {
-        method: "POST",
-        credentials: "include",
-        signal: controller.signal,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page: 1, pageSize: 1 }),
-      })
-      if (!res.ok) return
-
-      const result = await res.json()
-      setTotalMembers(result.total ?? 0)
-      setPendingApprovals(result.pendingCount ?? 0)
-    }
-
-    void load().catch((error: unknown) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        return
-      }
-    })
-
-    return () => {
-      controller.abort()
-    }
-  }, [])
-
-  useEffect(() => {
-    const controller = new AbortController()
-
-    async function loadTodayCheckins() {
-      try {
-        setLoadingTodayCheckins(true)
-        const response = await fetch("/api/admin/checkins", {
+    async function loadDashboard() {
+      // All three requests fire in parallel on mount to avoid waterfall latency.
+      const [membersRes, checkinsRes, settingsRes] = await Promise.all([
+        fetch("/api/admin/get-members", {
+          method: "POST",
+          credentials: "include",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ page: 1, pageSize: 1 }),
+        }),
+        fetch("/api/admin/checkins", {
           method: "GET",
           credentials: "include",
           signal: controller.signal,
-        })
+        }),
+        fetch("/api/admin/checkin-settings", {
+          method: "GET",
+          credentials: "include",
+          signal: controller.signal,
+        }),
+      ])
 
-        if (!response.ok) {
-          setTodayCheckins([])
-          return
-        }
+      if (membersRes.ok) {
+        const result = (await membersRes.json()) as { total?: number; pendingCount?: number }
+        setTotalMembers(result.total ?? 0)
+        setPendingApprovals(result.pendingCount ?? 0)
+      }
 
-        const result = (await response.json()) as AdminCheckinsResponse
+      if (checkinsRes.ok) {
+        const result = (await checkinsRes.json()) as AdminCheckinsResponse
         setTodayCheckins(Array.isArray(result.todayRows) ? result.todayRows : [])
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return
-        }
+      } else {
         setTodayCheckins([])
-      } finally {
-        setLoadingTodayCheckins(false)
       }
-    }
+      setLoadingTodayCheckins(false)
 
-    void loadTodayCheckins()
-
-    return () => {
-      controller.abort()
-    }
-  }, [])
-
-  useEffect(() => {
-    const controller = new AbortController()
-
-    async function loadCheckinSettings() {
-      try {
-        const response = await fetch("/api/admin/checkin-settings", {
-          method: "GET",
-          credentials: "include",
-          signal: controller.signal,
-        })
-
-        if (!response.ok) {
-          setCheckinSettingsError("Check-in Einstellungen konnten nicht geladen werden.")
-          return
-        }
-
-        const result = (await response.json()) as {
+      if (settingsRes.ok) {
+        const result = (await settingsRes.json()) as {
           disableCheckinTimeWindow?: boolean
           disableNormalCheckinTimeWindow?: boolean
         }
         setDisableCheckinTimeWindow(Boolean(result.disableCheckinTimeWindow))
         setDisableNormalCheckinTimeWindow(Boolean(result.disableNormalCheckinTimeWindow))
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return
-        }
+      } else {
         setCheckinSettingsError("Check-in Einstellungen konnten nicht geladen werden.")
-      } finally {
-        setCheckinSettingsLoading(false)
       }
+      setCheckinSettingsLoading(false)
     }
 
-    void loadCheckinSettings()
+    void loadDashboard().catch((error: unknown) => {
+      if (error instanceof Error && error.name === "AbortError") {
+        return
+      }
+      setTodayCheckins([])
+      setLoadingTodayCheckins(false)
+      setCheckinSettingsLoading(false)
+    })
 
     return () => {
       controller.abort()

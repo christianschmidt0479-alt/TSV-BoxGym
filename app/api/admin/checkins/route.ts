@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         )
       `)
       .order("created_at", { ascending: false })
-      .limit(500)
+      .limit(100)
 
     if (response.error) throw response.error
 
