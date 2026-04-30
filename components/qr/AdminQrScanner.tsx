@@ -209,7 +209,6 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const autoStartAttemptedRef = useRef(false)
-  const activeCameraIdRef = useRef<string | null>(null)
 
   const [isStarting, setIsStarting] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
@@ -226,8 +225,6 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     tone: FeedbackTone
     message: string
   } | null>(null)
-  const [availableCameras, setAvailableCameras] = useState<Array<{ id: string; label: string }>>([])
-  const [activeCameraLabel, setActiveCameraLabel] = useState("-")
   const [torchSupported, setTorchSupported] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
   const [viewportHeight, setViewportHeight] = useState<number | null>(null)
@@ -243,16 +240,12 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
     aspectRatio: string
     qrbox: string
     lastDecodeAt: string
-    cameras: string[]
-    activeCamera: string
   }>({
     isIPhoneLike: false,
     fps: CAMERA_FPS,
     aspectRatio: `${CAMERA_ASPECT_RATIO.toFixed(2)}`,
     qrbox: "-",
     lastDecodeAt: "-",
-    cameras: [],
-    activeCamera: "-",
   })
 
   const playBeep = useCallback((tone: FeedbackTone) => {
@@ -447,80 +440,30 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       if (typeof getCamerasStatic === "function") {
         try {
           cameras = await getCamerasStatic()
-          setAvailableCameras(cameras)
-          if (process.env.NODE_ENV !== "production") {
-            setDevScannerInfo((previous) => ({
-              ...previous,
-              cameras: cameras.map((c) => c.label || c.id),
-            }))
-          }
         } catch {
           // Camera enumeration may fail; continue with facingMode fallbacks.
         }
       }
 
-      // Check localStorage for a previously chosen camera.
-      const savedCameraId =
-        typeof localStorage !== "undefined" ? localStorage.getItem("admin-scanner-camera-id") : null
-      const savedCamera = savedCameraId ? cameras.find((c) => c.id === savedCameraId) : null
-
       let started = false
-      let startedLabel = "-"
 
-      // 1. Preferred camera from localStorage (user switched manually before).
-      if (!started && savedCamera) {
-        try {
-          await scanner.start(savedCamera.id, scannerConfig, handleDecoded, () => {})
-          started = true
-          startedLabel = savedCamera.label || savedCamera.id
-          activeCameraIdRef.current = savedCamera.id
-        } catch {
-          // Saved camera unavailable; try next fallback.
-        }
-      }
-
-      // 2. Exact facingMode constraint (most reliable on iPhone for true rear camera).
-      if (!started) {
-        try {
-          await scanner.start({ facingMode: { exact: "environment" } }, scannerConfig, handleDecoded, () => {})
-          started = true
-          startedLabel = "Rückkamera (exact)"
-          activeCameraIdRef.current = null      
-      // Check torch support.
-      try {
-        const track = (scanner as any).getRunningTrack?.()
-        const caps = track?.getCapabilities?.()
-        if (caps?.torch) {
-          setTorchSupported(true)
-        }
-      } catch {
-        // Torch check failed; continue.
-      }        } catch {
-          // exact constraint rejected by browser; fall through.
-        }
-      }
-
-      // 3. Loose facingMode: "environment" fallback.
+      // 1. Preferred start is always the rear camera via facingMode.
       if (!started) {
         try {
           await scanner.start({ facingMode: "environment" }, scannerConfig, handleDecoded, () => {})
           started = true
-          startedLabel = "Rückkamera"
-          activeCameraIdRef.current = null
         } catch {
-          // facingMode "environment" failed; fall through.
+          // facingMode rejected by browser; fall through to device fallback.
         }
       }
 
-      // 4. Back camera by label from getCameras(), then first available.
+      // 2. Silent fallback to detected cameras when environment is unavailable.
       if (!started && cameras.length > 0) {
         const backCamera =
           cameras.find((c) => /back|rear|environment/i.test(c.label)) ?? cameras[0]
         try {
           await scanner.start(backCamera.id, scannerConfig, handleDecoded, () => {})
           started = true
-          startedLabel = backCamera.label || backCamera.id
-          activeCameraIdRef.current = backCamera.id
         } catch {
           // All fallbacks exhausted.
         }
@@ -530,10 +473,14 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
         throw new Error("No camera available")
       }
 
-      setActiveCameraLabel(startedLabel)
-      if (process.env.NODE_ENV !== "production") {
-        setDevScannerInfo((previous) => ({ ...previous, activeCamera: startedLabel }))
+      try {
+        const track = (scanner as any).getRunningTrack?.()
+        const caps = track?.getCapabilities?.()
+        setTorchSupported(Boolean(caps?.torch))
+      } catch {
+        setTorchSupported(false)
       }
+
       setIsScanning(true)
       setLastStatusText("Kamera aktiv")
     } catch (error) {
@@ -544,24 +491,6 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
       setIsStarting(false)
     }
   }, [handleDecoded, isStarting, stopScanner])
-
-  const switchCamera = useCallback(async () => {
-    if (availableCameras.length < 2 || isStarting) {
-      return
-    }
-
-    const currentId = activeCameraIdRef.current
-    const currentIndex = currentId ? availableCameras.findIndex((c) => c.id === currentId) : -1
-    const nextIndex = (currentIndex + 1) % availableCameras.length
-    const nextCamera = availableCameras[nextIndex]
-
-    // Save preference so startScanner picks it up on restart.
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("admin-scanner-camera-id", nextCamera.id)
-    }
-
-    await startScanner()
-  }, [availableCameras, isStarting, startScanner])
 
   const resetScan = useCallback(() => {
     setLastScan(null)
@@ -1069,17 +998,6 @@ export default function AdminQrScanner({ autoStart }: AdminQrScannerProps) {
               </button>
             )}
 
-            {availableCameras.length > 1 && (
-              <button
-                type="button"
-                onClick={() => { void switchCamera() }}
-                disabled={!isScanning || isStarting}
-                title={`Aktiv: ${activeCameraLabel}`}
-                className="h-9 truncate rounded-lg bg-slate-600 px-2.5 text-xs font-bold text-white transition hover:bg-slate-500 disabled:cursor-not-allowed disabled:bg-slate-800"
-              >
-                Kamera ↔
-              </button>
-            )}
           </div>
         </section>
 
