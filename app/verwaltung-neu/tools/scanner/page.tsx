@@ -41,6 +41,8 @@ type MemberValidation = {
 
 type FeedbackTone = "success" | "warning" | "error"
 
+type UiScanType = "Mitglied" | "Unbekannt" | "Ungueltig"
+
 function classifyQrContent(text: string): QrClassification {
   const raw = text.trim()
 
@@ -108,6 +110,18 @@ function mapCameraError(error: unknown) {
   return "Kamera konnte nicht gestartet werden."
 }
 
+function getUiScanType(classification: QrClassification): UiScanType {
+  if (classification.type === "member") {
+    return "Mitglied"
+  }
+
+  if (classification.type === "unknown") {
+    return "Unbekannt"
+  }
+
+  return "Ungueltig"
+}
+
 export default function ToolsScannerPage() {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null)
   const lastRawRef = useRef("")
@@ -169,7 +183,13 @@ export default function ToolsScannerPage() {
     setLastStatusText(message)
 
     if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-      navigator.vibrate(100)
+      if (tone === "success") {
+        navigator.vibrate([80, 40, 80])
+      } else if (tone === "warning") {
+        navigator.vibrate([120])
+      } else {
+        navigator.vibrate([60, 40, 60, 40, 120])
+      }
     }
 
     playBeep(tone)
@@ -247,10 +267,10 @@ export default function ToolsScannerPage() {
               classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
             const message =
               classification.type === "member"
-                ? "MITGLIED ERKANNT"
+                ? (getTestTokenInfo(classification.token ?? "") ? "TEST-QR ERKANNT" : "MITGLIED ERKANNT")
                 : classification.type === "unknown"
-                  ? "UNBEKANNT"
-                  : "UNGUELTIG"
+                  ? "UNBEKANNTER QR-CODE"
+                  : "UNGUELTIGER QR-CODE"
             showFeedback(tone, message)
 
             const at = new Intl.DateTimeFormat("de-DE", {
@@ -305,10 +325,10 @@ export default function ToolsScannerPage() {
               classification.type === "member" ? "success" : classification.type === "unknown" ? "warning" : "error"
             const message =
               classification.type === "member"
-                ? "MITGLIED ERKANNT"
+                ? (getTestTokenInfo(classification.token ?? "") ? "TEST-QR ERKANNT" : "MITGLIED ERKANNT")
                 : classification.type === "unknown"
-                  ? "UNBEKANNT"
-                  : "UNGUELTIG"
+                  ? "UNBEKANNTER QR-CODE"
+                  : "UNGUELTIGER QR-CODE"
             showFeedback(tone, message)
 
             const at = new Intl.DateTimeFormat("de-DE", {
@@ -456,64 +476,74 @@ export default function ToolsScannerPage() {
     }
   }, [lastScan])
 
+  const latestScanType = lastScan ? getUiScanType(lastScan.classification) : "-"
+  const memberName = validationResult?.name || "-"
+  const memberGroup = validationResult?.group || "-"
+  const memberStatus = validationResult
+    ? validationResult.status || (validationResult.found ? "Unbekannt" : "Nicht vorhanden")
+    : "-"
+  const memberSource = validationResult
+    ? validationResult.source === "simulation"
+      ? "Test (Lokale Simulation)"
+      : "Read-only API"
+    : "-"
+
   return (
-    <div className="fixed inset-0 z-[80] h-[100svh] w-screen overflow-hidden bg-black text-white">
-      <div id={READER_ID} className="h-full w-full" />
-
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-0 top-0 h-[22%] w-full bg-black/45" />
-        <div className="absolute bottom-0 left-0 h-[28%] w-full bg-black/45" />
-        <div className="absolute left-0 top-[22%] h-[50%] w-[13%] bg-black/45" />
-        <div className="absolute right-0 top-[22%] h-[50%] w-[13%] bg-black/45" />
-
-        <div className="absolute left-1/2 top-[47%] h-[38svh] w-[74vw] max-w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-3xl border-4 border-white/80 shadow-[0_0_0_2px_rgba(255,255,255,0.2),0_0_40px_rgba(0,0,0,0.5)]">
-          <div className="absolute inset-x-6 top-1/2 h-0.5 -translate-y-1/2 animate-pulse bg-white/90" />
-        </div>
-      </div>
-
-      <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-4 pt-[max(env(safe-area-inset-top),12px)] text-xs">
-        <div className="rounded-full bg-black/55 px-3 py-1 font-semibold">
-          Kamera: {isScanning ? "aktiv" : "aus"}
-        </div>
-        <div className="rounded-full bg-black/55 px-3 py-1">Status: {lastStatusText}</div>
-      </div>
-
-      {feedback && (
-        <div className={`absolute inset-0 z-20 flex items-center justify-center px-6 text-center ${
-          feedback.tone === "success"
-            ? "bg-emerald-500/25"
-            : feedback.tone === "warning"
-              ? "bg-amber-500/28"
-              : "bg-red-600/28"
-        }`}>
-          <div className={`rounded-2xl border px-5 py-4 text-2xl font-black tracking-wide sm:text-3xl ${
-            feedback.tone === "success"
-              ? "border-emerald-200 bg-emerald-100/90 text-emerald-900"
-              : feedback.tone === "warning"
-                ? "border-amber-200 bg-amber-100/90 text-amber-900"
-                : "border-red-200 bg-red-100/90 text-red-900"
-          }`}>
-            {feedback.message}
+    <div className="fixed inset-0 z-[80] h-[100svh] w-screen overflow-hidden bg-gradient-to-b from-[#061421] via-[#0a1f33] to-[#0d1723] text-white">
+      <div className="mx-auto flex h-full w-full max-w-[860px] flex-col px-3 pb-3 pt-[max(env(safe-area-inset-top),10px)] sm:px-4">
+        <div className="mb-2 flex items-center justify-between px-1 text-xs">
+          <div className="rounded-full border border-sky-200/20 bg-slate-900/70 px-3 py-1.5 font-semibold text-slate-100">
+            Kamera: {isScanning ? "aktiv" : "aus"}
+          </div>
+          <div className="rounded-full border border-sky-200/20 bg-slate-900/70 px-3 py-1.5 text-slate-200">
+            Status: {lastStatusText}
           </div>
         </div>
-      )}
 
-      {errorText && (
-        <div className="absolute left-4 right-4 top-16 z-20 rounded-xl border border-red-300 bg-red-100/95 px-3 py-2 text-sm font-semibold text-red-800">
-          {errorText}
-        </div>
-      )}
+        <section className="relative w-full overflow-hidden rounded-3xl border border-sky-100/15 bg-slate-950 shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
+          <div className="relative h-[58svh] min-h-[320px] max-h-[62svh] w-full">
+            <div id={READER_ID} className="h-full w-full" />
 
-      <div className="absolute inset-x-0 bottom-0 z-20 px-4 pb-[max(env(safe-area-inset-bottom),14px)]">
-        <div className="rounded-2xl border border-white/20 bg-black/70 p-3 backdrop-blur">
-          <div className="mb-3 grid grid-cols-2 gap-2">
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute left-0 top-0 h-[20%] w-full bg-black/40" />
+              <div className="absolute bottom-0 left-0 h-[22%] w-full bg-black/40" />
+              <div className="absolute left-0 top-[20%] h-[58%] w-[12%] bg-black/40" />
+              <div className="absolute right-0 top-[20%] h-[58%] w-[12%] bg-black/40" />
+
+              <div className="absolute left-1/2 top-[49%] h-[36svh] w-[72vw] max-h-[320px] max-w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] border-[3px] border-sky-100/90 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_32px_rgba(5,20,34,0.8)]">
+                <div className="absolute inset-x-6 top-1/2 h-[2px] -translate-y-1/2 animate-pulse bg-sky-100/80" />
+              </div>
+            </div>
+
+            {feedback && (
+              <div className="absolute left-3 right-3 top-3 z-20">
+                <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg backdrop-blur ${
+                  feedback.tone === "success"
+                    ? "border-emerald-300/60 bg-emerald-500/20 text-emerald-50"
+                    : feedback.tone === "warning"
+                      ? "border-amber-300/60 bg-amber-500/20 text-amber-50"
+                      : "border-rose-300/60 bg-rose-500/20 text-rose-50"
+                }`}>
+                  {feedback.message}
+                </div>
+              </div>
+            )}
+
+            {errorText && (
+              <div className="absolute left-3 right-3 top-16 z-20 rounded-xl border border-red-300/70 bg-red-700/30 px-3 py-2 text-sm font-semibold text-red-100">
+                {errorText}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 border-t border-sky-100/10 bg-slate-900/75 p-3">
             <button
               type="button"
               onClick={() => {
                 void startScanner()
               }}
               disabled={isStarting || isScanning}
-              className="h-12 rounded-xl bg-emerald-600 px-4 text-base font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-900/60"
+              className="h-12 rounded-xl bg-[#0f5f9b] px-4 text-base font-bold text-white transition hover:bg-[#0c4f82] disabled:cursor-not-allowed disabled:bg-[#365f7b]"
             >
               {isStarting ? "Starte..." : "Start"}
             </button>
@@ -524,39 +554,75 @@ export default function ToolsScannerPage() {
                 void stopScanner()
               }}
               disabled={!isScanning}
-              className="h-12 rounded-xl bg-zinc-700 px-4 text-base font-bold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-900/60"
+              className="h-12 rounded-xl bg-slate-700 px-4 text-base font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800"
             >
               Stop
             </button>
           </div>
+        </section>
 
-          {lastScan && (
-            <div className="space-y-1 text-xs text-zinc-200">
-              <div>
-                Typ: {lastScan.classification.type === "member" ? "Mitglied" : lastScan.classification.type === "unknown" ? "Unbekannt" : "Ungueltig"}
-              </div>
-              {lastScan.classification.token && <div>Token: {shortenToken(lastScan.classification.token)}</div>}
-              {validationLoading && <div>Pruefung laeuft...</div>}
-              {validationError && <div className="text-red-300">{validationError}</div>}
-              {validationResult && (
-                <div>
-                  Quelle: {validationResult.source === "simulation" ? "Lokale Simulation" : "Read-only API"}
-                  {" · "}Status: {validationResult.status || (validationResult.found ? "Unbekannt" : "Nicht vorhanden")}
-                </div>
-              )}
+        <section className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-sky-100/10 bg-slate-900/60 p-4">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-sky-100/90">Scanner-Informationen</h2>
+          <p className="mt-1 text-xs text-slate-300">Noch kein Check-in ausgeloest</p>
+
+          <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Scanstatus</div>
+              <div className="mt-1 font-semibold text-slate-100">{lastStatusText}</div>
             </div>
-          )}
-        </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Letzter Scan</div>
+              <div className="mt-1 font-semibold text-slate-100">{lastScan?.at || "-"}</div>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">QR-Typ</div>
+              <div className="mt-1 font-semibold text-slate-100">{latestScanType}</div>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Quelle</div>
+              <div className="mt-1 font-semibold text-slate-100">{memberSource}</div>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Rohwert</div>
+              <div className="mt-1 break-all text-slate-100">{lastScan?.classification.raw || "-"}</div>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Token</div>
+              <div className="mt-1 break-all text-slate-100">{lastScan?.classification.token ? shortenToken(lastScan.classification.token) : "-"}</div>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Name</div>
+              <div className="mt-1 font-semibold text-slate-100">{memberName}</div>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Gruppe</div>
+              <div className="mt-1 font-semibold text-slate-100">{memberGroup}</div>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 sm:col-span-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Status</div>
+              <div className="mt-1 font-semibold text-slate-100">{validationLoading ? "Pruefung laeuft..." : memberStatus}</div>
+              {validationError && <div className="mt-1 text-xs text-red-300">{validationError}</div>}
+            </div>
+          </div>
+        </section>
       </div>
 
       <style jsx global>{`
         #${READER_ID} {
           position: absolute;
           inset: 0;
-          height: 100svh;
-          width: 100vw;
+          height: 100%;
+          width: 100%;
           overflow: hidden;
-          background: #000;
+          background: #02060b;
         }
 
         #${READER_ID} > div {
