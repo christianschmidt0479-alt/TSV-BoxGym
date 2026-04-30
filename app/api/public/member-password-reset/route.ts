@@ -46,6 +46,28 @@ function getMemberDisplayName(member?: Pick<MemberPasswordResetRow, "first_name"
   return `${first} ${last}`.trim() || "TSV BoxGym Mitglied"
 }
 
+function shortMemberId(value: string | null | undefined) {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`
+}
+
+function maskEmail(value: string | null | undefined) {
+  if (!value) return null
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return null
+
+  const [localPart, domainPart] = normalized.split("@")
+  if (!localPart || !domainPart) return "***"
+
+  const localMasked = localPart.length <= 2
+    ? `${localPart[0] ?? "*"}*`
+    : `${localPart[0]}***${localPart[localPart.length - 1]}`
+
+  return `${localMasked}@${domainPart}`
+}
+
 function isMissingPasswordResetColumnError(error: { message?: string; details?: string; code?: string } | null) {
   const message = `${error?.message ?? ""} ${error?.details ?? ""}`.toLowerCase()
   const looksMissingColumn =
@@ -204,8 +226,8 @@ export async function POST(request: Request) {
       if (process.env.NODE_ENV !== "production") {
         console.log("PASSWORD_RESET_MEMBER_FOUND", {
           found: !!(member?.id && member.email) ? "yes" : "no",
-          id: member?.id || null,
-          email: member?.email || null,
+          memberId: shortMemberId(member?.id),
+          emailMasked: maskEmail(member?.email),
           email_verified: member?.email_verified === true ? "yes" : "no"
         })
       }
@@ -217,7 +239,11 @@ export async function POST(request: Request) {
         })
       }
       if (process.env.NODE_ENV !== "production") {
-        console.log("PASSWORD_RESET_ALLOW_UNVERIFIED", { id: member.id, email: member.email, email_verified: member.email_verified === true ? "yes" : "no" })
+        console.log("PASSWORD_RESET_ALLOW_UNVERIFIED", {
+          memberId: shortMemberId(member.id),
+          emailMasked: maskEmail(member.email),
+          email_verified: member.email_verified === true ? "yes" : "no",
+        })
       }
 
       const token = randomBytes(32).toString("hex")
@@ -228,7 +254,10 @@ export async function POST(request: Request) {
       const resetLink = `${baseUrl}/mein-bereich/passwort-zuruecksetzen?token=${encodeURIComponent(token)}`
 
       if (process.env.NODE_ENV !== "production") {
-        console.log("PASSWORD_RESET_MAIL_START", { id: member.id, email: member.email })
+        console.log("PASSWORD_RESET_MAIL_START", {
+          memberId: shortMemberId(member.id),
+          emailMasked: maskEmail(member.email),
+        })
       }
       try {
         // Zentrales, professionelles Template nutzen
@@ -259,7 +288,11 @@ export async function POST(request: Request) {
           errorMsg = String(err);
         }
         if (process.env.NODE_ENV !== "production") {
-          console.error("MAIL_SEND_ERROR", { id: member.id, email: member.email, error: errorMsg })
+          console.error("MAIL_SEND_ERROR", {
+            memberId: shortMemberId(member.id),
+            emailMasked: maskEmail(member.email),
+            error: errorMsg,
+          })
         }
       }
 

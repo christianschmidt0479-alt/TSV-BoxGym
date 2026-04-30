@@ -46,6 +46,24 @@ export default function ToolsPage() {
           </Link>
         </div>
       </section>
+
+      <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900">Passwort-/PIN-Migration</h2>
+            <p className="mt-1 text-sm text-zinc-600">
+              Zeigt nur aggregierte Zaehlwerte zum Migrationsstand. Keine Passwoerter, keine PINs, keine Hashes.
+            </p>
+          </div>
+
+          <Link
+            href="/verwaltung-neu/tools/passwort-migration"
+            className="inline-flex items-center justify-center rounded-lg bg-[#154c83] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0f3f70]"
+          >
+            Auswertung oeffnen
+          </Link>
+        </div>
+      </section>
     </div>
   )
 }
