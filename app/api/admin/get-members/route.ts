@@ -108,13 +108,13 @@ export async function POST(req: Request) {
             )
           )
         )
-      : []
+      : null
 
-    if (!selectedFields.includes("id")) {
+    if (selectedFields && !selectedFields.includes("id")) {
       selectedFields.unshift("id")
     }
 
-    const selectColumns = selectedFields.length > 0
+    const selectColumns = selectedFields && selectedFields.length > 0
       ? selectedFields.join(", ")
       : DEFAULT_MEMBER_SELECT
 
