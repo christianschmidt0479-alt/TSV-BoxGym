@@ -2,7 +2,7 @@
 import React from "react";
 import { handleDeleteMember } from "./deleteMemberAction";
 
-export default function DeleteButton({ memberId }: { memberId: string }) {
+export default function DeleteButton({ memberId, returnTo }: { memberId: string; returnTo?: string }) {
   function onButtonClick(e: React.MouseEvent<HTMLButtonElement>) {
     if (!confirm("Wirklich löschen?")) {
       e.preventDefault();
@@ -11,7 +11,7 @@ export default function DeleteButton({ memberId }: { memberId: string }) {
 
   async function action(formData: FormData) {
     // Ruft die ausgelagerte Server Action auf
-    await handleDeleteMember(memberId);
+    await handleDeleteMember(memberId, returnTo);
   }
 
   return (

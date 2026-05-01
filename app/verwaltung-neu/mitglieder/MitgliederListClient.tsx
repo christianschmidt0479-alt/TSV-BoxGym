@@ -9,6 +9,8 @@ type MemberRow = {
   first_name?: string | null
   last_name?: string | null
   email?: string | null
+  phone?: string | null
+  birthdate?: string | null
   base_group?: string | null
   office_list_status?: string | null
   office_list_group?: string | null
@@ -17,8 +19,16 @@ type MemberRow = {
   is_approved?: boolean | null
   email_verified?: boolean | null
   member_phase?: "trial" | "extended" | "member"
+  created_at?: string | null
   checkinCount?: number
   checkedInToday?: boolean
+}
+
+type MemberListFilters = {
+  search: string
+  groupFilter: string
+  statusFilter: string
+  gsFilter: string
 }
 
 function memberName(member: MemberRow) {
@@ -29,6 +39,13 @@ function memberStatus(member: MemberRow) {
   if (member.is_trial) return "Probemitglied"
   if (!member.is_approved) return "Mitglied - Prüfung offen"
   return "Freigegeben"
+}
+
+function formatShortDate(value?: string | null) {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+  return new Intl.DateTimeFormat("de-DE", { dateStyle: "short" }).format(date)
 }
 
 
@@ -92,13 +109,15 @@ function priorityLabel(m: MemberRow) {
   return p.label
 }
 
-function MemberCard({ m, hasCheckinData }: { m: MemberRow; hasCheckinData: boolean }) {
+function MemberCard({ m, hasCheckinData, currentListUrl }: { m: MemberRow; hasCheckinData: boolean; currentListUrl: string }) {
+  const [showDetails, setShowDetails] = useState(false)
+
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-2">
+    <div className="flex h-full flex-col rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="text-sm font-semibold text-zinc-900">{memberName(m)}</div>
-          <div className="text-xs text-zinc-500">{m.email || "-"}</div>
+          <div className="truncate text-xs text-zinc-500">{m.email || "-"}</div>
           <div className="text-xs text-zinc-600">Gruppe: {m.base_group || "-"}</div>
         </div>
         <div className="flex flex-col items-end gap-1.5">
@@ -115,104 +134,100 @@ function MemberCard({ m, hasCheckinData }: { m: MemberRow; hasCheckinData: boole
         </div>
       </div>
 
-      <div className="text-xs text-zinc-700"><strong>Status:</strong> {memberStatus(m)}</div>
-      {m.base_group === "L-Gruppe" ? <div className="text-xs text-zinc-600">L-Gruppe: Abgleich über Stamm-/Office-Gruppe prüfen.</div> : null}
-
-      <div className="flex flex-wrap gap-2">
-        {hasCheckinData && m.checkedInToday ? (
-          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
-            Heute im Training
-          </span>
-        ) : null}
-        <span className={`text-xs font-semibold ${m.email_verified ? "text-emerald-700" : "text-red-700"}`}>
-          {m.email_verified ? "✔ E-Mail bestätigt" : "⚠ E-Mail nicht bestätigt"}
+      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-700">
+        <span><strong>Status:</strong> {memberStatus(m)}</span>
+        <span className={m.email_verified ? "font-semibold text-emerald-700" : "font-semibold text-red-700"}>
+          {m.email_verified ? "E-Mail ok" : "E-Mail offen"}
         </span>
       </div>
+      {m.base_group === "L-Gruppe" ? <div className="text-xs text-zinc-600">L-Gruppe: Abgleich über Stamm-/Office-Gruppe prüfen.</div> : null}
 
-      {!m.email_verified && (
-        <div className="text-xs font-bold text-orange-800">🆕 Neu / Registrierung unvollständig</div>
-      )}
-      {!m.is_approved && (
-        <div className="text-xs font-semibold text-amber-700">⚠ Mitgliederprüfung offen</div>
-      )}
-      {hasCheckinData && m.email_verified && !m.is_approved && (m.checkinCount ?? 0) >= 5 && (
-        <div className="text-xs font-bold text-blue-700">👉 Empfehlung: Freigabe prüfen</div>
-      )}
-      {m.base_group && m.office_list_group && m.base_group !== m.office_list_group && (
-        <div className="text-xs font-bold text-red-700">⚠ Gruppenabweichung</div>
-      )}
-
-      {hasCheckinData ? (
-        <>
-          <div className={`text-xs font-semibold ${isLastTrainingBeforeBlock(m) ? "text-red-700 font-bold" : "text-zinc-700"}`}>
-            {isLastTrainingBeforeBlock(m) ? "🔥" : ""} <strong>Check-ins:</strong> {m.checkinCount ?? 0} / {limitFor(m)}{isLastTrainingBeforeBlock(m) ? " Trainings" : ""}
-          </div>
-          {isLastTrainingBeforeBlock(m) && (
-            <div className="text-xs font-bold text-red-700">🔴 Letztes Training vor Sperre</div>
-          )}
-          {hasReachedLimit(m) && (
-            <div className="text-xs font-bold text-red-700">Limit erreicht</div>
-          )}
-        </>
+      {showDetails ? (
+        <div className="grid gap-2 border-t border-zinc-100 pt-3 text-xs text-zinc-700 sm:grid-cols-2">
+          <div><strong>Telefon:</strong> {m.phone || "-"}</div>
+          <div><strong>Geburtsdatum:</strong> {formatShortDate(m.birthdate)}</div>
+          <div><strong>E-Mail-Status:</strong> {m.email_verified ? "bestätigt" : "offen"}</div>
+          <div><strong>Office-Gruppe:</strong> {m.office_list_group || "-"}</div>
+          <div><strong>GS geprüft:</strong> {formatShortDate(m.office_list_checked_at)}</div>
+          <div><strong>Angelegt:</strong> {formatShortDate(m.created_at)}</div>
+          {!m.email_verified ? <div className="font-bold text-orange-800">Neu / Registrierung unvollständig</div> : null}
+          {!m.is_approved ? <div className="font-semibold text-amber-700">Mitgliederprüfung offen</div> : null}
+          {m.base_group && m.office_list_group && m.base_group !== m.office_list_group ? <div className="font-bold text-red-700">Gruppenabweichung</div> : null}
+          {hasCheckinData ? (
+            <>
+              <div className={isLastTrainingBeforeBlock(m) ? "font-bold text-red-700" : undefined}>
+                <strong>Check-ins:</strong> {m.checkinCount ?? 0} / {limitFor(m)}
+              </div>
+              <div>
+                {m.checkedInToday ? "Heute im Training" : "Heute nicht im Training"}
+              </div>
+              {hasReachedLimit(m) ? <div className="font-bold text-red-700">Limit erreicht</div> : null}
+              {hasCheckinData && m.email_verified && !m.is_approved && (m.checkinCount ?? 0) >= 5 ? <div className="font-bold text-blue-700">Empfehlung: Freigabe prüfen</div> : null}
+            </>
+          ) : null}
+        </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 pt-1">
-        <Link href={`/verwaltung-neu/mitglieder/${m.id}`}>
+      <div className="mt-auto flex flex-wrap gap-2 pt-2">
+        <Link href={`/verwaltung-neu/mitglieder/${m.id}?returnTo=${encodeURIComponent(currentListUrl)}`}>
           <button type="button" className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-900 transition hover:border-zinc-400">
             Daten ändern
           </button>
         </Link>
+        <button
+          type="button"
+          onClick={() => setShowDetails((value) => !value)}
+          className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-900 transition hover:border-zinc-400"
+        >
+          {showDetails ? "Details verbergen" : "Details anzeigen"}
+        </button>
       </div>
     </div>
   )
 }
 
-export default function MitgliederListClient({ members, totalTodayCount, hasCheckinData = true, onFiltersChanged }: { members: MemberRow[]; totalTodayCount: number; hasCheckinData?: boolean; onFiltersChanged?: () => void }) {
+export default function MitgliederListClient({
+  members,
+  totalTodayCount,
+  hasCheckinData = true,
+  initialSearch,
+  initialGroupFilter,
+  initialStatusFilter,
+  initialGsFilter,
+  currentListUrl,
+  onFiltersChanged,
+}: {
+  members: MemberRow[]
+  totalTodayCount: number
+  hasCheckinData?: boolean
+  initialSearch: string
+  initialGroupFilter: string
+  initialStatusFilter: string
+  initialGsFilter: string
+  currentListUrl: string
+  onFiltersChanged?: (filters: MemberListFilters) => void
+}) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
-  const [searchInput, setSearchInput] = useState("")
-  const [search, setSearch] = useState("")
-  const [groupFilter, setGroupFilter] = useState("all")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [gsFilter, setGsFilter] = useState("all")
+  const [searchInput, setSearchInput] = useState(initialSearch)
+  const [search, setSearch] = useState(initialSearch)
+  const [groupFilter, setGroupFilter] = useState(initialGroupFilter)
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter)
+  const [gsFilter, setGsFilter] = useState(initialGsFilter)
 
   useEffect(() => {
     setLocalMembers(members)
   }, [members])
 
-  const filteredMembers = useMemo(() => {
-    const normalizedSearch = search.toLowerCase().trim()
-
-    return localMembers
-      .filter((m) => {
-        const fullName = memberName(m).toLowerCase()
-        const email = (m.email || "").toLowerCase()
-
-        const matchSearch =
-          normalizedSearch.length < 1 ||
-          fullName.includes(normalizedSearch) ||
-          email.includes(normalizedSearch)
-
-        const matchGroup =
-          groupFilter === "all" || m.base_group === groupFilter
-
-        const matchStatus =
-          statusFilter === "all" ||
-          (statusFilter === "approved" && Boolean(m.is_approved)) ||
-          (statusFilter === "pending" && !m.is_approved)
-
-        const gsStatus =
-          m.office_list_status === "green" || m.office_list_status === "yellow" || m.office_list_status === "red"
-            ? m.office_list_status
-            : "gray"
-
-        const matchGs = gsFilter === "all" || gsStatus === gsFilter
-
-        return matchSearch && matchGroup && matchStatus && matchGs
-      })
-  }, [localMembers, search, groupFilter, statusFilter, gsFilter])
+  useEffect(() => {
+    setSearchInput(initialSearch)
+    setSearch(initialSearch)
+    setGroupFilter(initialGroupFilter)
+    setStatusFilter(initialStatusFilter)
+    setGsFilter(initialGsFilter)
+  }, [initialGsFilter, initialGroupFilter, initialSearch, initialStatusFilter])
 
   const sortedMembers = useMemo(() => {
-    return [...filteredMembers].sort((a, b) => {
+    return [...localMembers].sort((a, b) => {
       const bucketDiff = sortBucket(a) - sortBucket(b)
       if (bucketDiff !== 0) return bucketDiff
 
@@ -221,7 +236,7 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
 
       return memberName(a).localeCompare(memberName(b), "de")
     })
-  }, [filteredMembers])
+  }, [localMembers])
 
   const todayMembers = useMemo(
     () => (hasCheckinData ? sortedMembers.filter((member) => Boolean(member.checkedInToday)) : []),
@@ -243,7 +258,7 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
   function handleSubmitSearch(event: FormEvent) {
     event.preventDefault()
     setSearch(searchInput)
-    onFiltersChanged?.()
+    onFiltersChanged?.({ search: searchInput, groupFilter, statusFilter, gsFilter })
   }
 
   function resetFilters() {
@@ -252,22 +267,22 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
     setGroupFilter("all")
     setStatusFilter("all")
     setGsFilter("all")
-    onFiltersChanged?.()
+    onFiltersChanged?.({ search: "", groupFilter: "all", statusFilter: "all", gsFilter: "all" })
   }
 
   function handleGroupChange(value: string) {
     setGroupFilter(value)
-    onFiltersChanged?.()
+    onFiltersChanged?.({ search, groupFilter: value, statusFilter, gsFilter })
   }
 
   function handleStatusChange(value: string) {
     setStatusFilter(value)
-    onFiltersChanged?.()
+    onFiltersChanged?.({ search, groupFilter, statusFilter: value, gsFilter })
   }
 
   function handleGsChange(value: string) {
     setGsFilter(value)
-    onFiltersChanged?.()
+    onFiltersChanged?.({ search, groupFilter, statusFilter, gsFilter: value })
   }
 
   return (
@@ -348,15 +363,15 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="grid gap-3 lg:grid-cols-2">
         {sortedMembers.length === 0 ? (
-          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 lg:col-span-2">
             {hasActiveFilters
-              ? "Keine Treffer auf dieser Seite. Bitte Filter löschen oder zur ersten Seite wechseln."
+              ? "Keine Treffer für die aktuelle Suche/Filterkombination."
               : "Auf dieser Seite sind aktuell keine Mitglieder."}
           </div>
         ) : (
-          sortedMembers.map((m) => <MemberCard key={m.id} m={m} hasCheckinData={hasCheckinData} />)
+          sortedMembers.map((m) => <MemberCard key={m.id} m={m} hasCheckinData={hasCheckinData} currentListUrl={currentListUrl} />)
         )}
       </div>
     </>

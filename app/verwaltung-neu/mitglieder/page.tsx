@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 
 import MitgliederListClient from "./MitgliederListClient"
 
@@ -10,6 +11,8 @@ type AdminMemberListRow = {
   first_name?: string | null
   last_name?: string | null
   email?: string | null
+  phone?: string | null
+  birthdate?: string | null
   base_group?: string | null
   office_list_status?: string | null
   office_list_group?: string | null
@@ -18,18 +21,80 @@ type AdminMemberListRow = {
   is_approved?: boolean | null
   email_verified?: boolean | null
   member_phase?: "trial" | "extended" | "member"
+  created_at?: string | null
   checkinCount: number
   checkedInToday?: boolean
 }
 
+function parsePositiveInt(value: string | null, fallback: number) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback
+  return Math.floor(parsed)
+}
+
 export default function MitgliederPage() {
+  const pathname = usePathname()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [members, setMembers] = useState<AdminMemberListRow[]>([])
   const [total, setTotal] = useState(0)
   const [totalTodayCount, setTotalTodayCount] = useState(0)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(() => parsePositiveInt(searchParams.get("page"), 1))
   const [error, setError] = useState<string | null>(null)
 
   const PAGE_SIZE = 10
+
+  const initialListState = useMemo(() => ({
+    search: searchParams.get("q") ?? "",
+    groupFilter: searchParams.get("group") ?? "all",
+    statusFilter: searchParams.get("status") ?? "all",
+    gsFilter: searchParams.get("gs") ?? "all",
+  }), [searchParams])
+
+  const currentListUrl = useMemo(() => {
+    const query = searchParams.toString()
+    return query ? `${pathname}?${query}` : pathname
+  }, [pathname, searchParams])
+
+  useEffect(() => {
+    setCurrentPage(parsePositiveInt(searchParams.get("page"), 1))
+  }, [searchParams])
+
+  function updateListUrl(nextState: {
+    page?: number
+    search?: string
+    groupFilter?: string
+    statusFilter?: string
+    gsFilter?: string
+  }) {
+    const params = new URLSearchParams(searchParams.toString())
+
+    const nextPage = nextState.page ?? currentPage
+    if (nextPage > 1) {
+      params.set("page", String(nextPage))
+    } else {
+      params.delete("page")
+    }
+
+    const search = nextState.search ?? initialListState.search
+    if (search.trim()) params.set("q", search)
+    else params.delete("q")
+
+    const groupFilter = nextState.groupFilter ?? initialListState.groupFilter
+    if (groupFilter !== "all") params.set("group", groupFilter)
+    else params.delete("group")
+
+    const statusFilter = nextState.statusFilter ?? initialListState.statusFilter
+    if (statusFilter !== "all") params.set("status", statusFilter)
+    else params.delete("status")
+
+    const gsFilter = nextState.gsFilter ?? initialListState.gsFilter
+    if (gsFilter !== "all") params.set("gs", gsFilter)
+    else params.delete("gs")
+
+    const nextQuery = params.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false })
+  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -45,12 +110,18 @@ export default function MitgliederPage() {
           body: JSON.stringify({
             page: currentPage,
             pageSize: PAGE_SIZE,
+            search: initialListState.search,
+            groupFilter: initialListState.groupFilter,
+            statusFilter: initialListState.statusFilter,
+            gsFilter: initialListState.gsFilter,
             fields: [
               "id",
               "name",
               "first_name",
               "last_name",
               "email",
+              "phone",
+              "birthdate",
               "base_group",
               "office_list_status",
               "office_list_group",
@@ -59,6 +130,7 @@ export default function MitgliederPage() {
               "is_approved",
               "email_verified",
               "member_phase",
+              "created_at",
             ],
               includeCheckinStats: false,
               includeCheckedInToday: false,
@@ -94,14 +166,16 @@ export default function MitgliederPage() {
     return () => {
       controller.abort()
     }
-  }, [currentPage])
+  }, [currentPage, initialListState.groupFilter, initialListState.gsFilter, initialListState.search, initialListState.statusFilter])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const safePage = Math.min(currentPage, totalPages || 1)
 
   useEffect(() => {
     if (currentPage > totalPages) {
-      setCurrentPage(totalPages || 1)
+      const nextPage = totalPages || 1
+      setCurrentPage(nextPage)
+      updateListUrl({ page: nextPage })
     }
   }, [currentPage, totalPages])
 
@@ -121,13 +195,31 @@ export default function MitgliederPage() {
         members={members}
         totalTodayCount={totalTodayCount}
         hasCheckinData={false}
-        onFiltersChanged={() => setCurrentPage(1)}
+        initialSearch={initialListState.search}
+        initialGroupFilter={initialListState.groupFilter}
+        initialStatusFilter={initialListState.statusFilter}
+        initialGsFilter={initialListState.gsFilter}
+        currentListUrl={currentListUrl}
+        onFiltersChanged={(nextFilters) => {
+          setCurrentPage(1)
+          updateListUrl({
+            page: 1,
+            search: nextFilters.search,
+            groupFilter: nextFilters.groupFilter,
+            statusFilter: nextFilters.statusFilter,
+            gsFilter: nextFilters.gsFilter,
+          })
+        }}
       />
 
       <div className="flex items-center gap-3">
         <button
           disabled={currentPage <= 1}
-          onClick={() => setCurrentPage(safePage - 1)}
+          onClick={() => {
+            const nextPage = safePage - 1
+            setCurrentPage(nextPage)
+            updateListUrl({ page: nextPage })
+          }}
           className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400 disabled:opacity-50"
         >
           Zurück
@@ -137,7 +229,11 @@ export default function MitgliederPage() {
 
         <button
           disabled={currentPage >= totalPages}
-          onClick={() => setCurrentPage(safePage + 1)}
+          onClick={() => {
+            const nextPage = safePage + 1
+            setCurrentPage(nextPage)
+            updateListUrl({ page: nextPage })
+          }}
           className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400 disabled:opacity-50"
         >
           Weiter

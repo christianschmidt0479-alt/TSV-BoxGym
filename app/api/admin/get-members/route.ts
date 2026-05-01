@@ -61,6 +61,24 @@ function berlinDayKey(date: Date) {
   }).format(date)
 }
 
+function normalizeGsFilter(value: unknown) {
+  return value === "green" || value === "yellow" || value === "red" || value === "gray" ? value : "all"
+}
+
+function normalizeStatusFilter(value: unknown) {
+  return value === "approved" || value === "pending" ? value : "all"
+}
+
+function normalizeSearch(value: unknown) {
+  return typeof value === "string" ? value.trim() : ""
+}
+
+function normalizeGroupFilter(value: unknown) {
+  if (typeof value !== "string") return "all"
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : "all"
+}
+
 export async function POST(req: Request) {
   try {
     if (!isAllowedOrigin(req)) {
@@ -94,6 +112,11 @@ export async function POST(req: Request) {
       page = 1,
       pageSize = 10,
       fields,
+      q,
+      search,
+      groupFilter,
+      statusFilter,
+      gsFilter,
       summaryOnly = false,
       includeTodayTotal = true,
       includePendingCount = true,
@@ -103,6 +126,11 @@ export async function POST(req: Request) {
       page?: number
       pageSize?: number
       fields?: string[]
+      q?: string
+      search?: string
+      groupFilter?: string
+      statusFilter?: "all" | "approved" | "pending"
+      gsFilter?: "all" | "green" | "yellow" | "red" | "gray"
       summaryOnly?: boolean
       includeTodayTotal?: boolean
       includePendingCount?: boolean
@@ -113,6 +141,10 @@ export async function POST(req: Request) {
     const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : 10
     const from = (safePage - 1) * safePageSize
     const to = from + safePageSize - 1
+    const normalizedSearch = normalizeSearch(search) || normalizeSearch(q)
+    const normalizedGroupFilter = normalizeGroupFilter(groupFilter)
+    const normalizedStatusFilter = normalizeStatusFilter(statusFilter)
+    const normalizedGsFilter = normalizeGsFilter(gsFilter)
 
     const selectedFields = Array.isArray(fields)
       ? Array.from(
@@ -156,10 +188,42 @@ export async function POST(req: Request) {
       }), { status: 200 })
     }
 
-    let membersResult = await supabase
+    let membersQuery = supabase
       .from("members")
       .select(selectColumns, { count: "exact" })
-      .range(from, to)
+
+    if (normalizedSearch) {
+      const searchPattern = `%${normalizedSearch}%`
+      membersQuery = membersQuery.or(
+        [
+          `name.ilike.${searchPattern}`,
+          `first_name.ilike.${searchPattern}`,
+          `last_name.ilike.${searchPattern}`,
+          `email.ilike.${searchPattern}`,
+          `phone.ilike.${searchPattern}`,
+        ].join(",")
+      )
+    }
+
+    if (normalizedGroupFilter !== "all") {
+      membersQuery = membersQuery.eq("base_group", normalizedGroupFilter)
+    }
+
+    if (normalizedStatusFilter === "approved") {
+      membersQuery = membersQuery.eq("is_approved", true)
+    }
+    if (normalizedStatusFilter === "pending") {
+      membersQuery = membersQuery.eq("is_approved", false)
+    }
+
+    if (normalizedGsFilter === "green" || normalizedGsFilter === "yellow" || normalizedGsFilter === "red") {
+      membersQuery = membersQuery.eq("office_list_status", normalizedGsFilter)
+    }
+    if (normalizedGsFilter === "gray") {
+      membersQuery = membersQuery.is("office_list_status", null)
+    }
+
+    let membersResult = await membersQuery.range(from, to)
 
     if (membersResult.error && selectedFields && selectedFields.length > 0) {
       const missingOptionalFields = selectedFields.filter((field) => OPTIONAL_MEMBER_FIELDS.has(field))
@@ -173,10 +237,42 @@ export async function POST(req: Request) {
         const fallbackFields = selectedFields.filter((field) => !OPTIONAL_MEMBER_FIELDS.has(field))
         const fallbackSelect = fallbackFields.join(", ")
 
-        membersResult = await supabase
+        let fallbackQuery = supabase
           .from("members")
           .select(fallbackSelect, { count: "exact" })
-          .range(from, to)
+
+        if (normalizedSearch) {
+          const searchPattern = `%${normalizedSearch}%`
+          fallbackQuery = fallbackQuery.or(
+            [
+              `name.ilike.${searchPattern}`,
+              `first_name.ilike.${searchPattern}`,
+              `last_name.ilike.${searchPattern}`,
+              `email.ilike.${searchPattern}`,
+              `phone.ilike.${searchPattern}`,
+            ].join(",")
+          )
+        }
+
+        if (normalizedGroupFilter !== "all") {
+          fallbackQuery = fallbackQuery.eq("base_group", normalizedGroupFilter)
+        }
+
+        if (normalizedStatusFilter === "approved") {
+          fallbackQuery = fallbackQuery.eq("is_approved", true)
+        }
+        if (normalizedStatusFilter === "pending") {
+          fallbackQuery = fallbackQuery.eq("is_approved", false)
+        }
+
+        if (normalizedGsFilter === "green" || normalizedGsFilter === "yellow" || normalizedGsFilter === "red") {
+          fallbackQuery = fallbackQuery.eq("office_list_status", normalizedGsFilter)
+        }
+        if (normalizedGsFilter === "gray") {
+          fallbackQuery = fallbackQuery.is("office_list_status", null)
+        }
+
+        membersResult = await fallbackQuery.range(from, to)
       }
     }
 

@@ -4,6 +4,7 @@ import * as crypto from "crypto"
 import { findMemberByEmail, createMember, updateMemberRegistrationData } from "./boxgymDb"
 import { validateName, validateEmail, validatePin, validateBirthdate } from "./formValidation"
 import { sendMemberVerificationMail } from "./mail/memberVerificationMail"
+import { runRegistrationOfficePrecheck } from "./officePrecheck"
 
 export type RegisterMemberInput = {
   firstName: string
@@ -24,7 +25,30 @@ export type RegisterMemberResult =
   | { ok: true; memberId: string; mailSent: boolean }
   | { ok: false; error: string; code?: "already-exists" | "validation-error" | "error" }
 
+export type RegisterMemberServiceDeps = {
+  findMemberByEmail: typeof findMemberByEmail
+  createMember: typeof createMember
+  updateMemberRegistrationData: typeof updateMemberRegistrationData
+  runRegistrationOfficePrecheck: typeof runRegistrationOfficePrecheck
+  sendMemberVerificationMail: typeof sendMemberVerificationMail
+}
+
+const defaultDeps: RegisterMemberServiceDeps = {
+  findMemberByEmail,
+  createMember,
+  updateMemberRegistrationData,
+  runRegistrationOfficePrecheck,
+  sendMemberVerificationMail,
+}
+
 export async function registerMemberService(input: RegisterMemberInput): Promise<RegisterMemberResult> {
+  return registerMemberServiceWithDeps(input, defaultDeps)
+}
+
+export async function registerMemberServiceWithDeps(
+  input: RegisterMemberInput,
+  deps: RegisterMemberServiceDeps,
+): Promise<RegisterMemberResult> {
   // 1. Eingaben validieren (nur Kernfelder, keine Altlogik)
   const firstNameResult = validateName(input.firstName, "Vorname")
   if (!firstNameResult.valid) {
@@ -78,7 +102,7 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
   // 2. Bestehendes Mitglied suchen (nur E-Mail als Kernkriterium)
   let existingMember = null
   try {
-    existingMember = await findMemberByEmail(input.email)
+    existingMember = await deps.findMemberByEmail(input.email)
   } catch (err) {
     return {
       ok: false,
@@ -119,7 +143,7 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
       // Keine guardian_name, keine Alt-/Sonderfelder
     }
 
-    const created = await createMember(payload)
+    const created = await deps.createMember(payload)
     if (!created || !created.id) {
       return { ok: false, code: "error", error: "Mitglied konnte nicht angelegt werden." }
     }
@@ -128,7 +152,7 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
     const token = crypto.randomUUID()
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
     try {
-      await updateMemberRegistrationData(created.id, {
+      await deps.updateMemberRegistrationData(created.id, {
         email_verification_token: token,
         email_verification_expires_at: expiresAt,
         last_verification_sent_at: new Date(),
@@ -143,9 +167,23 @@ export async function registerMemberService(input: RegisterMemberInput): Promise
       }
     }
 
+    // Hidden best-effort precheck against latest uploaded GS list.
+    // This intentionally does not write office_list_* fields.
+    try {
+      await deps.runRegistrationOfficePrecheck({
+        firstName: payload.first_name,
+        lastName: payload.last_name,
+        birthdate: payload.birthdate,
+        email: payload.email,
+        phone: payload.phone ?? "",
+      })
+    } catch {
+      // Do not fail registration because of an internal precheck issue.
+    }
+
     // 5. Verifizierungs-Mail versenden
     try {
-      await sendMemberVerificationMail({ email: input.email.trim().toLowerCase(), token })
+      await deps.sendMemberVerificationMail({ email: input.email.trim().toLowerCase(), token })
       return { ok: true, memberId: created.id, mailSent: true }
     } catch (err) {
       return { ok: true, memberId: created.id, mailSent: false }

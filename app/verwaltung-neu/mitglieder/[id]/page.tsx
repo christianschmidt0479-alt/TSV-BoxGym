@@ -17,16 +17,18 @@ function formatDate(dateString: string | null | undefined) {
 }
 
 
-export default async function MitgliedDetailPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams?: Promise<{ error?: string }> }) {
+export default async function MitgliedDetailPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams?: Promise<{ error?: string; returnTo?: string }> }) {
   const { id } = await params;
   const member = await findMemberById(id);
   if (!member) return notFound();
 
   // searchParams als Promise behandeln
   let errorMsg = "";
+  let returnTo = "";
   if (searchParams) {
     const sp = await searchParams;
     errorMsg = sp?.error || "";
+    returnTo = sp?.returnTo || "";
   }
 
   // Server Actions
@@ -198,7 +200,7 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
         </div>
       </form>
       <div className="flex gap-4 mt-4">
-        <DeleteButton memberId={member.id} />
+        <DeleteButton memberId={member.id} returnTo={returnTo} />
       </div>
     </div>
   );

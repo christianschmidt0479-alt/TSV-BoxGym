@@ -4,8 +4,8 @@ import { NextResponse } from "next/server"
 import * as XLSX from "xlsx"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
+import { BOXZWERGE_UPLOAD_GROUP, parseOfficeUploadGroup } from "@/lib/officeUploadGroups"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { TRAINING_GROUPS, type TrainingGroup } from "@/lib/trainingGroups"
 
 export const runtime = "nodejs"
 
@@ -95,10 +95,6 @@ function hasAnyHeader(normalizedHeaders: Set<string>, candidates: string[]) {
 function findHeaderRowIndex(sheetRows: unknown[][]) {
   const maxRowsToScan = Math.min(10, sheetRows.length)
 
-  if (process.env.NODE_ENV === "development") {
-    console.log("[GS-Abgleich] Scanning first", maxRowsToScan, "rows for header")
-  }
-
   for (let index = 0; index < maxRowsToScan; index += 1) {
     const row = sheetRows[index] ?? []
     const normalizedHeaders = new Set(
@@ -107,21 +103,11 @@ function findHeaderRowIndex(sheetRows: unknown[][]) {
         .filter((value) => value.length > 0)
     )
 
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[GS-Abgleich] Row ${index} raw:`, row.slice(0, 8))
-      console.log(`[GS-Abgleich] Row ${index} normalized:`, [...normalizedHeaders].slice(0, 8))
-    }
-
     const hasLastName = hasAnyHeader(normalizedHeaders, LAST_NAME_HEADER_CANDIDATES)
     const hasFirstName = hasAnyHeader(normalizedHeaders, FIRST_NAME_HEADER_CANDIDATES)
     const hasBirthdate = hasAnyHeader(normalizedHeaders, BIRTHDATE_HEADER_CANDIDATES)
 
-    if (hasLastName && hasFirstName && hasBirthdate) {
-      if (process.env.NODE_ENV === "development") {
-        console.log(`[GS-Abgleich] Header row detected at index ${index}`)
-      }
-      return index
-    }
+    if (hasLastName && hasFirstName && hasBirthdate) return index
   }
 
   return -1
@@ -263,10 +249,12 @@ export async function POST(request: Request) {
     const formData = await request.formData()
     const file = formData.get("file")
     const groupNameRaw = formData.get("groupName")
-    const groupName = typeof groupNameRaw === "string" ? groupNameRaw : ""
-    const validGroup = TRAINING_GROUPS.includes(groupName as TrainingGroup)
-    if (!validGroup) {
+    const groupName = parseOfficeUploadGroup(typeof groupNameRaw === "string" ? groupNameRaw : "")
+    if (!groupName) {
       return NextResponse.json({ error: "Ungültige oder fehlende Gruppe" }, { status: 400 })
+    }
+    if (groupName === BOXZWERGE_UPLOAD_GROUP) {
+      return NextResponse.json({ error: "Boxzwerge werden über den separaten Boxzwerge-Upload abgeglichen." }, { status: 400 })
     }
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "Datei fehlt" }, { status: 400 })
@@ -287,28 +275,16 @@ export async function POST(request: Request) {
     // 1. Versuche Kopfzeile in ersten 10 Zeilen zu finden
     const headerRowIndex = findHeaderRowIndex(sheetRows)
     let gsMembers: ParsedGsMember[]
-    let parseMode: string
 
     if (headerRowIndex >= 0) {
       // Header-Modus: Kopfzeile gefunden
-      parseMode = "header-row"
       const headers = (sheetRows[headerRowIndex] ?? []).map((cell) => String(cell ?? "").trim())
       const dataRows = sheetRows.slice(headerRowIndex + 1)
-      if (process.env.NODE_ENV === "development") {
-        console.log("[GS-Abgleich] parseMode", parseMode, "at index", headerRowIndex)
-        console.log("[GS-Abgleich] headers raw", headers)
-        console.log("[GS-Abgleich] first data rows", dataRows.slice(0, 3))
-      }
       const rawRows = mapSheetRowsToObjects(headers, dataRows)
       gsMembers = parseGsRows(rawRows)
     } else {
       // Fixed-Column-Fallback: erste Datenzeile finden (A=Text, B=Text, C=Datum)
-      parseMode = "fixed-columns"
       const firstDataIndex = findFirstDataRowIndex(sheetRows)
-      if (process.env.NODE_ENV === "development") {
-        console.log("[GS-Abgleich] parseMode", parseMode, "first data row index", firstDataIndex)
-        console.log("[GS-Abgleich] first data rows", sheetRows.slice(firstDataIndex, firstDataIndex + 3))
-      }
       if (firstDataIndex < 0) {
         return NextResponse.json(
           { error: "Keine Daten erkannt. Erwartet werden Spalten: Vorname (A), Nachname (B), Geburtsdatum (C)." },

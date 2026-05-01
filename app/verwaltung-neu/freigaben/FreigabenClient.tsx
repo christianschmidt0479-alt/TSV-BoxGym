@@ -200,7 +200,7 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
         const canResendVerification = !member.email_verified && Boolean(member.email)
 
         return (
-          <div key={member.id} className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-3">
+          <div key={member.id} className="flex min-h-[170px] flex-col rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-zinc-900">{getDisplayName(member)}</div>
@@ -229,18 +229,30 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
             </div>
 
             {member.base_group === "L-Gruppe" ? (
-              <div className="text-xs text-zinc-600">
+              <div className="pt-3 text-xs text-zinc-600">
                 L-Gruppe: Abgleich über Stamm-/Office-Gruppe prüfen.
               </div>
             ) : null}
 
             {approvalHintText(gsEntry?.status) ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 {approvalHintText(gsEntry?.status)}
               </div>
             ) : null}
 
-            <div className="flex flex-wrap items-center gap-2">
+            {resendInfoByMemberId[member.id] ? (
+              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                {resendInfoByMemberId[member.id]}
+              </div>
+            ) : null}
+
+            {resendErrorByMemberId[member.id] ? (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {resendErrorByMemberId[member.id]}
+              </div>
+            ) : null}
+
+            <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
               <Link href={`/verwaltung-neu/mitglieder/${member.id}`}>
                 <button type="button" disabled={isBusy} className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400 disabled:opacity-60">
                   Daten ändern
@@ -267,18 +279,6 @@ export default function FreigabenClient({ initialMembers }: { initialMembers: Ap
                 {isBusy ? "Freigeben…" : "Freigeben"}
               </button>
             </div>
-
-            {resendInfoByMemberId[member.id] ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                {resendInfoByMemberId[member.id]}
-              </div>
-            ) : null}
-
-            {resendErrorByMemberId[member.id] ? (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {resendErrorByMemberId[member.id]}
-              </div>
-            ) : null}
           </div>
         )
       })}

@@ -3,10 +3,20 @@ import * as XLSX from "xlsx"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { getOfficeListStatusLabel, type OfficeListResultStatus, type OfficeListStatus } from "@/lib/officeListStatus"
+import {
+  parseOfficeUploadGroup,
+  parseOfficeUploadScope,
+  shouldReplaceStoredRowForUploadedGroups,
+  type OfficeUploadGroup,
+  validateUploadGroupsForScope,
+} from "@/lib/officeUploadGroups"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { normalizeTrainingGroup, parseTrainingGroup, type TrainingGroup } from "@/lib/trainingGroups"
 
 export const runtime = "nodejs"
+
+function sanitizeGroupName(value?: string | null) {
+  return (value ?? "").trim().replace(/\s+/g, " ")
+}
 
 type MemberRow = {
   id: string
@@ -32,7 +42,7 @@ type TrainerAccountRow = {
 
 type ParsedExcelRow = {
   fileName: string
-  group: TrainingGroup
+  group: OfficeUploadGroup
   fileIndex: number
   index: number
   firstName: string
@@ -95,7 +105,7 @@ type RunHistoryEntry = {
 
 type FileSummary = {
   fileName: string
-  group: TrainingGroup
+  group: OfficeUploadGroup
   rowCount: number
 }
 
@@ -381,7 +391,7 @@ function detectBestColumn(rows: unknown[][], predicate: (value: string) => boole
   return bestScore > 0 ? bestColumn : undefined
 }
 
-function parseExcelRowsWithoutHeader(rows: unknown[][], fileName: string, group: TrainingGroup, fileIndex: number) {
+function parseExcelRowsWithoutHeader(rows: unknown[][], fileName: string, group: OfficeUploadGroup, fileIndex: number) {
   const candidateRows = rows
     .slice(DATA_START_ROW_FALLBACK_INDEX)
     .filter((row) => row.some((cell) => normalizeText(getCellText(cell)) !== ""))
@@ -528,7 +538,7 @@ function findHeaderRow(rows: unknown[][]): HeaderDetection | null {
   return bestMatch
 }
 
-function parseExcelRows(buffer: Buffer, fileName: string, group: TrainingGroup, fileIndex: number) {
+function parseExcelRows(buffer: Buffer, fileName: string, group: OfficeUploadGroup, fileIndex: number) {
   const workbook = XLSX.read(buffer, {
     type: "buffer",
     cellDates: true,
@@ -684,7 +694,7 @@ function isRelevantOfficeMember(member: MemberRow) {
   return !member.is_approved && !member.is_trial
 }
 
-function collectMatchHints(excelRow: ParsedExcelRow, member: MemberRow, _excelGroup: TrainingGroup, matchSource: string) {
+function collectMatchHints(excelRow: ParsedExcelRow, member: MemberRow, _excelGroup: OfficeUploadGroup, matchSource: string) {
   const hints: string[] = []
 
   if (matchSource === "email") {
@@ -946,6 +956,44 @@ async function getRecentReconcileRunHistory(supabase: ReturnType<typeof getServe
     .filter((entry): entry is RunHistoryEntry => Boolean(entry))
 }
 
+async function getActiveStoredRunRow(supabase: ReturnType<typeof getServerSupabase>) {
+  const response = await supabase
+    .from(OFFICE_RUNS_TABLE)
+    .select("id, checked_at, is_active, run_status, file_count, files, metrics, rows")
+    .eq("is_active", true)
+    .order("checked_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (response.error) {
+    if (isMissingOfficeRunStorageError(response.error)) {
+      return null
+    }
+
+    throw response.error
+  }
+
+  return (response.data ?? null) as StoredRunRow | null
+}
+
+function recalculateFileSummaries(existingFiles: FileSummary[], rows: ResultRow[]) {
+  const countsByFileAndGroup = new Map<string, number>()
+
+  for (const row of rows) {
+    if (row.excel !== "Ja") continue
+    const key = `${row.source}|||${row.groupExcel}`
+    countsByFileAndGroup.set(key, (countsByFileAndGroup.get(key) ?? 0) + 1)
+  }
+
+  return existingFiles.map((file) => {
+    const key = `${file.fileName}|||${file.group}`
+    return {
+      ...file,
+      rowCount: countsByFileAndGroup.get(key) ?? 0,
+    }
+  })
+}
+
 async function getLinkedTrainerMemberIds(supabase: ReturnType<typeof getServerSupabase>) {
   const response = await supabase.from("trainer_accounts").select("linked_member_id").not("linked_member_id", "is", null)
 
@@ -1087,16 +1135,25 @@ export async function POST(request: Request) {
     }
 
     const formData = await request.formData()
+    const uploadScope = parseOfficeUploadScope(formData.get("uploadScope")?.toString())
     const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File)
-    const groups = formData.getAll("groups").map((entry) => parseTrainingGroup(entry?.toString()))
+    const parsedGroups = formData.getAll("groups").map((entry) => parseOfficeUploadGroup(entry?.toString()))
 
     if (files.length === 0) {
       return new NextResponse("Bitte mindestens eine Excel-Datei hochladen.", { status: 400 })
     }
 
-    if (groups.length !== files.length || groups.some((group) => !group)) {
-      return new NextResponse("Bitte jeder Datei eine gültige Gruppe zuordnen.", { status: 400 })
+    const groupValidation = validateUploadGroupsForScope({
+      groups: parsedGroups,
+      filesCount: files.length,
+      scope: uploadScope,
+    })
+
+    if (!groupValidation.ok) {
+      return new NextResponse(groupValidation.message, { status: groupValidation.status })
     }
+
+    const groups = groupValidation.groups
 
     const fileSummaries: FileSummary[] = []
     const excelRows: ParsedExcelRow[] = []
@@ -1119,7 +1176,9 @@ export async function POST(request: Request) {
     }
 
     const supabase = getServerSupabase()
-    const [membersResponse, linkedTrainerMemberIds, trainerAccounts] = await Promise.all([
+    const uploadedGroups = new Set(groups)
+
+    const [membersResponse, linkedTrainerMemberIds, trainerAccounts, activeStoredRun] = await Promise.all([
       supabase
         .from("members")
         .select(
@@ -1129,6 +1188,7 @@ export async function POST(request: Request) {
         .order("first_name", { ascending: true }),
       getLinkedTrainerMemberIds(supabase),
       getTrainerAccountsForReconcile(supabase),
+      getActiveStoredRunRow(supabase),
     ])
 
     if (membersResponse.error) {
@@ -1140,10 +1200,14 @@ export async function POST(request: Request) {
 
     const members = ((membersResponse.data ?? []) as MemberRow[]).map((member) => ({
       ...member,
-      base_group: normalizeTrainingGroup(member.base_group) || member.base_group,
+      base_group: sanitizeGroupName(member.base_group),
     }))
 
-    const relevantMembers = members.filter(isRelevantOfficeMember)
+    const relevantMembers = members.filter((member) => {
+      if (!isRelevantOfficeMember(member)) return false
+      const memberGroup = parseOfficeUploadGroup(member.base_group)
+      return Boolean(memberGroup && uploadedGroups.has(memberGroup))
+    })
     const checkedAt = new Date().toISOString()
 
     if (relevantMembers.length > 0) {
@@ -1301,7 +1365,7 @@ export async function POST(request: Request) {
 
       const hints = collectMatchHints(excelRow, member, excelRow.group, matchSource)
       const status: OfficeListStatus = hasBlockingMismatch(hints) ? "yellow" : "green"
-      const dbGroup = normalizeTrainingGroup(member.base_group) || member.base_group || "—"
+      const dbGroup = sanitizeGroupName(member.base_group) || "—"
 
       resultRows.push({
         id: `match-${member.id}-${excelRow.fileIndex}-${excelRow.index}`,
@@ -1362,7 +1426,7 @@ export async function POST(request: Request) {
         db: "Ja",
         tsvMember: isTsvMember(member) ? "Ja" : "Nein",
         groupExcel: "—",
-        groupDb: normalizeTrainingGroup(member.base_group) || member.base_group || "—",
+        groupDb: sanitizeGroupName(member.base_group) || "—",
         status: "red",
         note: "Offene Freigabe wurde in keiner der hochgeladenen GS-Listen gefunden",
       })
@@ -1393,22 +1457,42 @@ export async function POST(request: Request) {
       return left.firstName.localeCompare(right.firstName, "de")
     })
 
+    const existingRows = activeStoredRun && isResultRowArray(activeStoredRun.rows) ? activeStoredRun.rows : []
+    const keptRows = existingRows.filter((row) => !shouldReplaceStoredRowForUploadedGroups(row, uploadedGroups))
+    const mergedRows = [...keptRows, ...sortedRows].sort((left, right) => {
+      const statusOrder: Record<OfficeListResultStatus, number> = { yellow: 0, red: 1, gray: 2, green: 3 }
+      const statusCompare = statusOrder[left.status] - statusOrder[right.status]
+      if (statusCompare !== 0) return statusCompare
+
+      const groupCompare = left.groupExcel.localeCompare(right.groupExcel, "de")
+      if (groupCompare !== 0) return groupCompare
+
+      const lastNameCompare = left.lastName.localeCompare(right.lastName, "de")
+      if (lastNameCompare !== 0) return lastNameCompare
+
+      return left.firstName.localeCompare(right.firstName, "de")
+    })
+
+    const existingFiles = activeStoredRun && isFileSummaryArray(activeStoredRun.files) ? activeStoredRun.files : []
+    const keptFiles = existingFiles.filter((file) => !uploadedGroups.has(file.group))
+    const mergedFiles = [...keptFiles, ...fileSummaries]
+
     const responsePayload = buildResponsePayload({
       runId: null,
       runStatus: "green",
       isActive: true,
       storageAvailable: true,
       checkedAt,
-      files: fileSummaries,
-      metrics: buildMetrics(sortedRows),
+      files: mergedFiles,
+      metrics: buildMetrics(mergedRows),
       history: [],
-      rows: sortedRows,
+      rows: mergedRows,
     })
 
     try {
       const storedRun = await storeActiveReconcileRun(supabase, {
         ...responsePayload,
-        rows: sortedRows,
+        rows: mergedRows,
       })
       const history = (await getRecentReconcileRunHistory(supabase)) ?? []
 
@@ -1438,6 +1522,92 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error("admin excel abgleich failed", error)
+    return NextResponse.json({ error: "Serverfehler" }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    if (!isAllowedOrigin(request)) {
+      return new NextResponse("Forbidden", { status: 403 })
+    }
+
+    const session = await readTrainerSessionFromHeaders(request)
+    if (!session || session.accountRole !== "admin") {
+      return new NextResponse("Unauthorized", { status: 401 })
+    }
+
+    const rateLimit = await checkRateLimitAsync(`admin-excel-abgleich-delete:${getRequestIp(request)}`, 40, 10 * 60 * 1000)
+    if (!rateLimit.ok) {
+      return new NextResponse("Too many requests", { status: 429 })
+    }
+
+    const body = (await request.json().catch(() => null)) as { rowId?: unknown } | null
+    const rowId = typeof body?.rowId === "string" ? body.rowId.trim() : ""
+
+    if (!rowId) {
+      return NextResponse.json({ error: "rowId fehlt" }, { status: 400 })
+    }
+
+    const supabase = getServerSupabase()
+    const activeRun = await getActiveStoredRunRow(supabase)
+
+    if (!activeRun) {
+      return NextResponse.json({ error: "Kein gespeicherter GS-Abgleich vorhanden." }, { status: 404 })
+    }
+
+    const rows = isResultRowArray(activeRun.rows) ? activeRun.rows : []
+    const files = isFileSummaryArray(activeRun.files) ? activeRun.files : []
+    const targetRow = rows.find((row) => row.id === rowId)
+
+    if (!targetRow) {
+      return NextResponse.json({ error: "Datensatz nicht gefunden." }, { status: 404 })
+    }
+
+    if (targetRow.excel !== "Ja") {
+      return NextResponse.json({ error: "Nur GS-Listendatensaetze koennen entfernt werden." }, { status: 400 })
+    }
+
+    const updatedRows = rows.filter((row) => row.id !== rowId)
+    const updatedMetrics = buildMetrics(updatedRows)
+    const updatedFiles = recalculateFileSummaries(files, updatedRows)
+
+    const updateResponse = await supabase
+      .from(OFFICE_RUNS_TABLE)
+      .update({
+        rows: updatedRows,
+        metrics: updatedMetrics,
+        files: updatedFiles,
+        file_count: updatedFiles.length,
+      })
+      .eq("id", activeRun.id)
+      .eq("is_active", true)
+      .select("id, checked_at, is_active, run_status, file_count, files, metrics, rows")
+      .single()
+
+    if (updateResponse.error) {
+      if (isMissingOfficeRunStorageError(updateResponse.error)) {
+        throw getOfficeRunStorageMigrationError()
+      }
+
+      throw updateResponse.error
+    }
+
+    const payload = mapStoredRunToResponsePayload(updateResponse.data as StoredRunRow)
+    if (!payload) {
+      return NextResponse.json({ error: "Gespeicherter Run ist unvollstaendig." }, { status: 409 })
+    }
+
+    const history = (await getRecentReconcileRunHistory(supabase)) ?? []
+
+    return NextResponse.json({
+      ...payload,
+      storageAvailable: true,
+      history,
+      message: "Datensatz wurde aus der GS-Liste entfernt. App-Mitglied bleibt unveraendert.",
+    })
+  } catch (error) {
+    console.error("admin excel abgleich delete row failed", error)
     return NextResponse.json({ error: "Serverfehler" }, { status: 500 })
   }
 }
