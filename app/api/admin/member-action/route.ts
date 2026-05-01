@@ -74,6 +74,8 @@ function generateEmailVerificationToken() {
   return randomUUID()
 }
 
+const VERIFICATION_RESEND_COOLDOWN_MS = 5 * 60 * 1000
+
 function isMissingColumnError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ""
   return (
@@ -246,19 +248,52 @@ export async function POST(request: Request) {
       if (typeof body.memberId !== "string") {
         return jsonError("Invalid resend verification payload", 400)
       }
-      const { data: member, error: memberError } = await supabase
+      const { data: memberData, error: memberError } = await supabase
         .from("members")
-        .select("id, name, first_name, last_name, email, email_verified, email_verification_token, member_pin")
+        .select("id, name, first_name, last_name, email, email_verified, email_verification_token, member_pin, last_verification_sent_at")
         .eq("id", body.memberId)
-        .single()
+        .maybeSingle()
 
-      if (memberError) throw memberError
+      let member = memberData as MemberAdminRow | null
+
+      if (memberError) {
+        const message = memberError.message?.toLowerCase() ?? ""
+        const isMissingColumn =
+          message.includes("does not exist") ||
+          message.includes("schema cache") ||
+          message.includes("could not find")
+
+        if (isMissingColumn && message.includes("last_verification_sent_at")) {
+          const fallbackResult = await supabase
+            .from("members")
+            .select("id, name, first_name, last_name, email, email_verified, email_verification_token, member_pin")
+            .eq("id", body.memberId)
+            .maybeSingle()
+
+          if (fallbackResult.error) throw fallbackResult.error
+          member = (fallbackResult.data as MemberAdminRow | null) ?? null
+        } else {
+          throw memberError
+        }
+      }
+
       if (!member) {
         return jsonError("Mitglied nicht gefunden", 404)
       }
 
       if (!member.email) {
         return jsonError("Mitglied hat keine E-Mail-Adresse", 400)
+      }
+
+      const lastSentAtRaw = typeof member.last_verification_sent_at === "string" ? member.last_verification_sent_at : null
+      const lastSentAt = lastSentAtRaw ? new Date(lastSentAtRaw) : null
+      const hasRecentSend =
+        lastSentAt instanceof Date &&
+        Number.isFinite(lastSentAt.getTime()) &&
+        Date.now() - lastSentAt.getTime() < VERIFICATION_RESEND_COOLDOWN_MS
+
+      if (hasRecentSend) {
+        return jsonError("Vor kurzem bereits gesendet.", 429)
       }
 
       const verificationToken = member.email_verification_token || generateEmailVerificationToken()
@@ -278,7 +313,7 @@ export async function POST(request: Request) {
         ? `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`
         : `${verificationBaseUrl}/mein-bereich/zugang-einrichten?token=${verificationToken}`
 
-      const delivery = await sendVerificationEmail({
+      await sendVerificationEmail({
         email: member.email,
         name: getMemberDisplayName(member),
         link: verificationLink,
@@ -287,10 +322,20 @@ export async function POST(request: Request) {
 
       // Update last_verification_sent_at — optional column, ignore if column doesn't exist yet
       try {
-        await supabase
+        const updateResult = await supabase
           .from("members")
           .update({ last_verification_sent_at: new Date().toISOString() })
           .eq("id", member.id)
+        if (updateResult.error) {
+          const message = updateResult.error.message?.toLowerCase() ?? ""
+          const isMissingColumn =
+            message.includes("does not exist") ||
+            message.includes("schema cache") ||
+            message.includes("could not find")
+          if (!isMissingColumn || !message.includes("last_verification_sent_at")) {
+            throw updateResult.error
+          }
+        }
       } catch {
         // column not yet deployed — safe to ignore
       }
@@ -301,14 +346,10 @@ export async function POST(request: Request) {
         targetType: "member",
         targetId: member.id,
         targetName: getMemberDisplayName(member),
-        details: `Verification email resent to ${member.email}`,
+        details: "Bestätigungsmail erneut gesendet",
       })
 
-      return NextResponse.json({
-        ok: true,
-        verificationLink,
-        delivery,
-      })
+      return NextResponse.json({ ok: true, sentAt: new Date().toISOString() })
     }
 
     if (body.action === "change_group") {

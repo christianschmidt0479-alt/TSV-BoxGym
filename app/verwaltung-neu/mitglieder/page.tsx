@@ -11,7 +11,9 @@ type AdminMemberListRow = {
   last_name?: string | null
   email?: string | null
   base_group?: string | null
+  office_list_status?: string | null
   office_list_group?: string | null
+  office_list_checked_at?: string | null
   is_trial?: boolean | null
   is_approved?: boolean | null
   email_verified?: boolean | null
@@ -50,7 +52,9 @@ export default function MitgliederPage() {
               "last_name",
               "email",
               "base_group",
+              "office_list_status",
               "office_list_group",
+              "office_list_checked_at",
               "is_trial",
               "is_approved",
               "email_verified",
@@ -107,7 +111,6 @@ export default function MitgliederPage() {
         <div className="text-base font-semibold text-zinc-900">Mitglieder</div>
         <div className="text-sm text-zinc-600">Alle Mitglieder und Check-in-Status</div>
       </div>
-
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}

@@ -1,7 +1,7 @@
 "use client"
 import { type FormEvent, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { loadGsStatusMap, type GsStatusEntry } from "../gs-abgleich/gsStatusStore"
+import { OfficeMatchBadge } from "@/components/verwaltung-neu/OfficeMatchBadge"
 
 type MemberRow = {
   id: string
@@ -10,7 +10,9 @@ type MemberRow = {
   last_name?: string | null
   email?: string | null
   base_group?: string | null
+  office_list_status?: string | null
   office_list_group?: string | null
+  office_list_checked_at?: string | null
   is_trial?: boolean | null
   is_approved?: boolean | null
   email_verified?: boolean | null
@@ -29,14 +31,6 @@ function memberStatus(member: MemberRow) {
   return "Freigegeben"
 }
 
-
-function gsBadgeProps(entry?: GsStatusEntry) {
-  if (!entry) return { color: "bg-zinc-200 text-zinc-600", title: "GS: noch nicht geprüft" }
-  if (entry.status === "match") return { color: "bg-emerald-500 text-white", title: "GS: Mitglied gefunden" }
-  if (entry.status === "mismatch") return { color: "bg-amber-400 text-white", title: "GS: Name gefunden, Geburtsdatum prüfen" }
-  if (entry.status === "not_found") return { color: "bg-red-500 text-white", title: "GS: nicht in GS-Liste gefunden" }
-  return { color: "bg-zinc-200 text-zinc-600", title: "GS: noch nicht geprüft" }
-}
 
 function limitFor(member: MemberRow) {
   return member.is_trial ? 3 : 8
@@ -98,7 +92,7 @@ function priorityLabel(m: MemberRow) {
   return p.label
 }
 
-function MemberCard({ m, tsvStatus, hasCheckinData }: { m: MemberRow; tsvStatus?: GsStatusEntry; hasCheckinData: boolean }) {
+function MemberCard({ m, hasCheckinData }: { m: MemberRow; hasCheckinData: boolean }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-2">
       <div className="flex items-start justify-between gap-3">
@@ -111,17 +105,18 @@ function MemberCard({ m, tsvStatus, hasCheckinData }: { m: MemberRow; tsvStatus?
           {!m.is_approved ? (
             <span className={priorityBadge(m)}>{priorityLabel(m)}</span>
           ) : null}
-          <span
-            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-bold border border-zinc-300 shadow-sm cursor-default ${gsBadgeProps(tsvStatus).color}`}
-            title={gsBadgeProps(tsvStatus).title}
-            style={{ minWidth: 28, justifyContent: "center" }}
-          >
-            GS
-          </span>
+          <OfficeMatchBadge
+            status={m.office_list_status}
+            baseGroup={m.base_group}
+            officeGroup={m.office_list_group}
+            checkedAt={m.office_list_checked_at}
+            compact
+          />
         </div>
       </div>
 
       <div className="text-xs text-zinc-700"><strong>Status:</strong> {memberStatus(m)}</div>
+      {m.base_group === "L-Gruppe" ? <div className="text-xs text-zinc-600">L-Gruppe: Abgleich über Stamm-/Office-Gruppe prüfen.</div> : null}
 
       <div className="flex flex-wrap gap-2">
         {hasCheckinData && m.checkedInToday ? (
@@ -174,28 +169,15 @@ function MemberCard({ m, tsvStatus, hasCheckinData }: { m: MemberRow; tsvStatus?
 
 export default function MitgliederListClient({ members, totalTodayCount, hasCheckinData = true, onFiltersChanged }: { members: MemberRow[]; totalTodayCount: number; hasCheckinData?: boolean; onFiltersChanged?: () => void }) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
-  const [tsvStatusMap, setTsvStatusMap] = useState<Record<string, GsStatusEntry>>({})
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
   const [groupFilter, setGroupFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [gsFilter, setGsFilter] = useState("all")
 
   useEffect(() => {
     setLocalMembers(members)
   }, [members])
-
-  useEffect(() => {
-    setTsvStatusMap(loadGsStatusMap())
-
-    const onStorage = () => {
-      setTsvStatusMap(loadGsStatusMap())
-    }
-
-    window.addEventListener("storage", onStorage)
-    return () => {
-      window.removeEventListener("storage", onStorage)
-    }
-  }, [])
 
   const filteredMembers = useMemo(() => {
     const normalizedSearch = search.toLowerCase().trim()
@@ -218,9 +200,16 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
           (statusFilter === "approved" && Boolean(m.is_approved)) ||
           (statusFilter === "pending" && !m.is_approved)
 
-        return matchSearch && matchGroup && matchStatus
+        const gsStatus =
+          m.office_list_status === "green" || m.office_list_status === "yellow" || m.office_list_status === "red"
+            ? m.office_list_status
+            : "gray"
+
+        const matchGs = gsFilter === "all" || gsStatus === gsFilter
+
+        return matchSearch && matchGroup && matchStatus && matchGs
       })
-  }, [localMembers, search, groupFilter, statusFilter])
+  }, [localMembers, search, groupFilter, statusFilter, gsFilter])
 
   const sortedMembers = useMemo(() => {
     return [...filteredMembers].sort((a, b) => {
@@ -249,7 +238,7 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
   const totalOpenCount = useMemo(() => localMembers.filter((member) => !member.is_approved).length, [localMembers])
 
   const hasActiveFilters =
-    searchInput.trim().length > 0 || search.trim().length > 0 || groupFilter !== "all" || statusFilter !== "all"
+    searchInput.trim().length > 0 || search.trim().length > 0 || groupFilter !== "all" || statusFilter !== "all" || gsFilter !== "all"
 
   function handleSubmitSearch(event: FormEvent) {
     event.preventDefault()
@@ -262,6 +251,7 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
     setSearch("")
     setGroupFilter("all")
     setStatusFilter("all")
+    setGsFilter("all")
     onFiltersChanged?.()
   }
 
@@ -272,6 +262,11 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
 
   function handleStatusChange(value: string) {
     setStatusFilter(value)
+    onFiltersChanged?.()
+  }
+
+  function handleGsChange(value: string) {
+    setGsFilter(value)
     onFiltersChanged?.()
   }
 
@@ -334,6 +329,17 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
           <option value="approved">Freigegeben</option>
           <option value="pending">Offen</option>
         </select>
+        <select
+          value={gsFilter}
+          onChange={(e) => handleGsChange(e.target.value)}
+          className="rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
+        >
+          <option value="all">GS: alle</option>
+          <option value="red">GS: rot / prüfen</option>
+          <option value="yellow">GS: gelb</option>
+          <option value="green">GS: grün</option>
+          <option value="gray">GS: grau</option>
+        </select>
       </form>
 
       {hasCheckinData && criticalTodayMembers.length > 0 && (
@@ -350,7 +356,7 @@ export default function MitgliederListClient({ members, totalTodayCount, hasChec
               : "Auf dieser Seite sind aktuell keine Mitglieder."}
           </div>
         ) : (
-          sortedMembers.map((m) => <MemberCard key={m.id} m={m} tsvStatus={tsvStatusMap[m.id]} hasCheckinData={hasCheckinData} />)
+          sortedMembers.map((m) => <MemberCard key={m.id} m={m} hasCheckinData={hasCheckinData} />)
         )}
       </div>
     </>

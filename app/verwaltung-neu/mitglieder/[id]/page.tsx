@@ -4,6 +4,7 @@ import DeleteButton from "./DeleteButton";
 import { findMemberById, changeMemberBaseGroup, updateMemberProfile, updateMemberContactData, updateMemberCompetitionData, updateMemberRegistrationData, deleteMember } from "@/lib/boxgymDb";
 import { TRAINING_GROUPS, parseTrainingGroup } from "@/lib/trainingGroups";
 import { validateName, validateEmail, validateBirthdate } from "@/lib/formValidation";
+import { OfficeMatchBadge, getOfficeCheckedAtText, getOfficeMatchText } from "@/components/verwaltung-neu/OfficeMatchBadge";
 
 
 
@@ -119,6 +120,20 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
               <option key={g} value={g}>{g}</option>
             ))}
           </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-700">
+          <span className="font-semibold">GS-/Office:</span>
+          <OfficeMatchBadge
+            compact
+            status={typeof member.office_list_status === "string" ? member.office_list_status : null}
+            baseGroup={typeof member.base_group === "string" ? member.base_group : null}
+            officeGroup={typeof member.office_list_group === "string" ? member.office_list_group : null}
+            checkedAt={typeof member.office_list_checked_at === "string" ? member.office_list_checked_at : null}
+          />
+          <span>{getOfficeMatchText(typeof member.office_list_status === "string" ? member.office_list_status : null)}</span>
+          <span>Office: {typeof member.office_list_group === "string" && member.office_list_group ? member.office_list_group : "-"}</span>
+          <span>Geprüft: {getOfficeCheckedAtText(typeof member.office_list_checked_at === "string" ? member.office_list_checked_at : null)}</span>
+          {member.base_group === "L-Gruppe" ? <span className="text-zinc-600">L-Gruppe: Abgleich über Stamm-/Office-Gruppe prüfen.</span> : null}
         </div>
         <div className="mt-8 border-t pt-6">
           <div className="text-lg font-semibold mb-2">Wettkampf</div>

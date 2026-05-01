@@ -27,6 +27,14 @@ const ALLOWED_MEMBER_FIELDS = new Set([
   "has_competition_pass",
   "member_phase",
   "created_at",
+  "last_verification_sent_at",
+])
+
+const OPTIONAL_MEMBER_FIELDS = new Set([
+  "office_list_status",
+  "office_list_group",
+  "office_list_checked_at",
+  "last_verification_sent_at",
 ])
 
 const DEFAULT_MEMBER_SELECT = [
@@ -148,10 +156,31 @@ export async function POST(req: Request) {
       }), { status: 200 })
     }
 
-    const { data: members, error, count } = await supabase
+    let membersResult = await supabase
       .from("members")
       .select(selectColumns, { count: "exact" })
       .range(from, to)
+
+    if (membersResult.error && selectedFields && selectedFields.length > 0) {
+      const missingOptionalFields = selectedFields.filter((field) => OPTIONAL_MEMBER_FIELDS.has(field))
+      const missingColumnMessage = membersResult.error.message?.toLowerCase() ?? ""
+      const isMissingColumnError =
+        missingColumnMessage.includes("does not exist") ||
+        missingColumnMessage.includes("schema cache") ||
+        missingColumnMessage.includes("could not find")
+
+      if (isMissingColumnError && missingOptionalFields.length > 0) {
+        const fallbackFields = selectedFields.filter((field) => !OPTIONAL_MEMBER_FIELDS.has(field))
+        const fallbackSelect = fallbackFields.join(", ")
+
+        membersResult = await supabase
+          .from("members")
+          .select(fallbackSelect, { count: "exact" })
+          .range(from, to)
+      }
+    }
+
+    const { data: members, error, count } = membersResult
 
     if (error) {
       console.error("SUPABASE ERROR:", error)

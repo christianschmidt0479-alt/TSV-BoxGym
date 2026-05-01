@@ -16,6 +16,10 @@ type ApprovalMember = {
   is_approved: boolean
   member_phase: "trial" | "extended" | "member"
   checkin_count: number
+  last_verification_sent_at: string | null
+  office_list_status: string | null
+  office_list_group: string | null
+  office_list_checked_at: string | null
 }
 
 function toApprovalMember(m: Record<string, unknown>): ApprovalMember {
@@ -36,6 +40,11 @@ function toApprovalMember(m: Record<string, unknown>): ApprovalMember {
       ? m.member_phase
       : "member",
     checkin_count: typeof m.checkinCount === "number" ? m.checkinCount : 0,
+    last_verification_sent_at:
+      typeof m.last_verification_sent_at === "string" ? m.last_verification_sent_at : null,
+    office_list_status: typeof m.office_list_status === "string" ? m.office_list_status : null,
+    office_list_group: typeof m.office_list_group === "string" ? m.office_list_group : null,
+    office_list_checked_at: typeof m.office_list_checked_at === "string" ? m.office_list_checked_at : null,
   }
 }
 
@@ -62,6 +71,10 @@ export default function FreigabenPage() {
             "email",
             "base_group",
             "email_verified",
+            "last_verification_sent_at",
+            "office_list_status",
+            "office_list_group",
+            "office_list_checked_at",
             "is_trial",
             "is_approved",
             "member_phase",

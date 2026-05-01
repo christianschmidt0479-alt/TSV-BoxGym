@@ -64,3 +64,11 @@
 - Single active user context usage across protected pages.
 - Legacy trainer access paths removed.
 - Test gate green.
+
+## Project Status Update (Admin Check-in Test)
+- Manual admin check-in is technically reachable via `/verwaltung-neu/checkin`.
+- Current test run is correctly blocked with `outside_time_window`.
+- At test time (`03:53` Berlin), no active training window was available.
+- Next real success test must be executed in a valid training window.
+- Duplicate test is only possible after a successful first check-in.
+- No code changes are required for this status point.
