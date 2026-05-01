@@ -17,7 +17,7 @@ export default function TrainerSelfCheckinButton({ memberId }: TrainerSelfChecki
     setSuccess(false)
 
     try {
-      const response = await fetch("/api/checkin/member", {
+      const response = await fetch("/api/public/member-checkin", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -28,14 +28,20 @@ export default function TrainerSelfCheckinButton({ memberId }: TrainerSelfChecki
         }),
       })
 
-      const data = (await response.json()) as {
+      const raw = await response.text()
+      let data: {
         ok?: boolean
         error?: string
         reason?: string
+      } = {}
+      try {
+        data = raw ? (JSON.parse(raw) as typeof data) : {}
+      } catch {
+        data = {}
       }
 
       if (!response.ok || !data.ok) {
-        setMessage(data.error || "Selbst-Check-in fehlgeschlagen")
+        setMessage(data.error || raw || "Selbst-Check-in fehlgeschlagen")
         return
       }
 

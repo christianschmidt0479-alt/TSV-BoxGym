@@ -126,7 +126,7 @@ async function callMemberCheckin(body, cookie) {
     origin: ORIGIN,
   }
   if (cookie) headers.cookie = cookie
-  const res = await fetch(`${BASE_URL}/api/checkin/member`, {
+  const res = await fetch(`${BASE_URL}/api/public/member-checkin`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),

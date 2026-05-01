@@ -2,6 +2,10 @@ import { createServerSupabaseServiceClient, hasSupabaseServiceRoleKey } from "@/
 
 const CHECKIN_WINDOW_OVERRIDE_KEY = "disable_checkin_time_window"
 const DISABLE_NORMAL_CHECKIN_WINDOW_KEY = "disable_normal_checkin_time_window"
+const CHECKIN_SETTINGS_CACHE_TTL_MS = 60 * 1000
+
+let cachedSettings: CheckinSettings | null = null
+let cachedAt = 0
 
 export type CheckinSettings = {
   disableCheckinTimeWindow: boolean
@@ -29,8 +33,16 @@ function parseBooleanSetting(value: unknown) {
 }
 
 export async function readCheckinSettings() {
+  const now = Date.now()
+  if (cachedSettings && now - cachedAt < CHECKIN_SETTINGS_CACHE_TTL_MS) {
+    return cachedSettings
+  }
+
   if (!hasSupabaseServiceRoleKey()) {
-    return defaultCheckinSettings()
+    const settings = defaultCheckinSettings()
+    cachedSettings = settings
+    cachedAt = now
+    return settings
   }
 
   const supabase = createServerSupabaseServiceClient()
@@ -46,10 +58,14 @@ export async function readCheckinSettings() {
 
   const settingsByKey = new Map((data ?? []).map((entry) => [entry.key, entry.value_json]))
 
-  return {
+  const settings = {
     disableCheckinTimeWindow: parseBooleanSetting(settingsByKey.get(CHECKIN_WINDOW_OVERRIDE_KEY)),
     disableNormalCheckinTimeWindow: parseBooleanSetting(settingsByKey.get(DISABLE_NORMAL_CHECKIN_WINDOW_KEY)),
   }
+
+  cachedSettings = settings
+  cachedAt = now
+  return settings
 }
 
 export async function writeCheckinSettings(settings: CheckinSettings) {

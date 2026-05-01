@@ -4,11 +4,11 @@ import { NextResponse } from "next/server"
  * POST /api/checkin/member
  * 
  * LEGACY FORWARD ENDPOINT — Routes all requests to /api/public/member-checkin
+ * Legacy fallback only; internal consumers use /api/public/member-checkin.
  * 
  * This endpoint is maintained for backward compatibility with:
- * - trainer-self-checkin-button.tsx
- * - verwaltung-neu/checkin/page.tsx
- * - legacy scripts and integrations
+ * - external clients not yet migrated
+ * - legacy scripts or integrations outside this repository
  * 
  * All actual logic is unified in /api/public/member-checkin.
  * This route simply logs usage and forwards the request.

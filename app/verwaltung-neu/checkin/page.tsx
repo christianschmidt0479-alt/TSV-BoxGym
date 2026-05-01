@@ -211,7 +211,7 @@ export default function TrainerCheckinPage() {
     setRowMessage((prev) => ({ ...prev, [member.id]: "" }))
 
     try {
-      const res = await fetch("/api/checkin/member", {
+      const res = await fetch("/api/public/member-checkin", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -222,10 +222,16 @@ export default function TrainerCheckinPage() {
         }),
       })
 
-      const data = (await res.json()) as { ok?: boolean; error?: string; checkinId?: string }
+      const raw = await res.text()
+      let data: { ok?: boolean; error?: string; checkinId?: string } = {}
+      try {
+        data = raw ? (JSON.parse(raw) as typeof data) : {}
+      } catch {
+        data = {}
+      }
 
       if (!res.ok || !data.ok) {
-        setRowMessage((prev) => ({ ...prev, [member.id]: data.error || "Check-in fehlgeschlagen" }))
+        setRowMessage((prev) => ({ ...prev, [member.id]: data.error || raw || "Check-in fehlgeschlagen" }))
         return
       }
 
