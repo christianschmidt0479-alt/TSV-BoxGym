@@ -25,6 +25,19 @@ type MigrationStats = {
   notice: string
 }
 
+function categoryPriority(category: "possible_plaintext_legacy" | "missing_secret") {
+  if (category === "missing_secret") return 0
+  return 1
+}
+
+function categoryHint(category: "possible_plaintext_legacy" | "missing_secret") {
+  if (category === "missing_secret") {
+    return "Dieses Mitglied hat keine Zugangsdaten. Bitte Passwort-Reset senden oder Zugang neu einrichten."
+  }
+
+  return "Legacy-Zugang erkannt. Beim nächsten erfolgreichen Login wird automatisch auf bcrypt aktualisiert. Passwort-Reset wird empfohlen."
+}
+
 export default function PasswordMigrationPage() {
   const [stats, setStats] = useState<MigrationStats | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -107,6 +120,17 @@ export default function PasswordMigrationPage() {
     return () => controller.abort()
   }, [])
 
+  const sortedAffectedMembers = (stats?.affectedMembers ?? [])
+    .slice()
+    .sort((a, b) => {
+      const priorityDiff = categoryPriority(a.category) - categoryPriority(b.category)
+      if (priorityDiff !== 0) return priorityDiff
+
+      const aCreated = a.created_at ? Date.parse(a.created_at) : Number.POSITIVE_INFINITY
+      const bCreated = b.created_at ? Date.parse(b.created_at) : Number.POSITIVE_INFINITY
+      return aCreated - bCreated
+    })
+
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
@@ -168,7 +192,7 @@ export default function PasswordMigrationPage() {
               Angezeigt werden nur Diagnosefelder. Keine Passwoerter, keine PINs, keine Hashes, keine Tokens.
             </p>
 
-            {stats.affectedMembers && stats.affectedMembers.length > 0 ? (
+            {sortedAffectedMembers.length > 0 ? (
               <div className="mt-4 overflow-x-auto">
                 <table className="min-w-full border-collapse text-sm">
                   <thead>
@@ -184,14 +208,17 @@ export default function PasswordMigrationPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {stats.affectedMembers.map((member) => (
+                    {sortedAffectedMembers.map((member) => (
                       <tr key={member.id} className="border-b border-zinc-100 align-top text-zinc-800">
                         <td className="px-2 py-2 font-mono text-xs">{member.id}</td>
                         <td className="px-2 py-2">{member.name || "-"}</td>
                         <td className="px-2 py-2">{member.email || "-"}</td>
                         <td className="px-2 py-2">{member.base_group || "-"}</td>
                         <td className="px-2 py-2">{member.created_at || "-"}</td>
-                        <td className="px-2 py-2">{member.category}</td>
+                        <td className="px-2 py-2">
+                          <div className="font-medium">{member.category}</div>
+                          <p className="mt-1 text-xs text-zinc-600">{categoryHint(member.category)}</p>
+                        </td>
                         <td className="px-2 py-2">{member.recommendedAction}</td>
                           <td className="px-2 py-2">
                             <div className="flex flex-col gap-2">
@@ -199,7 +226,7 @@ export default function PasswordMigrationPage() {
                                 type="button"
                                 onClick={() => sendPasswordReset(member.id)}
                                 disabled={!member.id || sendingResetForMemberId === member.id}
-                                className="inline-flex items-center justify-center rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 transition hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="inline-flex items-center justify-center rounded-md bg-[#154c83] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0f3f70] disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {sendingResetForMemberId === member.id ? "Senden..." : "Passwort-Reset senden"}
                               </button>
@@ -207,7 +234,7 @@ export default function PasswordMigrationPage() {
                               {member.id ? (
                                 <Link
                                   href={`/verwaltung-neu/mitglieder/${member.id}`}
-                                  className="inline-flex items-center justify-center rounded-md bg-[#154c83] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0f3f70]"
+                                  className="inline-flex items-center justify-center rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 transition hover:border-zinc-400"
                                 >
                                   Mitglied oeffnen
                                 </Link>

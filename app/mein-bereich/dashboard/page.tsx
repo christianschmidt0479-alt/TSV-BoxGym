@@ -6,7 +6,7 @@ import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { MAX_TRAININGS_WITHOUT_APPROVAL } from "@/lib/memberCheckin"
 import { getTodayIsoDateInBerlin, isTodayCheckinInBerlin } from "@/lib/dateFormat"
 import { getUserContext } from "@/lib/getUserContext"
-import { MEMBER_AREA_SESSION_COOKIE } from "@/lib/publicAreaSession"
+import { MEMBER_AREA_SESSION_COOKIE, readMemberSession } from "@/lib/publicAreaSession"
 import { resolveUserContext } from "@/lib/resolveUserContext"
 import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
 import { FormContainer } from "@/components/ui/form-container"
@@ -14,6 +14,8 @@ import { FormContainer } from "@/components/ui/form-container"
 export default async function DashboardPage() {
   const cookieStore = await cookies()
   const hadMemberSessionCookie = Boolean(cookieStore.get(MEMBER_AREA_SESSION_COOKIE)?.value)
+  const memberSession = await readMemberSession(cookieStore)
+  const showPasswordUpdateHint = memberSession?.needsPasswordUpdate === true
   const resolvedContext = await resolveUserContext()
 
   if (!resolvedContext.isLoggedIn) {
@@ -133,6 +135,18 @@ export default async function DashboardPage() {
           title="Mein Bereich"
           subtitle="Deine Übersicht für Training und Kontostatus"
         />
+
+        {showPasswordUpdateHint ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p>Dein Zugang bleibt aktiv. Für mehr Sicherheit empfehlen wir, dein Passwort zu aktualisieren.</p>
+            <Link
+              href="/mein-bereich/passwort-aendern"
+              className="mt-2 inline-flex items-center rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+            >
+              Jetzt aktualisieren
+            </Link>
+          </div>
+        ) : null}
 
         <div className="rounded-2xl border border-[#154c83] bg-[#154c83] px-4 py-4 text-white">
           <p className="text-xs font-semibold uppercase tracking-wide text-blue-100">Status</p>
