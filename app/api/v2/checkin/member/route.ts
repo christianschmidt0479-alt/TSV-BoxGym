@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMemberV2ByEmail } from '@/lib/v2/members/members_v2';
-import { getCheckinsV2ForMember, getCheckinsV2ForMemberOnDay, insertCheckinV2 } from '@/lib/v2/checkins/checkins_v2';
+import { getCheckinsV2ForMemberOnDay, insertCheckinV2, countCheckinsV2ForMember } from '@/lib/v2/checkins/checkins_v2';
 import { isTrainingGroup } from '@/lib/trainingGroups';
 import { verifySession } from '@/lib/v2/auth/session';
 import { handleCheckin } from '@/lib/checkinCore';
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   const coreMode = mode === 'holiday' ? 'ferien' : 'normal';
   const today = getTodayBerlinISO() || '';
   const todaysCheckins = await getCheckinsV2ForMemberOnDay(member.id, today);
-  const allCheckins = await getCheckinsV2ForMember(member.id);
+  const allCheckinsCount = await countCheckinsV2ForMember(member.id);
   const hasCheckedInToday = todaysCheckins.length > 0;
 
   const checkinResult = await handleCheckin(
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       source: 'form',
       mode: coreMode,
     },
-    allCheckins.length,
+    allCheckinsCount,
     hasCheckedInToday
   );
 

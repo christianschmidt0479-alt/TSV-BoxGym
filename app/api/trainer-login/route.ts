@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { findMemberById } from "@/lib/boxgymDb"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { verifyAuthSecret } from "@/lib/authSecret"
-import { TRAINER_SESSION_COOKIE, createTrainerSessionToken } from "@/lib/authSession"
+import { TRAINER_SESSION_COOKIE, createTrainerSessionToken, getTrainerSessionMaxAgeMs } from "@/lib/authSession"
 import {
   clearLoginFailuresAsync,
   delayFailedLogin,
@@ -134,6 +134,7 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
+      maxAge: Math.floor(getTrainerSessionMaxAgeMs() / 1000),
     })
 
     return res

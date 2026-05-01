@@ -1,7 +1,7 @@
 import type { NextRequest, NextResponse } from "next/server"
 
 export const TRAINER_SESSION_COOKIE = "trainer_session"
-const SESSION_MAX_AGE_SECONDS = 10 * 60
+const SESSION_MAX_AGE_SECONDS = 30 * 60
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
@@ -163,7 +163,7 @@ export async function readTrainerSessionFromHeaders(request: Request) {
   return verifyTrainerSessionToken(getCookieValueFromHeader(request.headers.get("cookie"), TRAINER_SESSION_COOKIE))
 }
 
-export async function applyTrainerSessionCookie(response: NextResponse, input: Omit<TrainerSessionPayload, "exp">) {
+export async function applyTrainerSessionCookie(response: NextResponse, input: Omit<TrainerSessionPayload, "exp" | "version">) {
   const token = await createTrainerSessionToken(input)
   response.cookies.set(TRAINER_SESSION_COOKIE, token, {
     httpOnly: true,

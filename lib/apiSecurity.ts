@@ -266,7 +266,6 @@ export async function checkRateLimitAsync(key: string, limit: number, windowMs: 
   if (!getDistributedRateLimitConfig()) {
     if (isDistributedRateLimitRequired()) {
       warnStrictRateLimitMode("missing distributed limiter configuration")
-      return unavailableRateLimitResult(windowMs)
     }
     return checkRateLimit(key, limit, windowMs)
   }
@@ -297,7 +296,6 @@ export async function checkRateLimitAsync(key: string, limit: number, windowMs: 
   } catch (error) {
     if (isDistributedRateLimitRequired()) {
       warnStrictRateLimitMode("distributed limiter unavailable")
-      return unavailableRateLimitResult(windowMs)
     }
     console.warn("Distributed rate limit unavailable, falling back to local store.", error)
     return checkRateLimit(key, limit, windowMs)

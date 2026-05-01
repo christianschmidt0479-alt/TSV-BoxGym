@@ -26,6 +26,15 @@ export async function getCheckinsV2ForMember(member_id: string): Promise<Checkin
   return data as CheckinV2[];
 }
 
+export async function countCheckinsV2ForMember(member_id: string): Promise<number> {
+  const { count, error } = await supabase
+    .from(TABLE)
+    .select('*', { count: 'exact', head: true })
+    .eq('member_id', member_id);
+  if (error) return 0;
+  return count ?? 0;
+}
+
 export async function getCheckinsV2ForMemberOnDay(member_id: string, date: string): Promise<CheckinV2[]> {
   // date: YYYY-MM-DD
   const { data, error } = await supabase

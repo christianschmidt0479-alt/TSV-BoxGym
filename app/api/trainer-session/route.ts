@@ -52,7 +52,6 @@ export async function POST(request: Request) {
     accountEmail: trainerAccount.email,
     accountFirstName: trainerAccount.first_name,
     accountLastName: trainerAccount.last_name,
-    version: 1,
   })
 }
 
