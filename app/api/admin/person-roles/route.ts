@@ -6,7 +6,8 @@ import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
 import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
 import { isInternalTrainerTestEmail } from "@/lib/trainerAdmin"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
-import { normalizeTrainingGroup } from "@/lib/trainingGroups"
+import { normalizeTrainingGroup, parseTrainingGroup } from "@/lib/trainingGroups"
+import { createTrainerAccount } from "@/lib/trainerDb"
 import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { sendVerificationEmail } from "@/lib/resendClient"
 
@@ -27,6 +28,21 @@ type PersonRolesActionBody =
       action: "set_trainer_role"
       trainerId: string
       role: "trainer" | "admin"
+    }
+  | {
+      action: "grant_trainer"
+      memberId: string
+      sendAccessMail?: boolean
+    }
+  | {
+      action: "revoke_trainer"
+      memberId?: string
+      trainerId?: string
+    }
+  | {
+      action: "ensure_sportler"
+      memberId: string
+      baseGroup?: string
     }
 
 const MEMBER_ROLE_SELECT =
@@ -97,6 +113,28 @@ async function requireAdminSession(request: Request) {
 function parseRecordId(value: string | undefined) {
   const normalized = value?.trim() ?? ""
   return normalized || null
+}
+
+function normalizeEmail(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : ""
+}
+
+function makeTemporaryTrainerPassword() {
+  return randomUUID().replace(/-/g, "").slice(0, 16)
+}
+
+async function ensureTrainerProfileExists(supabase: ReturnType<typeof getServerSupabase>, trainerId: string) {
+  const { error } = await supabase
+    .from("training_trainer_profiles")
+    .upsert({ trainer_id: trainerId }, { onConflict: "trainer_id" })
+
+  if (!error) return
+
+  const message = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase()
+  const missingTable = message.includes("training_trainer_profiles") && message.includes("does not exist")
+  if (!missingTable) {
+    throw error
+  }
 }
 
 function getDisplayName(input?: {
@@ -384,10 +422,246 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, verificationLink, delivery })
     }
 
+    if (body.action === "grant_trainer") {
+      const memberId = parseRecordId(body.memberId)
+      if (!memberId) {
+        return jsonError("Missing member id", 400)
+      }
+
+      const { data: member, error: memberError } = await supabase
+        .from("members")
+        .select("id, first_name, last_name, name, email")
+        .eq("id", memberId)
+        .maybeSingle()
+
+      if (memberError) throw memberError
+      if (!member) return jsonError("Member not found", 404)
+
+      const memberEmail = normalizeEmail(member.email)
+      if (!memberEmail) {
+        return jsonError("Mitglied hat keine gültige E-Mail-Adresse.", 400)
+      }
+
+      const { data: linkedTrainer, error: linkedTrainerError } = await supabase
+        .from("trainer_accounts")
+        .select("id, first_name, last_name, email, role, email_verified, is_approved, linked_member_id, email_verification_token")
+        .eq("linked_member_id", memberId)
+        .maybeSingle()
+
+      if (linkedTrainerError) throw linkedTrainerError
+
+      const { data: emailTrainer, error: emailTrainerError } = await supabase
+        .from("trainer_accounts")
+        .select("id, first_name, last_name, email, role, email_verified, is_approved, linked_member_id, email_verification_token")
+        .eq("email", memberEmail)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (emailTrainerError) throw emailTrainerError
+
+      let trainerAccount: {
+        id: string
+        role: "trainer" | "admin" | null
+        linked_member_id: string | null
+      } | null = linkedTrainer ?? emailTrainer
+
+      if (trainerAccount?.linked_member_id && trainerAccount.linked_member_id !== memberId) {
+        return jsonError("Diese Trainer-E-Mail ist bereits mit einem anderen Mitglied verknüpft.", 409)
+      }
+
+      if (!trainerAccount) {
+        const createdTrainer = await createTrainerAccount({
+          first_name: member.first_name?.trim() || "Trainer",
+          last_name: member.last_name?.trim() || member.name?.trim() || "Ohne Nachname",
+          email: memberEmail,
+          pin: makeTemporaryTrainerPassword(),
+          linked_member_id: memberId,
+          email_verification_token: randomUUID(),
+          role: "trainer",
+        })
+
+        trainerAccount = {
+          id: createdTrainer.id,
+          role: createdTrainer.role === "admin" ? "admin" : createdTrainer.role === "trainer" ? "trainer" : null,
+          linked_member_id: createdTrainer.linked_member_id ?? null,
+        }
+      }
+
+      if (!trainerAccount) {
+        return jsonError("Trainer account not found", 404)
+      }
+
+      const updatePayload: Record<string, unknown> = {
+        linked_member_id: memberId,
+        role: trainerAccount.role === "admin" ? "admin" : "trainer",
+        is_approved: true,
+        approved_at: new Date().toISOString(),
+      }
+
+      const { data: updatedTrainer, error: updateTrainerError } = await supabase
+        .from("trainer_accounts")
+        .update(updatePayload)
+        .eq("id", trainerAccount.id)
+        .select("id, first_name, last_name, email, email_verified, is_approved, email_verification_token")
+        .maybeSingle()
+
+      if (updateTrainerError) throw updateTrainerError
+      if (!updatedTrainer) {
+        return jsonError("Trainer account not found", 404)
+      }
+
+      await ensureTrainerProfileExists(supabase, updatedTrainer.id)
+
+      let accessMailSent = false
+      if (body.sendAccessMail === true && updatedTrainer.email && !updatedTrainer.email_verified) {
+        let verificationToken = (updatedTrainer.email_verification_token as string | null)?.trim() || ""
+        if (!verificationToken) {
+          verificationToken = randomUUID()
+          const { error: tokenUpdateError } = await supabase
+            .from("trainer_accounts")
+            .update({ email_verification_token: verificationToken })
+            .eq("id", updatedTrainer.id)
+
+          if (tokenUpdateError) throw tokenUpdateError
+        }
+
+        const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
+        const verificationLink = `${verificationBaseUrl}/trainer-zugang/zugang-einrichten?token=${verificationToken}`
+
+        await sendVerificationEmail({
+          email: updatedTrainer.email,
+          name: getDisplayName(updatedTrainer),
+          link: verificationLink,
+          kind: "trainer",
+        })
+        accessMailSent = true
+      }
+
+      await writeAdminAuditLog({
+        session,
+        action: "trainer_granted_from_member",
+        targetType: "trainer",
+        targetId: updatedTrainer.id,
+        targetName: getDisplayName(updatedTrainer),
+        details: `Mitglied: ${memberId}, Zugangsmail: ${accessMailSent ? "ja" : "nein"}`,
+      })
+
+      return NextResponse.json({ ok: true, trainerId: updatedTrainer.id, accessMailSent })
+    }
+
+    if (body.action === "revoke_trainer") {
+      const memberId = parseRecordId(body.memberId)
+      const trainerId = parseRecordId(body.trainerId)
+
+      if (!memberId && !trainerId) {
+        return jsonError("Missing member id or trainer id", 400)
+      }
+
+      const trainerQuery = supabase
+        .from("trainer_accounts")
+        .select("id, first_name, last_name, email, role")
+
+      const { data: trainer, error: trainerError } = trainerId
+        ? await trainerQuery.eq("id", trainerId).maybeSingle()
+        : await trainerQuery.eq("linked_member_id", memberId as string).maybeSingle()
+
+      if (trainerError) throw trainerError
+      if (!trainer) {
+        return jsonError("Kein passendes Trainerkonto gefunden.", 404)
+      }
+
+      if (trainer.role === "admin") {
+        return jsonError("Admin-Konten können nicht über Trainerrolle entfernen angepasst werden.", 409)
+      }
+
+      const { error: revokeError } = await supabase
+        .from("trainer_accounts")
+        .update({ is_approved: false, approved_at: null })
+        .eq("id", trainer.id)
+
+      if (revokeError) throw revokeError
+
+      await writeAdminAuditLog({
+        session,
+        action: "trainer_revoked_from_member",
+        targetType: "trainer",
+        targetId: trainer.id,
+        targetName: getDisplayName(trainer),
+        details: trainerId ? `Direkt über Trainer-ID: ${trainerId}` : `Mitglied: ${memberId}`,
+      })
+
+      return NextResponse.json({ ok: true })
+    }
+
+    if (body.action === "ensure_sportler") {
+      const memberId = parseRecordId(body.memberId)
+      if (!memberId) {
+        return jsonError("Missing member id", 400)
+      }
+
+      const requestedBaseGroup = parseTrainingGroup(body.baseGroup)
+
+      const memberResponse = requestedBaseGroup
+        ? await supabase
+            .from("members")
+            .update({ base_group: requestedBaseGroup })
+            .eq("id", memberId)
+            .select("id, first_name, last_name, name, base_group")
+            .maybeSingle()
+        : await supabase
+            .from("members")
+            .select("id, first_name, last_name, name, base_group")
+            .eq("id", memberId)
+            .maybeSingle()
+
+      const { data: member, error: memberError } = memberResponse
+
+      if (memberError) throw memberError
+      if (!member) {
+        return jsonError("Member not found", 404)
+      }
+
+      await writeAdminAuditLog({
+        session,
+        action: "member_role_ensured",
+        targetType: "member",
+        targetId: member.id,
+        targetName: getDisplayName(member),
+        details: requestedBaseGroup ? `Stammgruppe gesetzt: ${requestedBaseGroup}` : "Rolle Sportler bestätigt",
+      })
+
+      return NextResponse.json({ ok: true, memberId: member.id, baseGroup: member.base_group ?? null })
+    }
+
     if (body.action === "set_trainer_role") {
       const trainerId = parseRecordId(body.trainerId)
       if (!trainerId || (body.role !== "admin" && body.role !== "trainer")) {
         return jsonError("Invalid trainer role payload", 400)
+      }
+
+      const { data: currentTrainer, error: currentTrainerError } = await supabase
+        .from("trainer_accounts")
+        .select("id, role")
+        .eq("id", trainerId)
+        .maybeSingle()
+
+      if (currentTrainerError) throw currentTrainerError
+      if (!currentTrainer) {
+        return jsonError("Trainer not found", 404)
+      }
+
+      if (currentTrainer.role === "admin" && body.role === "trainer") {
+        const { count: otherAdmins, error: adminCountError } = await supabase
+          .from("trainer_accounts")
+          .select("id", { count: "exact", head: true })
+          .eq("role", "admin")
+          .neq("id", trainerId)
+
+        if (adminCountError) throw adminCountError
+        if ((otherAdmins ?? 0) === 0) {
+          return jsonError("Der letzte Admin kann nicht auf Trainer zurückgesetzt werden.", 409)
+        }
       }
 
       const { data, error } = await supabase

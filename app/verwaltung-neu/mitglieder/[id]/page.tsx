@@ -6,6 +6,7 @@ import { findMemberById, changeMemberBaseGroup, updateMemberCompetitionData, upd
 import { TRAINING_GROUPS, parseTrainingGroup } from "@/lib/trainingGroups";
 import { validateName, validateBirthdate } from "@/lib/formValidation";
 import { OfficeMatchBadge, getOfficeCheckedAtText, getOfficeMatchText } from "@/components/verwaltung-neu/OfficeMatchBadge";
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase";
 
 
 
@@ -17,6 +18,69 @@ function formatDate(dateString: string | null | undefined) {
   return date.toLocaleDateString("de-DE", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
+type RoleState = {
+  trainerId: string | null;
+  trainerRole: "trainer" | "admin" | null;
+  trainerApproved: boolean;
+  trainerEmailVerified: boolean;
+  trainerLinkedMemberId: string | null;
+  trainerProfileLinked: boolean;
+};
+
+async function loadRoleState(memberId: string, memberEmail: string | null | undefined): Promise<RoleState> {
+  const supabase = createServerSupabaseServiceClient();
+  const normalizedEmail = (memberEmail ?? "").trim().toLowerCase();
+
+  const linkedResponse = await supabase
+    .from("trainer_accounts")
+    .select("id, role, is_approved, email_verified, linked_member_id")
+    .eq("linked_member_id", memberId)
+    .maybeSingle();
+
+  if (linkedResponse.error) {
+    throw linkedResponse.error;
+  }
+
+  let trainer = linkedResponse.data;
+
+  if (!trainer && normalizedEmail) {
+    const emailResponse = await supabase
+      .from("trainer_accounts")
+      .select("id, role, is_approved, email_verified, linked_member_id")
+      .eq("email", normalizedEmail)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (emailResponse.error) {
+      throw emailResponse.error;
+    }
+
+    trainer = emailResponse.data;
+  }
+
+  let trainerProfileLinked = false;
+  if (trainer?.id) {
+    const profileResponse = await supabase
+      .from("training_trainer_profiles")
+      .select("trainer_id")
+      .eq("trainer_id", trainer.id)
+      .maybeSingle();
+
+    if (!profileResponse.error) {
+      trainerProfileLinked = Boolean(profileResponse.data?.trainer_id);
+    }
+  }
+
+  return {
+    trainerId: trainer?.id ?? null,
+    trainerRole: trainer?.role === "admin" ? "admin" : trainer?.id ? "trainer" : null,
+    trainerApproved: Boolean(trainer?.is_approved),
+    trainerEmailVerified: Boolean(trainer?.email_verified),
+    trainerLinkedMemberId: typeof trainer?.linked_member_id === "string" ? trainer.linked_member_id : null,
+    trainerProfileLinked,
+  };
+}
 
 export default async function MitgliedDetailPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams?: Promise<{ error?: string; returnTo?: string; success?: string }> }) {
   const { id } = await params;
@@ -32,6 +96,82 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
     errorMsg = sp?.error || "";
     returnTo = sp?.returnTo || "";
     successMsg = sp?.error ? "" : (sp?.success || "");
+  }
+
+  const roleState = await loadRoleState(member.id, member.email);
+
+  async function postPersonRoleAction(payload: Record<string, unknown>, memberId: string, successMessage: string, fallbackError: string) {
+    "use server";
+
+    const reqHeaders = await headers();
+    const host = reqHeaders.get("host") || "localhost:3000";
+    const proto = reqHeaders.get("x-forwarded-proto") || "http";
+    const origin = reqHeaders.get("origin") || `${proto}://${host}`;
+    const cookie = reqHeaders.get("cookie") || "";
+
+    const response = await fetch(`${origin}/api/admin/person-roles`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin,
+        cookie,
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    }).catch(() => null);
+
+    if (!response || !response.ok) {
+      let message = fallbackError;
+      if (response) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        if (body?.error) {
+          message = body.error;
+        }
+      }
+      redirect(`/verwaltung-neu/mitglieder/${memberId}?error=${encodeURIComponent(message)}`);
+    }
+
+    redirect(`/verwaltung-neu/mitglieder/${memberId}?success=${encodeURIComponent(successMessage)}`);
+  }
+
+  async function handleGrantTrainer(formData: FormData) {
+    "use server";
+    const member_id = formData.get("member_id")?.toString() ?? id;
+    const sendAccessMail = formData.get("send_access_mail") === "on";
+
+    await postPersonRoleAction(
+      { action: "grant_trainer", memberId: member_id, sendAccessMail },
+      member_id,
+      sendAccessMail
+        ? "Trainerrolle gesetzt. Zugangsmail wurde bei Bedarf versendet."
+        : "Trainerrolle gesetzt.",
+      "Trainerrolle konnte nicht gesetzt werden."
+    );
+  }
+
+  async function handleRevokeTrainer(formData: FormData) {
+    "use server";
+    const member_id = formData.get("member_id")?.toString() ?? id;
+
+    await postPersonRoleAction(
+      { action: "revoke_trainer", memberId: member_id },
+      member_id,
+      "Trainerrolle wurde deaktiviert. Mitgliedsdaten bleiben unverändert.",
+      "Trainerrolle konnte nicht entfernt werden."
+    );
+  }
+
+  async function handleEnsureSportler(formData: FormData) {
+    "use server";
+    const member_id = formData.get("member_id")?.toString() ?? id;
+    const base_group = formData.get("base_group")?.toString() ?? "";
+
+    await postPersonRoleAction(
+      { action: "ensure_sportler", memberId: member_id, baseGroup: base_group },
+      member_id,
+      "Sportlerstatus wurde bestätigt.",
+      "Sportlerstatus konnte nicht gesetzt werden."
+    );
   }
 
   // Server Actions
@@ -276,6 +416,88 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
           <div className="text-base text-zinc-800">{formatDate(member.created_at ?? null)}</div>
         </div>
       </form>
+
+      <div className="bg-white rounded shadow-sm border border-zinc-100 p-6 space-y-4">
+        <div>
+          <div className="text-sm font-semibold text-zinc-900">Rollen &amp; Rechte</div>
+          <div className="text-xs text-zinc-500">Rollen werden serverseitig durch Admin-Aktionen gepflegt. Mitglieds- und Check-in-Daten bleiben unverändert.</div>
+        </div>
+
+        <div className="grid gap-2 text-sm text-zinc-800 md:grid-cols-2">
+          <div>
+            <span className="text-zinc-500">Sportler aktiv:</span>{" "}
+            <span className={member.is_approved ? "font-semibold text-emerald-700" : "font-semibold text-amber-700"}>
+              {member.is_approved ? "ja (freigegeben)" : "ja (noch nicht freigegeben)"}
+            </span>
+          </div>
+          <div>
+            <span className="text-zinc-500">Trainerrolle:</span>{" "}
+            <span className={roleState.trainerId && roleState.trainerApproved ? "font-semibold text-emerald-700" : "font-semibold text-zinc-700"}>
+              {roleState.trainerId
+                ? roleState.trainerApproved
+                  ? "ja (aktiv)"
+                  : "ja (deaktiviert)"
+                : "nein"}
+            </span>
+          </div>
+          <div>
+            <span className="text-zinc-500">Adminrolle:</span>{" "}
+            <span className={roleState.trainerRole === "admin" ? "font-semibold text-emerald-700" : "font-semibold text-zinc-700"}>
+              {roleState.trainerRole === "admin" ? "ja" : "nein"}
+            </span>
+          </div>
+          <div>
+            <span className="text-zinc-500">Verknüpftes Trainerprofil:</span>{" "}
+            <span className={roleState.trainerProfileLinked ? "font-semibold text-emerald-700" : "font-semibold text-zinc-700"}>
+              {roleState.trainerProfileLinked ? "ja" : "nein"}
+            </span>
+          </div>
+          <div>
+            <span className="text-zinc-500">Trainer-E-Mail bestätigt:</span>{" "}
+            <span className={roleState.trainerEmailVerified ? "font-semibold text-emerald-700" : "font-semibold text-amber-700"}>
+              {roleState.trainerId ? (roleState.trainerEmailVerified ? "ja" : "nein") : "-"}
+            </span>
+          </div>
+          <div>
+            <span className="text-zinc-500">Mitglied-Verknüpfung:</span>{" "}
+            <span className={roleState.trainerLinkedMemberId === member.id ? "font-semibold text-emerald-700" : "font-semibold text-zinc-700"}>
+              {roleState.trainerLinkedMemberId === member.id ? "ok" : roleState.trainerId ? "abweichend" : "-"}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <form action={handleGrantTrainer} className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <input type="hidden" name="member_id" value={member.id} />
+            <label className="inline-flex items-center gap-1 text-xs text-zinc-700">
+              <input type="checkbox" name="send_access_mail" defaultChecked />
+              Zugangsmail senden
+            </label>
+            <button type="submit" className="rounded-md bg-[#154c83] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0f3d6b]">
+              Als Trainer berechtigen
+            </button>
+          </form>
+
+          <form action={handleRevokeTrainer}>
+            <input type="hidden" name="member_id" value={member.id} />
+            <button type="submit" className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:border-red-300">
+              Trainerrolle entfernen
+            </button>
+          </form>
+
+          <form action={handleEnsureSportler} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="member_id" value={member.id} />
+            <input type="hidden" name="base_group" value={member.base_group || ""} />
+            <button type="submit" className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 hover:border-zinc-400">
+              Als Sportler führen
+            </button>
+          </form>
+        </div>
+
+        <div className="text-[11px] text-zinc-500">
+          Hinweis: "Sportlerstatus deaktivieren" wird bewusst noch nicht angeboten, um keine historischen Check-ins oder Mitgliedsdaten unbeabsichtigt zu beeinflussen.
+        </div>
+      </div>
 
       <form action={handleUpdateGsMatchEmail} className="bg-white rounded shadow-sm border border-zinc-100 p-6 space-y-3">
         <input type="hidden" name="member_id" value={member.id} />

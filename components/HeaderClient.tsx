@@ -82,12 +82,11 @@ export function HeaderClient({ user }: Props) {
         )}
       </div>
 
-      {/* RIGHT: ROLE-BASED NAV (absolut zentriert im Header) */}
+      {/* RIGHT: ROLE-BASED NAV */}
       <div
         className="flex items-center gap-2 flex-wrap md:absolute md:right-4 md:top-1/2 md:-translate-y-1/2 sm:justify-end"
         style={{ pointerEvents: "auto" }}
       >
-
         {isMember && (
           <Link
             href="/mein-bereich/dashboard"
@@ -227,6 +226,14 @@ export function HeaderClient({ user }: Props) {
             )}
           >
             QR-Scanner
+          </Link>
+          <Link
+            href="/verwaltung-neu/rollen"
+            style={navLinkStyle(
+              pathname === "/verwaltung-neu/rollen" || pathname.startsWith("/verwaltung-neu/rollen"),
+            )}
+          >
+            Rollen &amp; Rechte
           </Link>
         </div>
       )}
