@@ -41,6 +41,15 @@ type UploadInfo = {
   checkedAt: string
 }
 
+type ResetStatusResponse = {
+  message?: string
+  error?: string
+}
+
+function normalizeGroupValue(value?: string | null) {
+  return (value ?? "").trim().replace(/\s+/g, " ")
+}
+
 function toCheckedAtText(value?: string | null) {
   if (!value) return "-"
 
@@ -76,6 +85,9 @@ export default function GsAbgleichPage() {
   const [storedRowsInfo, setStoredRowsInfo] = useState("")
   const [deletingRowId, setDeletingRowId] = useState<string | null>(null)
   const [groupFilter, setGroupFilter] = useState<OfficeUploadGroup | "all">("all")
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetError, setResetError] = useState("")
+  const [resetInfo, setResetInfo] = useState("")
 
   function applyRunPayload(payload: LastFullRunResponse) {
     setLastFullReconcileAt(typeof payload.checkedAt === "string" ? payload.checkedAt : null)
@@ -132,14 +144,18 @@ export default function GsAbgleichPage() {
     }
   }, [])
 
-  const storedExcelRows = useMemo(
-    () => storedRows.filter((row) => row.excel === "Ja"),
-    [storedRows],
-  )
-
   const filteredStoredRows = useMemo(
-    () => storedExcelRows.filter((row) => (groupFilter === "all" ? true : row.groupExcel === groupFilter)),
-    [groupFilter, storedExcelRows],
+    () => {
+      const normalizedFilter = groupFilter === "all" ? null : normalizeGroupValue(groupFilter)
+
+      return storedRows
+        .filter((row) => row.excel === "Ja")
+        .filter((row) => {
+          if (!normalizedFilter) return true
+          return normalizeGroupValue(row.groupExcel) === normalizedFilter
+        })
+    },
+    [groupFilter, storedRows],
   )
 
   const groupedRows = useMemo(
@@ -147,11 +163,56 @@ export default function GsAbgleichPage() {
       ALL_OFFICE_UPLOAD_GROUPS
         .map((group) => ({
           group,
-          rows: filteredStoredRows.filter((row) => row.groupExcel === group),
+          rows: filteredStoredRows.filter((row) => normalizeGroupValue(row.groupExcel) === normalizeGroupValue(group)),
         }))
         .filter((entry) => entry.rows.length > 0),
     [filteredStoredRows],
   )
+
+  async function handleResetMemberOfficeStatus() {
+    const confirmed = confirm(
+      "Wirklich alle Mitglieder auf GS grau / ungeprüft setzen? Die Mitglieder bleiben erhalten. Nur die GS-Statusfelder werden zurückgesetzt."
+    )
+    if (!confirmed) return
+
+    setResetLoading(true)
+    setResetError("")
+    setResetInfo("")
+    setStoredRowsInfo("")
+    setStoredRowsError("")
+
+    try {
+      const response = await fetch("/api/admin/excel-abgleich", {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "reset-member-office-status" }),
+      })
+
+      const payloadText = await response.text()
+      let payload: ResetStatusResponse = {}
+
+      if (payloadText) {
+        try {
+          payload = JSON.parse(payloadText) as ResetStatusResponse
+        } catch {
+          payload = {}
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(payload.error || payloadText || "GS-Status konnte nicht zurückgesetzt werden.")
+      }
+
+      setResetInfo(payload.message || "GS-Status wurde zurückgesetzt. Mitglieder bleiben unverändert.")
+    } catch (error) {
+      setResetError(error instanceof Error ? error.message : "GS-Status konnte nicht zurückgesetzt werden.")
+    } finally {
+      setResetLoading(false)
+    }
+  }
 
   async function handleDeleteStoredRow(row: StoredRunRow) {
     const confirmDelete = confirm("Datensatz wirklich nur aus GS-Liste entfernen? Das Mitglied in der App bleibt erhalten.")
@@ -323,6 +384,34 @@ export default function GsAbgleichPage() {
         <span className="font-semibold text-zinc-900">Letzter GS-Abgleich:</span> {checkedAtText === "-" ? "noch kein vollständiger GS-Abgleich" : checkedAtText}
       </div>
 
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm">
+        <div className="mb-1 text-sm font-semibold text-red-900">Admin-Aktion vor neuem Abgleich</div>
+        <div className="text-xs text-red-800">
+          Setzt nur die GS-Statusfelder aller Mitglieder auf grau/ungeprüft zurück. Mitglieder und gespeicherte GS-Liste bleiben erhalten.
+        </div>
+
+        <div className="mt-3">
+          <button
+            type="button"
+            disabled={resetLoading}
+            onClick={() => {
+              void handleResetMemberOfficeStatus()
+            }}
+            className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {resetLoading ? "Setze zurück..." : "GS-Status aller Mitglieder zurücksetzen"}
+          </button>
+        </div>
+
+        {resetError ? (
+          <div className="mt-3 rounded-lg border border-red-300 bg-red-100 px-3 py-2 text-sm text-red-900">{resetError}</div>
+        ) : null}
+
+        {resetInfo ? (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{resetInfo}</div>
+        ) : null}
+      </div>
+
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
         <div className="mb-3 text-base font-semibold text-zinc-900">GS-Upload je Gruppe</div>
 
@@ -479,6 +568,7 @@ export default function GsAbgleichPage() {
               <option key={group} value={group}>{group}</option>
             ))}
           </select>
+          <span className="text-xs text-zinc-500">Angezeigt: {filteredStoredRows.length}</span>
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
@@ -521,7 +611,7 @@ export default function GsAbgleichPage() {
               ) : (
                 <tr>
                   <td colSpan={7} className="px-3 py-4 text-center text-zinc-500">
-                    Keine GS-Liste vorhanden.
+                    {groupFilter === "all" ? "Keine GS-Liste vorhanden." : "Keine Datensätze für diese Gruppe."}
                   </td>
                 </tr>
               )}

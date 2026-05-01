@@ -1611,3 +1611,54 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Serverfehler" }, { status: 500 })
   }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    if (!isAllowedOrigin(request)) {
+      return new NextResponse("Forbidden", { status: 403 })
+    }
+
+    const session = await readTrainerSessionFromHeaders(request)
+    if (!session || session.accountRole !== "admin") {
+      return new NextResponse("Unauthorized", { status: 401 })
+    }
+
+    const rateLimit = await checkRateLimitAsync(`admin-excel-abgleich-reset:${getRequestIp(request)}`, 10, 10 * 60 * 1000)
+    if (!rateLimit.ok) {
+      return new NextResponse("Too many requests", { status: 429 })
+    }
+
+    const body = (await request.json().catch(() => null)) as { action?: unknown } | null
+    const action = typeof body?.action === "string" ? body.action : ""
+
+    if (action !== "reset-member-office-status") {
+      return NextResponse.json({ error: "ungueltige Aktion" }, { status: 400 })
+    }
+
+    const supabase = getServerSupabase()
+    const updateResponse = await supabase
+      .from("members")
+      .update({
+        office_list_status: null,
+        office_list_group: null,
+        office_list_checked_at: null,
+      })
+      .not("id", "is", null)
+      .select("id")
+
+    if (updateResponse.error) {
+      if (isMissingOfficeListColumnError(updateResponse.error)) {
+        throw getOfficeListMigrationError()
+      }
+      throw updateResponse.error
+    }
+
+    return NextResponse.json({
+      message: "GS-Status wurde zurückgesetzt. Mitglieder bleiben unverändert.",
+      updatedCount: Array.isArray(updateResponse.data) ? updateResponse.data.length : 0,
+    })
+  } catch (error) {
+    console.error("admin excel abgleich reset status failed", error)
+    return NextResponse.json({ error: "Serverfehler" }, { status: 500 })
+  }
+}
