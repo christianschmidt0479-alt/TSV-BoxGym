@@ -56,6 +56,9 @@ export default function MitgliederPage() {
               "email_verified",
               "member_phase",
             ],
+              includeCheckinStats: false,
+              includeCheckedInToday: false,
+              includeTodayTotal: false,
             includePendingCount: false,
           })
         })
@@ -114,6 +117,7 @@ export default function MitgliederPage() {
       <MitgliederListClient
         members={members}
         totalTodayCount={totalTodayCount}
+        hasCheckinData={false}
         onFiltersChanged={() => setCurrentPage(1)}
       />
 

@@ -98,7 +98,7 @@ function priorityLabel(m: MemberRow) {
   return p.label
 }
 
-function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: GsStatusEntry }) {
+function MemberCard({ m, tsvStatus, hasCheckinData }: { m: MemberRow; tsvStatus?: GsStatusEntry; hasCheckinData: boolean }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-2">
       <div className="flex items-start justify-between gap-3">
@@ -124,7 +124,7 @@ function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: GsStatusEntry 
       <div className="text-xs text-zinc-700"><strong>Status:</strong> {memberStatus(m)}</div>
 
       <div className="flex flex-wrap gap-2">
-        {m.checkedInToday ? (
+        {hasCheckinData && m.checkedInToday ? (
           <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
             Heute im Training
           </span>
@@ -140,22 +140,26 @@ function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: GsStatusEntry 
       {!m.is_approved && (
         <div className="text-xs font-semibold text-amber-700">⚠ Mitgliederprüfung offen</div>
       )}
-      {m.email_verified && !m.is_approved && (m.checkinCount ?? 0) >= 5 && (
+      {hasCheckinData && m.email_verified && !m.is_approved && (m.checkinCount ?? 0) >= 5 && (
         <div className="text-xs font-bold text-blue-700">👉 Empfehlung: Freigabe prüfen</div>
       )}
       {m.base_group && m.office_list_group && m.base_group !== m.office_list_group && (
         <div className="text-xs font-bold text-red-700">⚠ Gruppenabweichung</div>
       )}
 
-      <div className={`text-xs font-semibold ${isLastTrainingBeforeBlock(m) ? "text-red-700 font-bold" : "text-zinc-700"}`}>
-        {isLastTrainingBeforeBlock(m) ? "🔥" : ""} <strong>Check-ins:</strong> {m.checkinCount ?? 0} / {limitFor(m)}{isLastTrainingBeforeBlock(m) ? " Trainings" : ""}
-      </div>
-      {isLastTrainingBeforeBlock(m) && (
-        <div className="text-xs font-bold text-red-700">🔴 Letztes Training vor Sperre</div>
-      )}
-      {hasReachedLimit(m) && (
-        <div className="text-xs font-bold text-red-700">Limit erreicht</div>
-      )}
+      {hasCheckinData ? (
+        <>
+          <div className={`text-xs font-semibold ${isLastTrainingBeforeBlock(m) ? "text-red-700 font-bold" : "text-zinc-700"}`}>
+            {isLastTrainingBeforeBlock(m) ? "🔥" : ""} <strong>Check-ins:</strong> {m.checkinCount ?? 0} / {limitFor(m)}{isLastTrainingBeforeBlock(m) ? " Trainings" : ""}
+          </div>
+          {isLastTrainingBeforeBlock(m) && (
+            <div className="text-xs font-bold text-red-700">🔴 Letztes Training vor Sperre</div>
+          )}
+          {hasReachedLimit(m) && (
+            <div className="text-xs font-bold text-red-700">Limit erreicht</div>
+          )}
+        </>
+      ) : null}
 
       <div className="flex flex-wrap gap-2 pt-1">
         <Link href={`/verwaltung-neu/mitglieder/${m.id}`}>
@@ -168,7 +172,7 @@ function MemberCard({ m, tsvStatus }: { m: MemberRow; tsvStatus?: GsStatusEntry 
   )
 }
 
-export default function MitgliederListClient({ members, totalTodayCount, onFiltersChanged }: { members: MemberRow[]; totalTodayCount: number; onFiltersChanged?: () => void }) {
+export default function MitgliederListClient({ members, totalTodayCount, hasCheckinData = true, onFiltersChanged }: { members: MemberRow[]; totalTodayCount: number; hasCheckinData?: boolean; onFiltersChanged?: () => void }) {
   const [localMembers, setLocalMembers] = useState<MemberRow[]>(members)
   const [tsvStatusMap, setTsvStatusMap] = useState<Record<string, GsStatusEntry>>({})
   const [searchInput, setSearchInput] = useState("")
@@ -230,12 +234,18 @@ export default function MitgliederListClient({ members, totalTodayCount, onFilte
     })
   }, [filteredMembers])
 
-  const todayMembers = useMemo(() => sortedMembers.filter((member) => Boolean(member.checkedInToday)), [sortedMembers])
+  const todayMembers = useMemo(
+    () => (hasCheckinData ? sortedMembers.filter((member) => Boolean(member.checkedInToday)) : []),
+    [hasCheckinData, sortedMembers]
+  )
   const criticalTodayMembers = useMemo(
     () => todayMembers.filter((member) => (member.checkinCount ?? 0) >= 7),
     [todayMembers]
   )
-  const totalCriticalCount = useMemo(() => localMembers.filter((member) => (member.checkinCount ?? 0) >= 7).length, [localMembers])
+  const totalCriticalCount = useMemo(
+    () => (hasCheckinData ? localMembers.filter((member) => (member.checkinCount ?? 0) >= 7).length : 0),
+    [hasCheckinData, localMembers]
+  )
   const totalOpenCount = useMemo(() => localMembers.filter((member) => !member.is_approved).length, [localMembers])
 
   const hasActiveFilters =
@@ -270,11 +280,11 @@ export default function MitgliederListClient({ members, totalTodayCount, onFilte
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
           <div className="text-xs font-semibold text-zinc-500">Teilnehmer heute</div>
-          <div className="text-xl font-extrabold text-zinc-900">{totalTodayCount}</div>
+          <div className="text-xl font-extrabold text-zinc-900">{hasCheckinData ? totalTodayCount : "-"}</div>
         </div>
         <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
           <div className="text-xs font-semibold text-zinc-500">kritisch (≥7)</div>
-          <div className="text-xl font-extrabold text-red-700">{totalCriticalCount}</div>
+          <div className="text-xl font-extrabold text-red-700">{hasCheckinData ? totalCriticalCount : "-"}</div>
         </div>
         <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
           <div className="text-xs font-semibold text-zinc-500">offen</div>
@@ -326,7 +336,7 @@ export default function MitgliederListClient({ members, totalTodayCount, onFilte
         </select>
       </form>
 
-      {criticalTodayMembers.length > 0 && (
+      {hasCheckinData && criticalTodayMembers.length > 0 && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
           🔴 Kritisch heute ({criticalTodayMembers.length})
         </div>
@@ -340,7 +350,7 @@ export default function MitgliederListClient({ members, totalTodayCount, onFilte
               : "Auf dieser Seite sind aktuell keine Mitglieder."}
           </div>
         ) : (
-          sortedMembers.map((m) => <MemberCard key={m.id} m={m} tsvStatus={tsvStatusMap[m.id]} />)
+          sortedMembers.map((m) => <MemberCard key={m.id} m={m} tsvStatus={tsvStatusMap[m.id]} hasCheckinData={hasCheckinData} />)
         )}
       </div>
     </>
