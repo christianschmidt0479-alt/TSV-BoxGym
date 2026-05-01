@@ -40,6 +40,9 @@ type CheckinsApiResponse = {
   todayRows?: CheckinRow[]
 }
 
+const TODAY_CHECKINS_URL = "/api/admin/checkins?scope=today&compact=1&limit=30"
+const RECENT_CHECKINS_URL = "/api/admin/checkins?limit=30"
+
 export default function TrainerCheckinPage() {
   const [members, setMembers] = useState<TrainerMember[]>([])
   const [query, setQuery] = useState("")
@@ -58,19 +61,31 @@ export default function TrainerCheckinPage() {
       setLoadingCheckins(true)
       setCheckinsError("")
 
-      const response = await fetch("/api/admin/checkins", {
-        method: "GET",
-      })
+      const [todayResponse, recentResponse] = await Promise.all([
+        fetch(TODAY_CHECKINS_URL, {
+          method: "GET",
+        }),
+        fetch(RECENT_CHECKINS_URL, {
+          method: "GET",
+        }),
+      ])
 
-      const payload = (await response.json().catch(() => ({}))) as CheckinsApiResponse
-      if (!response.ok) {
+      const todayPayload = (await todayResponse.json().catch(() => ({}))) as CheckinsApiResponse
+      const recentPayload = (await recentResponse.json().catch(() => ({}))) as CheckinsApiResponse
+
+      if (!todayResponse.ok || !recentResponse.ok) {
         throw new Error("Check-ins konnten nicht geladen werden")
       }
 
-      const rows = Array.isArray(payload.rows) ? payload.rows : []
-      const todayRows = Array.isArray(payload.todayRows) ? payload.todayRows : []
+      const todayRows = Array.isArray(todayPayload.rows)
+        ? todayPayload.rows
+        : Array.isArray(todayPayload.todayRows)
+          ? todayPayload.todayRows
+          : []
+      const rows = Array.isArray(recentPayload.rows) ? recentPayload.rows : []
+
       setTodayCheckins(todayRows)
-      setCheckins(rows.slice(0, 30))
+      setCheckins(rows)
     } catch (error) {
       setCheckinsError(error instanceof Error ? error.message : "Check-ins konnten nicht geladen werden")
     } finally {
@@ -91,7 +106,7 @@ export default function TrainerCheckinPage() {
         setCheckinsError("")
 
         // Parallelize both requests
-        const [membersRes, checkinsRes] = await Promise.all([
+        const [membersRes, todayCheckinsRes, recentCheckinsRes] = await Promise.all([
           fetch("/api/admin/get-members", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -106,27 +121,38 @@ export default function TrainerCheckinPage() {
             }),
             signal: controller.signal,
           }),
-          fetch("/api/admin/checkins", {
+          fetch(TODAY_CHECKINS_URL, {
+            method: "GET",
+            signal: controller.signal,
+          }),
+          fetch(RECENT_CHECKINS_URL, {
             method: "GET",
             signal: controller.signal,
           }),
         ])
 
         const membersJson = (await membersRes.json()) as MembersApiResponse
-        const checkinsJson = (await checkinsRes.json()) as CheckinsApiResponse
+        const todayCheckinsJson = (await todayCheckinsRes.json()) as CheckinsApiResponse
+        const recentCheckinsJson = (await recentCheckinsRes.json()) as CheckinsApiResponse
 
         if (!active) return
 
         if (!membersRes.ok) {
           throw new Error(membersJson.error || "Mitglieder konnten nicht geladen werden")
         }
-        if (!checkinsRes.ok) {
+        if (!todayCheckinsRes.ok || !recentCheckinsRes.ok) {
           throw new Error("Check-ins konnten nicht geladen werden")
         }
 
         setMembers(Array.isArray(membersJson.data) ? membersJson.data : [])
-        setTodayCheckins(Array.isArray(checkinsJson.todayRows) ? checkinsJson.todayRows : [])
-        setCheckins(Array.isArray(checkinsJson.rows) ? checkinsJson.rows.slice(0, 30) : [])
+        setTodayCheckins(
+          Array.isArray(todayCheckinsJson.rows)
+            ? todayCheckinsJson.rows
+            : Array.isArray(todayCheckinsJson.todayRows)
+              ? todayCheckinsJson.todayRows
+              : []
+        )
+        setCheckins(Array.isArray(recentCheckinsJson.rows) ? recentCheckinsJson.rows : [])
       } catch (error) {
         if (!active) return
         const errorMsg = error instanceof Error ? error.message : "Daten konnten nicht geladen werden"

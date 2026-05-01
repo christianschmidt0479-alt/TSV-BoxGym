@@ -48,7 +48,6 @@ export async function GET(request: Request) {
         member_id,
         group_name,
         checkin_mode,
-        weight,
         date,
         time,
         created_at,
