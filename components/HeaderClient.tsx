@@ -60,7 +60,7 @@ export function HeaderClient({ user }: Props) {
         {/* LEFT: LOGO */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <img
-            src="/logo.png"
+            src="/brand/tsv-boxgym-logo-v2.png"
             alt="TSV BoxGym"
             style={{ height: 48, maxHeight: 40, width: "auto", objectFit: "contain" }}
           />

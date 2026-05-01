@@ -13,7 +13,7 @@ export function MemberAreaBrandHeader({ title, subtitle, actionSlot }: MemberAre
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center justify-center rounded-xl bg-white/95 px-3 py-2 shadow-sm">
-            <Image src="/logo.png" alt="TSV Falkensee" width={40} height={40} className="h-10 w-auto object-contain" />
+            <Image src="/brand/tsv-boxgym-logo-v2.png" alt="TSV Falkensee" width={40} height={40} className="h-10 w-auto object-contain" />
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-100">TSV Falkensee BoxGym</p>

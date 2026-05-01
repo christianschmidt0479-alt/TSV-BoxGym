@@ -24,6 +24,7 @@ type MemberRow = {
   last_name?: string | null
   birthdate?: string | null
   email?: string | null
+  gs_match_email?: string | null
   phone?: string | null
   base_group?: string | null
   is_approved?: boolean | null
@@ -134,6 +135,7 @@ const OFFICE_LIST_REQUIRED_COLUMNS = ["office_list_status", "office_list_group",
 const OFFICE_RUNS_TABLE = "office_reconciliation_runs"
 const NON_BLOCKING_MATCH_HINTS = new Set([
   "Treffer über E-Mail",
+  "Treffer über GS-Abgleich E-Mail",
   "Treffer über Telefon",
   "Treffer über Vor- und Nachname",
   "Treffer über ähnlichen Namen",
@@ -700,6 +702,10 @@ function collectMatchHints(excelRow: ParsedExcelRow, member: MemberRow, _excelGr
     hints.push("Treffer über E-Mail")
   }
 
+  if (matchSource === "gs-email") {
+    hints.push("Treffer über GS-Abgleich E-Mail")
+  }
+
   if (matchSource === "phone") {
     hints.push("Treffer über Telefon")
   }
@@ -1130,7 +1136,7 @@ export async function POST(request: Request) {
       supabase
         .from("members")
         .select(
-          "id, first_name, last_name, birthdate, email, phone, base_group, is_approved, is_trial, office_list_status, office_list_group, office_list_checked_at"
+          "id, first_name, last_name, birthdate, email, gs_match_email, phone, base_group, is_approved, is_trial, office_list_status, office_list_group, office_list_checked_at"
         )
         .order("last_name", { ascending: true })
         .order("first_name", { ascending: true }),
@@ -1163,6 +1169,7 @@ export async function POST(request: Request) {
     const membersByNameKey = new Map<string, MemberRow[]>()
     const membersByLastName = new Map<string, MemberRow[]>()
     const membersByEmail = new Map<string, MemberRow[]>()
+    const membersByGsMatchEmail = new Map<string, MemberRow[]>()
     const membersByPhone = new Map<string, MemberRow[]>()
     const membersById = new Map<string, MemberRow>()
     const trainerAccountsByLastName = new Map<string, TrainerAccountRow[]>()
@@ -1190,6 +1197,12 @@ export async function POST(request: Request) {
       if (emailKey) {
         if (!membersByEmail.has(emailKey)) membersByEmail.set(emailKey, [])
         membersByEmail.get(emailKey)?.push(member)
+      }
+
+      const gsMatchEmailKey = buildEmailKey(member.gs_match_email || "")
+      if (gsMatchEmailKey) {
+        if (!membersByGsMatchEmail.has(gsMatchEmailKey)) membersByGsMatchEmail.set(gsMatchEmailKey, [])
+        membersByGsMatchEmail.get(gsMatchEmailKey)?.push(member)
       }
 
       const phoneKey = buildPhoneKey(member.phone || "")
@@ -1226,6 +1239,7 @@ export async function POST(request: Request) {
           isCompatibleBirthdateMatch(excelRow.birthdate, candidate.birthdate || "")
       )
       const emailMatches = excelRow.email ? membersByEmail.get(buildEmailKey(excelRow.email)) ?? [] : []
+      const gsEmailMatches = excelRow.email ? membersByGsMatchEmail.get(buildEmailKey(excelRow.email)) ?? [] : []
       const phoneMatches = excelRow.phone ? membersByPhone.get(buildPhoneKey(excelRow.phone)) ?? [] : []
       const trainerEmailMatches = excelRow.email ? trainerAccountsByEmail.get(buildEmailKey(excelRow.email)) ?? [] : []
       const trainerNameMatches = (trainerAccountsByLastName.get(buildLastNameKey(excelRow.lastName)) ?? []).filter((trainer) =>
@@ -1245,6 +1259,11 @@ export async function POST(request: Request) {
         matchSource = "email"
       } else if (emailMatches.length > 1) {
         note = "Mehrere DB-Treffer über E-Mail"
+      } else if (gsEmailMatches.length === 1) {
+        member = gsEmailMatches[0]
+        matchSource = "gs-email"
+      } else if (gsEmailMatches.length > 1) {
+        note = "Mehrere DB-Treffer über GS-Abgleich E-Mail"
       } else if (phoneMatches.length === 1) {
         member = phoneMatches[0]
         matchSource = "phone"
@@ -1373,7 +1392,17 @@ export async function POST(request: Request) {
     })
 
     const existingRows = activeStoredRun && isResultRowArray(activeStoredRun.rows) ? activeStoredRun.rows : []
-    const keptRows = existingRows.filter((row) => !shouldReplaceStoredRowForUploadedGroups(row, uploadedGroups))
+    const replacedMemberIds = new Set(
+      sortedRows
+        .map((row) => (typeof row.memberId === "string" ? row.memberId.trim() : ""))
+        .filter((memberId) => memberId.length > 0),
+    )
+    const keptRows = existingRows.filter((row) => {
+      if (shouldReplaceStoredRowForUploadedGroups(row, uploadedGroups)) return false
+      const memberId = typeof row.memberId === "string" ? row.memberId.trim() : ""
+      if (memberId && replacedMemberIds.has(memberId)) return false
+      return true
+    })
     const mergedRows = [...keptRows, ...sortedRows].sort((left, right) => {
       const statusOrder: Record<OfficeListResultStatus, number> = { yellow: 0, red: 1, gray: 2, green: 3 }
       const statusCompare = statusOrder[left.status] - statusOrder[right.status]

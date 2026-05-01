@@ -9,7 +9,7 @@ export const size = {
 export const contentType = "image/png"
 
 export default function OpenGraphImage() {
-  const logoUrl = new URL("/boxgym-headline-old.png", getAppBaseUrl()).toString()
+  const logoUrl = new URL("/brand/tsv-boxgym-logo-v2.png", getAppBaseUrl()).toString()
 
   return new ImageResponse(
     (

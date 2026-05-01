@@ -155,7 +155,7 @@ export default function QrPrintClient({ initialScope }: QrPrintClientProps) {
           >
             <header className="text-center">
               <Image
-                src="/boxgym-headline-old.png"
+                src="/brand/tsv-boxgym-logo-v2.png"
                 alt="TSV Falkensee BoxGym"
                 width={180}
                 height={76}

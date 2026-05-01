@@ -1,9 +1,10 @@
 
 import { notFound, redirect } from "next/navigation";
+import { headers } from "next/headers";
 import DeleteButton from "./DeleteButton";
-import { findMemberById, changeMemberBaseGroup, updateMemberProfile, updateMemberContactData, updateMemberCompetitionData, updateMemberRegistrationData, deleteMember } from "@/lib/boxgymDb";
+import { findMemberById, changeMemberBaseGroup, updateMemberCompetitionData, updateMemberRegistrationData } from "@/lib/boxgymDb";
 import { TRAINING_GROUPS, parseTrainingGroup } from "@/lib/trainingGroups";
-import { validateName, validateEmail, validateBirthdate } from "@/lib/formValidation";
+import { validateName, validateBirthdate } from "@/lib/formValidation";
 import { OfficeMatchBadge, getOfficeCheckedAtText, getOfficeMatchText } from "@/components/verwaltung-neu/OfficeMatchBadge";
 
 
@@ -17,7 +18,7 @@ function formatDate(dateString: string | null | undefined) {
 }
 
 
-export default async function MitgliedDetailPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams?: Promise<{ error?: string; returnTo?: string }> }) {
+export default async function MitgliedDetailPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams?: Promise<{ error?: string; returnTo?: string; success?: string }> }) {
   const { id } = await params;
   const member = await findMemberById(id);
   if (!member) return notFound();
@@ -25,10 +26,12 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
   // searchParams als Promise behandeln
   let errorMsg = "";
   let returnTo = "";
+  let successMsg = "";
   if (searchParams) {
     const sp = await searchParams;
     errorMsg = sp?.error || "";
     returnTo = sp?.returnTo || "";
+    successMsg = sp?.error ? "" : (sp?.success || "");
   }
 
   // Server Actions
@@ -36,7 +39,6 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
     "use server";
     const first_name = formData.get("first_name")?.toString() ?? "";
     const last_name = formData.get("last_name")?.toString() ?? "";
-    const email = formData.get("email")?.toString() ?? "";
     const birthdate = formData.get("birthdate")?.toString() ?? "";
     const base_group = formData.get("base_group")?.toString() ?? "";
     const is_competition_member = formData.get("is_competition_member") === "on";
@@ -56,8 +58,6 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
       error = "Vorname fehlt oder ungültig.";
     } else if (!validateName(last_name, "Nachname").valid) {
       error = "Nachname fehlt oder ungültig.";
-    } else if (!validateEmail(email).valid) {
-      error = "Gültige E-Mail erforderlich.";
     } else if (!base_group || !parseTrainingGroup(base_group)) {
       error = "Stammgruppe muss gewählt werden.";
     } else if (!birthdate || !validateBirthdate(birthdate).valid) {
@@ -67,7 +67,6 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
       redirect(`/verwaltung-neu/mitglieder/${member_id}?error=${encodeURIComponent(error)}`);
     }
 
-    await updateMemberProfile(member_id, { email });
     await changeMemberBaseGroup(member_id, base_group);
     await updateMemberRegistrationData(member_id, { first_name, last_name, birthdate });
     // Nur wenn Kämpferstatus gesetzt, alle Felder speichern, sonst alles auf Default
@@ -84,14 +83,91 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
     redirect(`/verwaltung-neu/mitglieder/${member_id}`);
   }
 
+  async function handleUpdateGsMatchEmail(formData: FormData) {
+    "use server";
+    const member_id = formData.get("member_id")?.toString() ?? id;
+    const gsMatchEmail = formData.get("gs_match_email")?.toString() ?? "";
+    const reqHeaders = await headers();
+    const host = reqHeaders.get("host") || "localhost:3000";
+    const proto = reqHeaders.get("x-forwarded-proto") || "http";
+    const origin = reqHeaders.get("origin") || `${proto}://${host}`;
+    const cookie = reqHeaders.get("cookie") || "";
+
+    const response = await fetch(`${origin}/api/admin/member-gs-match-email`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin,
+        cookie,
+      },
+      body: JSON.stringify({ memberId: member_id, gsMatchEmail }),
+      cache: "no-store",
+    }).catch(() => null);
+
+    if (!response || !response.ok) {
+      redirect(`/verwaltung-neu/mitglieder/${member_id}?error=${encodeURIComponent("GS-Abgleich E-Mail konnte nicht gespeichert werden.")}`);
+    }
+
+    redirect(`/verwaltung-neu/mitglieder/${member_id}?success=${encodeURIComponent("GS-Abgleich E-Mail wurde gespeichert.")}`);
+  }
+
+  async function handleManualGsConfirm(formData: FormData) {
+    "use server";
+    const member_id = formData.get("member_id")?.toString() ?? id;
+    const reqHeaders = await headers();
+    const host = reqHeaders.get("host") || "localhost:3000";
+    const proto = reqHeaders.get("x-forwarded-proto") || "http";
+    const origin = reqHeaders.get("origin") || `${proto}://${host}`;
+    const cookie = reqHeaders.get("cookie") || "";
+
+    const response = await fetch(`${origin}/api/admin/member-gs-manual-confirm`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin,
+        cookie,
+      },
+      body: JSON.stringify({ memberId: member_id }),
+      cache: "no-store",
+    }).catch(() => null);
+
+    if (!response || !response.ok) {
+      redirect(`/verwaltung-neu/mitglieder/${member_id}?error=${encodeURIComponent("GS-Status konnte nicht manuell bestätigt werden.")}`);
+    }
+
+    redirect(`/verwaltung-neu/mitglieder/${member_id}?success=${encodeURIComponent("GS-Status wurde manuell bestätigt. Mitgliedsdaten wurden nicht verändert.")}`);
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl bg-[#154c83] px-4 py-4">
         <div className="text-base font-semibold text-white">{member.first_name} {member.last_name}</div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <a
+            href={`/verwaltung-neu/gs-abgleich?focusMemberId=${encodeURIComponent(member.id)}&mode=link`}
+            className="inline-flex items-center rounded-md border border-white/50 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+          >
+            Mit GS-Datenbank abgleichen
+          </a>
+          <form action={handleManualGsConfirm}>
+            <input type="hidden" name="member_id" value={member.id} />
+            <button
+              type="submit"
+              className="inline-flex items-center rounded-md border border-white/50 bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+            >
+              GS manuell bestätigen
+            </button>
+          </form>
+        </div>
       </div>
       {errorMsg && (
         <div className="bg-red-100 text-red-700 px-4 py-2 rounded mb-4">
           {errorMsg}
+        </div>
+      )}
+      {successMsg && (
+        <div className="bg-emerald-100 text-emerald-800 px-4 py-2 rounded mb-4">
+          {successMsg}
         </div>
       )}
       <form action={handleSave} className="bg-white rounded shadow-sm border border-zinc-100 p-6 space-y-4">
@@ -108,7 +184,8 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
         </div>
         <div>
           <label className="block text-xs text-zinc-500 mb-1">E-Mail</label>
-          <input name="email" defaultValue={member.email || ""} className="w-full border rounded px-2 py-1" />
+          <div className="w-full rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-sm text-zinc-800">{member.email || "—"}</div>
+          <div className="mt-1 text-[11px] text-zinc-500">Haupt-E-Mail für Login und Kommunikation.</div>
         </div>
         <div>
           <label className="block text-xs text-zinc-500 mb-1">Geburtsdatum</label>
@@ -199,6 +276,26 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
           <div className="text-base text-zinc-800">{formatDate(member.created_at ?? null)}</div>
         </div>
       </form>
+
+      <form action={handleUpdateGsMatchEmail} className="bg-white rounded shadow-sm border border-zinc-100 p-6 space-y-3">
+        <input type="hidden" name="member_id" value={member.id} />
+        <div className="text-sm font-semibold text-zinc-900">GS-Abgleich E-Mail</div>
+        <div>
+          <label className="block text-xs text-zinc-500 mb-1">Alternative E-Mail für GS-Abgleich</label>
+          <input
+            name="gs_match_email"
+            defaultValue={typeof member.gs_match_email === "string" ? member.gs_match_email : ""}
+            className="w-full border rounded px-2 py-1"
+          />
+          <div className="mt-1 text-[11px] text-zinc-500">
+            Diese E-Mail wird ausschließlich für den GS-Abgleich verwendet. Login, Passwort und Kommunikation bleiben über die Haupt-E-Mail unverändert.
+          </div>
+        </div>
+        <div>
+          <button type="submit" className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-800 hover:border-zinc-400">GS-Abgleich E-Mail speichern</button>
+        </div>
+      </form>
+
       <div className="flex gap-4 mt-4">
         <DeleteButton memberId={member.id} returnTo={returnTo} />
       </div>

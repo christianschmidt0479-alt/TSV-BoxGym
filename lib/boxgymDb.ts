@@ -402,13 +402,26 @@ export async function updateMemberProfile(
   memberId: string,
   input: { email?: string; phone?: string; member_pin?: string }
 ) {
+  const payload: Record<string, unknown> = {}
+
+  if (typeof input.email === "string") {
+    const trimmedEmail = input.email.trim()
+    if (trimmedEmail) {
+      payload.email = trimmedEmail
+    }
+  }
+
+  if (typeof input.phone === "string") {
+    payload.phone = input.phone.trim() || null
+  }
+
+  if (input.member_pin) {
+    payload.member_pin = await hashMemberPinValue(input.member_pin)
+  }
+
   const { data, error } = await supabase
     .from("members")
-    .update({
-      email: input.email || null,
-      phone: input.phone || null,
-      ...(input.member_pin ? { member_pin: await hashMemberPinValue(input.member_pin) } : {}),
-    })
+    .update(payload)
     .eq("id", memberId)
     .select()
     .single()

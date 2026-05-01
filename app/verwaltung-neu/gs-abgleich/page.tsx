@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import {
   ALL_OFFICE_UPLOAD_GROUPS,
   BOXZWERGE_UPLOAD_GROUP,
@@ -12,6 +13,7 @@ import {
 type StoredRunRow = {
   id?: string
   rowId?: string
+  memberId?: string
   firstName?: string
   lastName?: string
   birthdate?: string
@@ -26,6 +28,9 @@ type StoredRunRow = {
   source?: string
   fileName?: string
   excel?: "Ja" | "Nein" | string
+  db?: "Ja" | "Nein" | string
+  status?: "green" | "yellow" | "red" | "gray" | string
+  note?: string
 }
 
 type StoredRunFile = {
@@ -69,6 +74,53 @@ type SyncResponse = {
     skipped_no_group?: number
     skipped_no_uploaded_group?: number
   }
+}
+
+type MatchCandidate = {
+  rowId: string
+  firstName: string
+  lastName: string
+  birthdate: string
+  email: string
+  phone: string
+  groupExcel: string | null
+  source: string
+  confidence: "exact" | "strong" | "possible" | "uncertain"
+  score: number
+  reasons: string[]
+}
+
+type MatchAnalyzeResponse = {
+  ok?: boolean
+  error?: string
+  member?: {
+    id: string
+    firstName: string
+    lastName: string
+    birthdate: string
+    email: string
+    phone: string
+    baseGroup: string
+    officeGroup: string
+    isLGroup: boolean
+  }
+  candidates?: MatchCandidate[]
+  debugSummary?: {
+    rowsChecked?: number
+    emailMatches?: number
+    nameMatches?: number
+    birthdateMatches?: number
+    reasonNoCandidate?: string
+  }
+}
+
+type MatchPanelState = {
+  rowKey: string
+  memberId: string
+  memberName: string
+  isLGroup: boolean
+  candidates: MatchCandidate[]
+  debugSummary?: MatchAnalyzeResponse["debugSummary"]
 }
 
 function normalizeGroupValue(value?: string | null) {
@@ -157,6 +209,15 @@ function toCheckedAtText(value?: string | null) {
 }
 
 export default function GsAbgleichPage() {
+  const searchParams = useSearchParams()
+  const focusMemberId = useMemo(() => {
+    const explicit = (searchParams.get("focusMemberId") ?? "").trim()
+    if (explicit) return explicit
+    return (searchParams.get("memberId") ?? "").trim()
+  }, [searchParams])
+  const focusMode = (searchParams.get("mode") ?? "").trim().toLowerCase()
+  const isFocusedLinkFlow = focusMode === "link" && focusMemberId.length > 0
+
   const [selectedGroup, setSelectedGroup] = useState<NormalOfficeUploadGroup | "">("")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadLoading, setUploadLoading] = useState(false)
@@ -176,10 +237,34 @@ export default function GsAbgleichPage() {
   const [storedRowsInfo, setStoredRowsInfo] = useState("")
   const [deletingRowId, setDeletingRowId] = useState<string | null>(null)
   const [groupFilter, setGroupFilter] = useState<OfficeUploadGroup | "all">("all")
+  const [storedRowsSearch, setStoredRowsSearch] = useState("")
   const [syncLoading, setSyncLoading] = useState(false)
   const [syncError, setSyncError] = useState("")
   const [syncInfo, setSyncInfo] = useState("")
   const [syncResult, setSyncResult] = useState<SyncResponse | null>(null)
+  const [inviteLoadingKey, setInviteLoadingKey] = useState<string | null>(null)
+  const [inviteResults, setInviteResults] = useState<Record<string, { ok: boolean; message: string }>>({})
+  const [matchLoadingKey, setMatchLoadingKey] = useState<string | null>(null)
+  const [matchPanel, setMatchPanel] = useState<MatchPanelState | null>(null)
+  const [matchError, setMatchError] = useState("")
+  const [matchInfo, setMatchInfo] = useState("")
+  const [confirmUncertain, setConfirmUncertain] = useState(false)
+  const [linkLoadingRowId, setLinkLoadingRowId] = useState<string | null>(null)
+  const [focusAnalyzeDone, setFocusAnalyzeDone] = useState(false)
+  const [analyzeStatus, setAnalyzeStatus] = useState<{
+    running: boolean
+    executed: boolean
+    memberId: string
+    candidatesCount: number
+    reasonNoCandidate: string
+    debugSummary?: MatchAnalyzeResponse["debugSummary"]
+  }>({
+    running: false,
+    executed: false,
+    memberId: "",
+    candidatesCount: 0,
+    reasonNoCandidate: "",
+  })
 
   function applyRunPayload(payload: LastFullRunResponse) {
     setLastFullReconcileAt(typeof payload.checkedAt === "string" ? payload.checkedAt : null)
@@ -236,7 +321,7 @@ export default function GsAbgleichPage() {
     }
   }, [])
 
-  const filteredStoredRows = useMemo(() => {
+  const groupFilteredStoredRows = useMemo(() => {
     return storedRows
       .filter((row) => isStoredExcelRow(row))
       .filter((row) => {
@@ -244,6 +329,27 @@ export default function GsAbgleichPage() {
         return getStoredRowGroup(row) === groupFilter
       })
   }, [groupFilter, storedRows])
+
+  const filteredStoredRows = useMemo(() => {
+    const query = storedRowsSearch.trim().toLowerCase()
+    if (!query) return groupFilteredStoredRows
+
+    return groupFilteredStoredRows.filter((row) => {
+      const firstName = safeCellValue(row.firstName)
+      const lastName = safeCellValue(row.lastName)
+      const fullName = `${firstName} ${lastName}`.trim()
+      const email = safeCellValue(row.email)
+      const birthdate = safeCellValue(row.birthdate)
+      const group = String(getStoredRowGroup(row) ?? "").trim()
+      const status = safeCellValue(row.status)
+
+      const searchHaystack = [firstName, lastName, fullName, email, birthdate, group, status]
+        .join(" ")
+        .toLowerCase()
+
+      return searchHaystack.includes(query)
+    })
+  }, [groupFilteredStoredRows, storedRowsSearch])
 
   const groupedRows = useMemo(
     () =>
@@ -255,6 +361,239 @@ export default function GsAbgleichPage() {
         .filter((entry) => entry.rows.length > 0),
     [filteredStoredRows],
   )
+
+  function isRecheckCandidateRow(row: StoredRunRow) {
+    return safeCellValue(row.memberId).length > 0 && row.db === "Ja" && (row.status === "gray" || row.status === "red")
+  }
+
+  function confidenceLabel(confidence: MatchCandidate["confidence"]) {
+    switch (confidence) {
+      case "exact":
+        return "Exakt"
+      case "strong":
+        return "Stark"
+      case "possible":
+        return "Möglich"
+      default:
+        return "Unsicher"
+    }
+  }
+
+  function confidenceClass(confidence: MatchCandidate["confidence"]) {
+    switch (confidence) {
+      case "exact":
+        return "border-emerald-200 bg-emerald-50 text-emerald-800"
+      case "strong":
+        return "border-blue-200 bg-blue-50 text-blue-800"
+      case "possible":
+        return "border-amber-200 bg-amber-50 text-amber-800"
+      default:
+        return "border-red-200 bg-red-50 text-red-800"
+    }
+  }
+
+  async function analyzeMemberById(memberId: string, rowKey: string) {
+    const normalizedMemberId = memberId.trim()
+    if (!normalizedMemberId) {
+      setMatchError("Für diesen Eintrag ist keine Member-ID vorhanden.")
+      return
+    }
+
+    setMatchLoadingKey(rowKey)
+    setMatchError("")
+    setMatchInfo("")
+    setConfirmUncertain(false)
+    setAnalyzeStatus({
+      running: true,
+      executed: false,
+      memberId: normalizedMemberId,
+      candidatesCount: 0,
+      reasonNoCandidate: "",
+    })
+
+    try {
+      const response = await fetch("/api/admin/gs-match-member", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ memberId: normalizedMemberId, action: "analyze" }),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as MatchAnalyzeResponse
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Erneute Prüfung fehlgeschlagen.")
+      }
+
+      const memberName = `${payload.member?.firstName ?? ""} ${payload.member?.lastName ?? ""}`.trim() || "Mitglied"
+      const candidates = Array.isArray(payload.candidates) ? payload.candidates : []
+      const reasonNoCandidate =
+        candidates.length === 0
+          ? payload.debugSummary?.reasonNoCandidate || "Kein GS-Kandidat gefunden. Bitte GS-Daten prüfen oder Suchkriterien erweitern."
+          : ""
+
+      setAnalyzeStatus({
+        running: false,
+        executed: true,
+        memberId: normalizedMemberId,
+        candidatesCount: candidates.length,
+        reasonNoCandidate,
+        debugSummary: payload.debugSummary,
+      })
+
+      setMatchPanel({
+        rowKey,
+        memberId: normalizedMemberId,
+        memberName,
+        isLGroup: Boolean(payload.member?.isLGroup),
+        candidates,
+        debugSummary: payload.debugSummary,
+      })
+    } catch (error) {
+      setMatchError(error instanceof Error ? error.message : "Erneute Prüfung fehlgeschlagen.")
+      setMatchPanel(null)
+      setAnalyzeStatus({
+        running: false,
+        executed: true,
+        memberId: normalizedMemberId,
+        candidatesCount: 0,
+        reasonNoCandidate: "Analyse fehlgeschlagen.",
+      })
+    } finally {
+      setMatchLoadingKey(null)
+    }
+  }
+
+  async function handleAnalyzeMatch(row: StoredRunRow, rowKey: string) {
+    if (!isFocusedLinkFlow) return
+    await analyzeMemberById(safeCellValue(row.memberId), rowKey)
+  }
+
+  useEffect(() => {
+    setFocusAnalyzeDone(false)
+  }, [focusMemberId])
+
+  useEffect(() => {
+    if (isFocusedLinkFlow) return
+    setMatchPanel(null)
+    setConfirmUncertain(false)
+    setAnalyzeStatus({
+      running: false,
+      executed: false,
+      memberId: "",
+      candidatesCount: 0,
+      reasonNoCandidate: "",
+    })
+  }, [isFocusedLinkFlow])
+
+  useEffect(() => {
+    if (!isFocusedLinkFlow || !focusMemberId || focusAnalyzeDone) return
+    if (storedRows.length === 0) return
+
+    const rowKey = `focus-member-${focusMemberId}`
+    void analyzeMemberById(focusMemberId, rowKey).finally(() => {
+      setFocusAnalyzeDone(true)
+    })
+  }, [focusAnalyzeDone, focusMemberId, isFocusedLinkFlow, storedRows.length])
+
+  async function handleLinkCandidate(candidate: MatchCandidate) {
+    if (!matchPanel) return
+    if (!isFocusedLinkFlow || !focusMemberId || matchPanel.memberId !== focusMemberId) {
+      setMatchError("Manuelle Verknüpfung ist nur im fokussierten Mitgliedsprofil-Linkflow erlaubt.")
+      return
+    }
+
+    setLinkLoadingRowId(candidate.rowId)
+    setMatchError("")
+    setMatchInfo("")
+
+    try {
+      const response = await fetch("/api/admin/gs-match-member", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          memberId: matchPanel.memberId,
+          action: "link",
+          candidateRowId: candidate.rowId,
+          confirmUncertain,
+          linkFlowMode: "focused-member",
+          focusedMemberId: focusMemberId,
+          adminConfirmed: true,
+        }),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; code?: string }
+
+      if (!response.ok || !payload.ok) {
+        if (payload.code === "confirm_required") {
+          setMatchError("Unsicherer Treffer: Bitte explizit bestätigen und erneut klicken.")
+          return
+        }
+        throw new Error(payload.error || "Verknüpfung fehlgeschlagen.")
+      }
+
+      const refreshResponse = await fetch("/api/admin/excel-abgleich", {
+        method: "GET",
+        credentials: "include",
+      })
+      if (refreshResponse.ok && refreshResponse.status !== 204) {
+        const refreshPayload = (await refreshResponse.json().catch(() => ({}))) as LastFullRunResponse
+        applyRunPayload(refreshPayload)
+      }
+
+      setMatchInfo("Mit GS-Datensatz verknüpft. GS-Status am Mitglied wurde aktualisiert.")
+      setMatchPanel(null)
+      setConfirmUncertain(false)
+    } catch (error) {
+      setMatchError(error instanceof Error ? error.message : "Verknüpfung fehlgeschlagen.")
+    } finally {
+      setLinkLoadingRowId(null)
+    }
+  }
+
+    async function handleInviteMember(row: StoredRunRow, rowKey: string) {
+      const email = safeCellValue(row.email)
+      if (!email) {
+        setInviteResults((prev) => ({ ...prev, [rowKey]: { ok: false, message: "Keine E-Mail-Adresse für diesen Datensatz." } }))
+        return
+      }
+
+      setInviteLoadingKey(rowKey)
+      setInviteResults((prev) => {
+        const next = { ...prev }
+        delete next[rowKey]
+        return next
+      })
+
+      try {
+        const response = await fetch("/api/admin/excel-abgleich/create-member", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            firstName: safeCellValue(row.firstName),
+            lastName: safeCellValue(row.lastName),
+            email,
+            birthdate: safeCellValue(row.birthdate),
+            phone: safeCellValue(row.phone),
+            baseGroup: getStoredRowGroup(row) ?? safeCellValue(row.groupExcel),
+          }),
+        })
+        const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; mailSent?: boolean; created?: boolean }
+        if (!response.ok || !payload.ok) {
+          setInviteResults((prev) => ({ ...prev, [rowKey]: { ok: false, message: payload.error || "Einladung fehlgeschlagen." } }))
+        } else {
+          const mailNote = payload.mailSent ? "" : " (Mail konnte nicht gesendet werden – bitte manuell erneut versuchen)"
+          const action = payload.created ? "Mitglied angelegt" : "Mitglied aktualisiert"
+          setInviteResults((prev) => ({ ...prev, [rowKey]: { ok: true, message: `${action} & Einladungs-Mail gesendet.${mailNote}` } }))
+        }
+      } catch {
+        setInviteResults((prev) => ({ ...prev, [rowKey]: { ok: false, message: "Netzwerkfehler bei der Einladung." } }))
+      } finally {
+        setInviteLoadingKey(null)
+      }
+    }
 
   async function handleDeleteStoredRow(row: StoredRunRow) {
     const rowId = getStoredRowDeleteId(row)
@@ -479,6 +818,84 @@ export default function GsAbgleichPage() {
           Upload speichert die GS-Liste. Der sichtbare Mitgliederstatus wird über GS-Synchronisierung aktualisiert.
         </div>
         <div className="mt-1 text-xs text-zinc-600">Standardablauf: GS-Liste hochladen → GS-Status synchronisieren.</div>
+        {focusMemberId ? (
+          <div className="mt-2 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-800">
+            Fokus-Mitglied aktiv: {focusMemberId}{focusMode === "link" ? " (Link-Modus)" : ""}
+          </div>
+        ) : null}
+        {isFocusedLinkFlow ? (
+          <div className="mt-2 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-2 text-xs text-indigo-900">
+            Du verknüpfst diesen GS-Datensatz mit dem ausgewählten Mitglied aus dem Mitgliedsprofil. Es werden nur GS-Statusfelder gesetzt. Mitgliedsdaten bleiben unverändert.
+          </div>
+        ) : null}
+        {(isFocusedLinkFlow || analyzeStatus.running || analyzeStatus.executed) ? (
+          <div className="mt-2 rounded-md border border-zinc-200 bg-white px-2 py-2 text-xs text-zinc-700">
+            <div className="font-semibold text-zinc-900">
+              {analyzeStatus.running ? "Analyse läuft..." : analyzeStatus.executed ? "Analyse ausgeführt" : "Analyse noch nicht gestartet"}
+            </div>
+            {analyzeStatus.memberId ? (
+              <div className="mt-1">Mitglied: {analyzeStatus.memberId}</div>
+            ) : null}
+            {analyzeStatus.executed ? (
+              <div className="mt-1">Kandidaten gefunden: <span className="font-semibold">{analyzeStatus.candidatesCount}</span></div>
+            ) : null}
+            {analyzeStatus.executed && analyzeStatus.candidatesCount === 0 ? (
+              <div className="mt-1 text-amber-800">Kein GS-Kandidat gefunden. Bitte GS-Daten prüfen oder Suchkriterien erweitern.</div>
+            ) : null}
+            {analyzeStatus.reasonNoCandidate ? (
+              <div className="mt-1">Grund: {analyzeStatus.reasonNoCandidate}</div>
+            ) : null}
+            {analyzeStatus.debugSummary ? (
+              <div className="mt-1 text-zinc-600">
+                Debug: geprüft {analyzeStatus.debugSummary.rowsChecked ?? 0} · E-Mail-Matches {analyzeStatus.debugSummary.emailMatches ?? 0} · Name-Matches {analyzeStatus.debugSummary.nameMatches ?? 0} · Geburtsdatum-Matches {analyzeStatus.debugSummary.birthdateMatches ?? 0}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {isFocusedLinkFlow && matchPanel && matchPanel.candidates.length > 0 ? (
+          <div className="mt-2 rounded-md border border-zinc-200 bg-white px-2 py-2">
+            <div className="text-xs font-semibold text-zinc-900">Kandidaten für {matchPanel.memberName}</div>
+            <div className="mt-2 space-y-2">
+              {matchPanel.candidates.map((candidate) => (
+                <div key={candidate.rowId} className="rounded border border-zinc-200 bg-zinc-50 px-2 py-2 text-xs text-zinc-700">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${confidenceClass(candidate.confidence)}`}>
+                      {confidenceLabel(candidate.confidence)}
+                    </span>
+                    <span>Score: {candidate.score}</span>
+                    <span>GS-Gruppe: {candidate.groupExcel || "-"}</span>
+                  </div>
+                  <div className="mt-1 text-zinc-900">{candidate.firstName} {candidate.lastName}</div>
+                  <div>Geburtsdatum: {candidate.birthdate || "-"}</div>
+                  <div>E-Mail: {candidate.email || "-"}</div>
+                  <div>Treffergrund: {candidate.reasons.join(" · ") || "Keine Begründung"}</div>
+                  {candidate.confidence === "uncertain" ? (
+                    <label className="mt-1 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={confirmUncertain}
+                        onChange={(event) => setConfirmUncertain(event.target.checked)}
+                      />
+                      Unsicheren Treffer bewusst bestätigen
+                    </label>
+                  ) : null}
+                  <div className="mt-1">
+                    <button
+                      type="button"
+                      disabled={linkLoadingRowId !== null || (candidate.confidence === "uncertain" && !confirmUncertain)}
+                      onClick={() => {
+                        void handleLinkCandidate(candidate)
+                      }}
+                      className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {linkLoadingRowId === candidate.rowId ? "Verknüpfe..." : "Diesen GS-Datensatz mit diesem Mitglied verknüpfen"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -652,6 +1069,91 @@ export default function GsAbgleichPage() {
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
         <div className="mb-3 text-base font-semibold text-zinc-900">Gespeicherte GS-Liste</div>
 
+        {matchError ? (
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {matchError}
+          </div>
+        ) : null}
+
+        {matchInfo ? (
+          <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {matchInfo}
+          </div>
+        ) : null}
+
+        {isFocusedLinkFlow && matchPanel ? (
+          <div className="mb-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-zinc-900">Erneute Prüfung für {matchPanel.memberName}</div>
+                {matchPanel.isLGroup ? (
+                  <div className="text-xs text-zinc-600">L-Gruppe erkannt: Suche läuft gruppenübergreifend.</div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMatchPanel(null)
+                  setConfirmUncertain(false)
+                }}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-1 text-xs font-semibold text-zinc-800 hover:border-zinc-400"
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {matchPanel.candidates.length === 0 ? (
+                <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
+                  Keine Treffer gefunden.
+                </div>
+              ) : (
+                matchPanel.candidates.map((candidate) => (
+                  <div key={candidate.rowId} className="rounded-lg border border-zinc-200 bg-white px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${confidenceClass(candidate.confidence)}`}>
+                        {confidenceLabel(candidate.confidence)}
+                      </span>
+                      <span className="text-xs text-zinc-600">Score: {candidate.score}</span>
+                      <span className="text-xs text-zinc-600">Gruppe: {candidate.groupExcel || "-"}</span>
+                    </div>
+                    <div className="mt-2 text-sm text-zinc-900">
+                      {candidate.firstName} {candidate.lastName} · {candidate.birthdate || "-"}
+                    </div>
+                    <div className="text-xs text-zinc-600">E-Mail: {candidate.email || "-"} · Telefon: {candidate.phone || "-"}</div>
+                    <div className="text-xs text-zinc-600">Quelle: {candidate.source || "-"}</div>
+                    <div className="mt-1 text-xs text-zinc-700">{candidate.reasons.join(" · ") || "Keine Begründung"}</div>
+
+                    {candidate.confidence === "uncertain" ? (
+                      <label className="mt-2 flex items-center gap-2 text-xs text-zinc-700">
+                        <input
+                          type="checkbox"
+                          checked={confirmUncertain}
+                          onChange={(event) => setConfirmUncertain(event.target.checked)}
+                        />
+                        Unsicheren Treffer bewusst bestätigen
+                      </label>
+                    ) : null}
+
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        disabled={linkLoadingRowId !== null || (candidate.confidence === "uncertain" && !confirmUncertain)}
+                        onClick={() => {
+                          void handleLinkCandidate(candidate)
+                        }}
+                        className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {linkLoadingRowId === candidate.rowId ? "Verknüpfe..." : "Diesen GS-Datensatz mit diesem Mitglied verknüpfen"}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        ) : null}
+
         {storedRowsInfo ? (
           <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
             {storedRowsInfo}
@@ -677,7 +1179,19 @@ export default function GsAbgleichPage() {
               <option key={group} value={group}>{group}</option>
             ))}
           </select>
-          <span className="text-xs text-zinc-500">Angezeigt: {filteredStoredRows.length}</span>
+          <span className="text-xs text-zinc-500">{filteredStoredRows.length} von {groupFilteredStoredRows.length} GS-Datensätzen angezeigt</span>
+        </div>
+
+        <div className="mb-3 space-y-1">
+          <label className="text-sm text-zinc-700" htmlFor="gs-list-search">GS-Liste durchsuchen</label>
+          <input
+            id="gs-list-search"
+            type="text"
+            value={storedRowsSearch}
+            onChange={(event) => setStoredRowsSearch(event.target.value)}
+            placeholder="Name, E-Mail, Gruppe oder Geburtsdatum suchen ..."
+            className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900"
+          />
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
@@ -689,6 +1203,7 @@ export default function GsAbgleichPage() {
                 <th className="px-3 py-2 font-semibold">E-Mail</th>
                 <th className="px-3 py-2 font-semibold">Telefon</th>
                 <th className="px-3 py-2 font-semibold">Gruppe</th>
+                <th className="px-3 py-2 font-semibold">Status</th>
                 <th className="px-3 py-2 font-semibold">Datei/Upload</th>
                 <th className="px-3 py-2 font-semibold">Aktion</th>
               </tr>
@@ -698,17 +1213,54 @@ export default function GsAbgleichPage() {
                 filteredStoredRows.map((row, index) => {
                   const rowGroup = getStoredRowGroup(row)
                   const deleteId = getStoredRowDeleteId(row)
+                  const rowKey = getStoredRowKey(row, index)
                   const deleteDisabled = !deleteId || deletingRowId === deleteId
+                  const hasEmail = Boolean(safeCellValue(row.email))
+                  const inviteResult = inviteResults[rowKey]
+                  const inviteLoading = inviteLoadingKey === rowKey
+                  const recheckCandidate = isRecheckCandidateRow(row)
+                  const isFocusedMemberRow = isFocusedLinkFlow && safeCellValue(row.memberId) === focusMemberId
+                  const matchLoading = matchLoadingKey === rowKey
 
                   return (
-                  <tr key={getStoredRowKey(row, index)} className="border-t border-zinc-100">
+                  <tr
+                    key={getStoredRowKey(row, index)}
+                    className={`border-t border-zinc-100 ${focusMemberId && safeCellValue(row.memberId) === focusMemberId ? "bg-indigo-50" : ""}`}
+                  >
                     <td className="px-3 py-2 text-zinc-900">{safeCellValue(row.firstName) || "-"} {safeCellValue(row.lastName) || "-"}</td>
                     <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.birthdate) || "-"}</td>
                     <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.email) || "-"}</td>
                     <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.phone) || "-"}</td>
                     <td className="px-3 py-2 text-zinc-700">{rowGroup || "ohne Gruppe"}</td>
+                    <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.status) || "-"}</td>
                     <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.source) || "-"}</td>
                     <td className="px-3 py-2">
+                      <div className="flex flex-col gap-1">
+                      <button
+                        type="button"
+                        disabled={!hasEmail || inviteLoading || inviteLoadingKey !== null}
+                        onClick={() => { void handleInviteMember(row, rowKey) }}
+                        className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {inviteLoading ? "Sende..." : "Einladen"}
+                      </button>
+                      {inviteResult ? (
+                        <div className={`rounded px-2 py-1 text-xs ${inviteResult.ok ? "text-emerald-700" : "text-red-700"}`}>
+                          {inviteResult.message}
+                        </div>
+                      ) : null}
+                      {recheckCandidate && isFocusedMemberRow ? (
+                        <button
+                          type="button"
+                          disabled={matchLoading || matchLoadingKey !== null}
+                          onClick={() => {
+                            void handleAnalyzeMatch(row, rowKey)
+                          }}
+                          className="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {matchLoading ? "Prüfe..." : "Erneut prüfen / Verknüpfen"}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         disabled={deleteDisabled}
@@ -720,13 +1272,18 @@ export default function GsAbgleichPage() {
                       >
                         {!deleteId ? "Datensatz ohne ID" : deletingRowId === deleteId ? "Löschen..." : "Aus Liste löschen"}
                       </button>
+                      </div>
                     </td>
                   </tr>
                 )})
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-3 py-4 text-center text-zinc-500">
-                    {groupFilter === "all" ? "Keine GS-Liste vorhanden." : "Keine Datensätze für diese Gruppe."}
+                  <td colSpan={8} className="px-3 py-4 text-center text-zinc-500">
+                    {storedRowsSearch.trim()
+                      ? "Keine GS-Datensätze zur Suche gefunden."
+                      : groupFilter === "all"
+                        ? "Keine GS-Liste vorhanden."
+                        : "Keine Datensätze für diese Gruppe."}
                   </td>
                 </tr>
               )}

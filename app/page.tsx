@@ -23,7 +23,7 @@ export default async function Home() {
           <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-center">
             <div className="mx-auto inline-flex items-center justify-center rounded-xl bg-white/95 px-3 py-2 shadow-sm">
               <Image
-                src="/logo.png"
+                src="/brand/tsv-boxgym-logo-v2.png"
                 alt="TSV Falkensee BoxGym"
                 width={220}
                 height={242}

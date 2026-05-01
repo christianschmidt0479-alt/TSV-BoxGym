@@ -102,10 +102,10 @@ export default function QRCodePage() {
   const downloads = [
     {
       title: "TSV BoxGym Logo",
-      imagePath: "/assets/tsv-logo.png",
+      imagePath: "/brand/tsv-boxgym-logo-v2.png",
       imageAlt: "TSV BoxGym Logo",
       actions: [
-        { path: "/assets/tsv-logo.png", name: "tsv-boxgym-logo.png", label: "PNG herunterladen" },
+        { path: "/brand/tsv-boxgym-logo-v2.png", name: "tsv-boxgym-logo-v2.png", label: "PNG herunterladen" },
         { path: "/assets/tsv-logo.svg", name: "tsv-boxgym-logo.svg", label: "SVG herunterladen" },
       ],
     },

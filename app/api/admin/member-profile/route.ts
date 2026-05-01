@@ -75,15 +75,21 @@ async function saveMemberProfile(
     memberPin?: string
   }
 ) {
-  const baseUpdate = {
+  const baseUpdate: Record<string, unknown> = {
     first_name: nextValues.firstName,
     last_name: nextValues.lastName,
     name: nextValues.fullName,
     birthdate: nextValues.birthdate,
-    email: body.email?.trim() || null,
     phone: body.phone?.trim() || null,
     guardian_name: body.guardianName?.trim() || null,
     member_pin: nextValues.memberPin ? await hashAuthSecret(nextValues.memberPin) : undefined,
+  }
+
+  if (typeof body.email === "string") {
+    const trimmedEmail = body.email.trim()
+    if (trimmedEmail) {
+      baseUpdate.email = trimmedEmail
+    }
   }
 
   const withGender = await supabase
@@ -137,6 +143,10 @@ export async function POST(request: Request) {
     const supabase = getServerSupabase()
 
     if (body.action === "save_profile") {
+      if (typeof body.email === "string" && !body.email.trim()) {
+        return new NextResponse("E-Mail darf nicht leer sein", { status: 400 })
+      }
+
       const memberPin = body.memberPin?.trim() || ""
       if (memberPin && !isValidMemberPassword(memberPin)) {
         return new NextResponse(MEMBER_PASSWORD_REQUIREMENTS_MESSAGE, { status: 400 })

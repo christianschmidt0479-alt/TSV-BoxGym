@@ -163,6 +163,40 @@ function getMemberUploadGroup(member: MemberRow) {
   return parseOfficeUploadGroup(member.base_group) ?? parseOfficeUploadGroup(member.office_list_group)
 }
 
+function isLGroup(value?: string | null) {
+  const normalized = normalizeText(value)
+  return normalized === "l-gruppe" || normalized === "leistungsgruppe"
+}
+
+function findMemberScopeMatch(
+  member: MemberRow,
+  scopeRowsByEmail: Map<string, Array<{ firstName: string; lastName: string; birthdate: string; email: string; phone: string; group: OfficeUploadGroup }>>,
+  scopeRowsByNameBirthdate: Map<string, Array<{ firstName: string; lastName: string; birthdate: string; email: string; phone: string; group: OfficeUploadGroup }>>,
+  scopeRowsByPhone: Map<string, Array<{ firstName: string; lastName: string; birthdate: string; email: string; phone: string; group: OfficeUploadGroup }>>,
+) {
+  const memberEmail = (member.email ?? "").trim().toLowerCase()
+  const memberPhone = normalizePhone(member.phone)
+  const nameBirthdateKey = `${normalizeText(member.first_name)}|${normalizeText(member.last_name)}|${member.birthdate ?? ""}`
+
+  const emailMatch = memberEmail ? pickUnique(scopeRowsByEmail.get(memberEmail) ?? []) : null
+  const nameBirthdateMatch = !emailMatch ? pickUnique(scopeRowsByNameBirthdate.get(nameBirthdateKey) ?? []) : null
+  const phoneMatch = !emailMatch && !nameBirthdateMatch && memberPhone ? pickUnique(scopeRowsByPhone.get(memberPhone) ?? []) : null
+
+  const matched = emailMatch ?? nameBirthdateMatch ?? phoneMatch
+  const reason: Reason = emailMatch
+    ? "email"
+    : nameBirthdateMatch
+      ? "name_birthdate"
+      : phoneMatch
+        ? "phone"
+        : "not_found"
+
+  return {
+    matched,
+    reason,
+  }
+}
+
 function hasDataMismatch(member: MemberRow, matched: { firstName: string; lastName: string; birthdate: string; email: string; phone: string }, reason: Reason) {
   const memberFirst = normalizeText(member.first_name)
   const memberLast = normalizeText(member.last_name)
@@ -325,21 +359,25 @@ export async function POST(request: Request) {
 
     for (const member of members) {
       const memberGroup = getMemberUploadGroup(member)
+      const memberIsLGroup = isLGroup(member.base_group)
 
-      if (!memberGroup) {
-        statusCounts.gray += 1
-        statusCounts.skipped += 1
-        reasonCounts.skipped_no_group += 1
-        evaluated.push({
-          memberId: member.id,
-          status: "gray",
-          reason: "skipped_no_group",
-          officeGroup: null,
-        })
-        continue
-      }
+      const hasScopeByGroup = Boolean(memberGroup && scopeGroupSet.has(memberGroup))
+      const shouldCheckGroupOverarching = memberIsLGroup && !hasScopeByGroup
 
-      if (!scopeGroupSet.has(memberGroup)) {
+      if (!hasScopeByGroup && !shouldCheckGroupOverarching) {
+        if (!memberGroup) {
+          statusCounts.gray += 1
+          statusCounts.skipped += 1
+          reasonCounts.skipped_no_group += 1
+          evaluated.push({
+            memberId: member.id,
+            status: "gray",
+            reason: "skipped_no_group",
+            officeGroup: null,
+          })
+          continue
+        }
+
         statusCounts.gray += 1
         statusCounts.skipped += 1
         reasonCounts.skipped_no_uploaded_group += 1
@@ -352,22 +390,12 @@ export async function POST(request: Request) {
         continue
       }
 
-      const memberEmail = (member.email ?? "").trim().toLowerCase()
-      const memberPhone = normalizePhone(member.phone)
-      const nameBirthdateKey = `${normalizeText(member.first_name)}|${normalizeText(member.last_name)}|${member.birthdate ?? ""}`
-
-      const emailMatch = memberEmail ? pickUnique(scopeRowsByEmail.get(memberEmail) ?? []) : null
-      const nameBirthdateMatch = !emailMatch ? pickUnique(scopeRowsByNameBirthdate.get(nameBirthdateKey) ?? []) : null
-      const phoneMatch = !emailMatch && !nameBirthdateMatch && memberPhone ? pickUnique(scopeRowsByPhone.get(memberPhone) ?? []) : null
-
-      const matched = emailMatch ?? nameBirthdateMatch ?? phoneMatch
-      const baseReason: Reason = emailMatch
-        ? "email"
-        : nameBirthdateMatch
-          ? "name_birthdate"
-          : phoneMatch
-            ? "phone"
-            : "not_found"
+      const { matched, reason: baseReason } = findMemberScopeMatch(
+        member,
+        scopeRowsByEmail,
+        scopeRowsByNameBirthdate,
+        scopeRowsByPhone,
+      )
 
       if (!matched) {
         statusCounts.red += 1
@@ -381,7 +409,7 @@ export async function POST(request: Request) {
         continue
       }
 
-      const groupMismatch = memberGroup !== matched.group
+      const groupMismatch = !shouldCheckGroupOverarching && memberGroup !== matched.group
       const dataMismatch = hasDataMismatch(member, matched, baseReason)
 
       if (groupMismatch) {

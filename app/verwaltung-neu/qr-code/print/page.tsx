@@ -22,7 +22,7 @@ export default function QRPrintPage() {
 
         {/* LOGO + TITEL */}
         <div className="mt-10 flex flex-col items-center">
-          <img src="/logo.png" alt="TSV BoxGym" className="h-32 mb-8" />
+          <img src="/brand/tsv-boxgym-logo-v2.png" alt="TSV BoxGym" className="h-32 mb-8" />
           <h1 className="text-4xl font-bold tracking-wide mb-4">CHECK-IN</h1>
         </div>
 
