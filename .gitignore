@@ -45,3 +45,8 @@ next-env.d.ts
 
 # VS Code extensions
 *.vsix
+
+playwright-report/
+test-results/
+*.zip
+*.trace
