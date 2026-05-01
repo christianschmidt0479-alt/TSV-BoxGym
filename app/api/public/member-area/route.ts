@@ -62,6 +62,7 @@ type MemberRecord = {
   email_verified_at?: string | null
   privacy_accepted_at?: string | null
   email_verification_token?: string | null
+  email_verification_expires_at?: string | null
   phone?: string | null
   base_group?: string | null
   member_qr_token?: string | null
@@ -764,6 +765,7 @@ export async function POST(request: Request) {
           email_verified: true,
           email_verified_at: new Date().toISOString(),
           email_verification_token: null,
+          email_verification_expires_at: null,
         })
         .eq("email_verification_token", token)
         .select("id, email")
@@ -835,26 +837,40 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: false, error: "Bitte eine E-Mail-Adresse angeben." }, { status: 400 })
       }
 
-      const verificationToken = member.email_verification_token || generateEmailVerificationToken()
+      const { data: latestMemberTokenRow, error: latestMemberTokenError } = await supabase
+        .from("members")
+        .select("id, email_verification_token, email_verification_expires_at")
+        .eq("id", member.id)
+        .maybeSingle()
 
-      if (!member.email_verification_token) {
+      if (latestMemberTokenError) {
+        throw latestMemberTokenError
+      }
+
+      const existingToken = typeof latestMemberTokenRow?.email_verification_token === "string"
+        ? latestMemberTokenRow.email_verification_token.trim()
+        : ""
+      const expiresAtRaw = typeof latestMemberTokenRow?.email_verification_expires_at === "string"
+        ? latestMemberTokenRow.email_verification_expires_at
+        : ""
+      const isExpired = expiresAtRaw ? new Date(expiresAtRaw).getTime() < Date.now() : false
+
+      let verificationToken = existingToken
+      if (!verificationToken || isExpired) {
+        verificationToken = generateEmailVerificationToken()
+        const nextExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString()
         const { error } = await supabase
           .from("members")
-          .update({ email_verification_token: verificationToken })
+          .update({ email_verification_token: verificationToken, email_verification_expires_at: nextExpiresAt })
           .eq("id", member.id)
 
         if (error) throw error
       }
 
       const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-      const verificationLink = `${verificationBaseUrl}/mein-bereich?verify=${encodeURIComponent(verificationToken)}`
+      const verificationLink = `${verificationBaseUrl.replace(/\/+$/, "")}/mitgliedschaft-bestaetigen/yes/${encodeURIComponent(verificationToken)}`
 
-      const delivery = await sendVerificationEmail({
-        email: targetEmail,
-        name: getMemberDisplayName(member),
-        link: verificationLink,
-        kind: "member",
-      })
+      const delivery = await sendVerificationEmail({ email: targetEmail, token: verificationToken })
 
       return NextResponse.json({
         ok: true,

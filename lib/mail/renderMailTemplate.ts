@@ -2,6 +2,8 @@
 // Hauptfarbe: #154c83
 // Footer: "TSV Falkensee | TSV BoxGym"
 
+import { buildBaseMailLayout, escapeMailHtml } from "./baseMailLayout"
+
 export interface BuildMemberMailOptions {
   title: string
   intro: string
@@ -23,47 +25,19 @@ export function buildMemberMail({
   hint,
   securityNotice,
 }: BuildMemberMailOptions): string {
-  // Fallback-Link-Label
   const fallback = fallbackLabel && fallbackUrl
-    ? `<div style="margin:24px 0 0 0;font-size:14px;line-height:1.5;word-break:break-all;text-align:center;">
-        <span style="color:#154c83;">${fallbackLabel}:</span><br />
-        <a href="${fallbackUrl}" style="color:#154c83;word-break:break-all;">${fallbackUrl}</a>
+    ? `<div style="margin:18px 0 0 0;font-size:14px;line-height:1.6;word-break:break-all;">
+        <span style="color:#154c83;font-weight:600;">${escapeMailHtml(fallbackLabel)}:</span><br />
+        <a href="${escapeMailHtml(fallbackUrl)}" style="color:#154c83;word-break:break-all;">${escapeMailHtml(fallbackUrl)}</a>
       </div>`
     : ""
 
-  return `<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${title}</title>
-</head>
-<body style="margin:0;padding:0;background:#f6f6f6;font-family:'Avenir Next',Segoe UI,sans-serif;color:#222;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f6f6;padding:0;margin:0;">
-    <tr>
-      <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;margin:32px auto 0 auto;background:#fff;border-radius:10px;box-shadow:0 2px 8px #0001;padding:0 0 32px 0;">
-          <tr>
-            <td style="padding:32px 24px 0 24px;text-align:center;">
-              <div style="font-size:22px;font-weight:700;color:#154c83;letter-spacing:0.5px;margin-bottom:4px;">TSV Falkensee</div>
-              <div style="font-size:16px;font-weight:500;color:#154c83;opacity:0.8;margin-bottom:24px;">TSV BoxGym</div>
-              <h1 style="font-size:22px;font-weight:700;color:#222;margin:0 0 16px 0;line-height:1.2;">${title}</h1>
-              <p style="font-size:16px;line-height:1.5;margin:0 0 24px 0;color:#222;">${intro}</p>
-              ${hint ? `<div style="font-size:15px;color:#154c83;margin-bottom:18px;">${hint}</div>` : ""}
-              <a href="${ctaUrl}" style="display:inline-block;background:#154c83;color:#fff;font-size:16px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;margin:0 0 8px 0;letter-spacing:0.2px;">${ctaLabel}</a>
-              ${fallback}
-              ${securityNotice ? `<div style="margin:32px 0 0 0;font-size:13px;color:#666;line-height:1.5;text-align:center;">${securityNotice}</div>` : ""}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:32px 0 0 0;text-align:center;">
-              <div style="font-size:13px;color:#999;">TSV Falkensee | TSV BoxGym</div>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
+  const content = `
+    <p style="font-size:15px;line-height:1.6;margin:0 0 18px 0;color:#1f2937;">${escapeMailHtml(intro)}</p>
+    ${hint ? `<p style="font-size:14px;color:#154c83;margin:0 0 14px 0;">${escapeMailHtml(hint)}</p>` : ""}
+    ${fallback}
+    ${securityNotice ? `<p style="margin:20px 0 0 0;font-size:13px;color:#6b7280;line-height:1.6;">${escapeMailHtml(securityNotice)}</p>` : ""}
+  `
+
+  return buildBaseMailLayout({ title, content, ctaLabel, ctaUrl })
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { randomUUID } from "crypto"
 import { checkRateLimitAsync, getRequestIp, isAllowedAppLink, isAllowedOrigin } from "@/lib/apiSecurity"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
@@ -6,6 +7,7 @@ import { enqueueAdminNotification } from "@/lib/adminDigestDb"
 import { validateEmail } from "@/lib/formValidation"
 import { enqueueOutgoingMail } from "@/lib/outgoingMailQueueDb"
 import { getAdminNotificationAddress, getAppBaseUrl, getMailFromAddress, getReplyToAddress } from "@/lib/mailConfig"
+import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import {
   sendAccessCodeChangedEmail,
   sendApprovalEmail,
@@ -105,7 +107,7 @@ export async function POST(request: Request) {
       return new NextResponse("Too many requests", { status: 429 })
     }
 
-    const { purpose = "verification", email, name, link, kind, group, token } = (await request.json()) as SendVerificationBody & { token?: string }
+    const { purpose = "verification", email, name, link, kind, group } = (await request.json()) as SendVerificationBody
     const normalizedEmail = email?.trim().toLowerCase() ?? ""
     const normalizedName = name?.trim() ?? ""
     const normalizedKind = normalizeMailKind(kind)
@@ -258,17 +260,55 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, queued: true })
     }
 
-    // Neuer Flow: Wenn token vorhanden, nutze neues Template
-    if (purpose === "verification" && token) {
+    // Member-Verifizierung: Token immer frisch aus DB lesen/erneuern, nie aus Client-State übernehmen.
+    if (purpose === "verification" && (!normalizedKind || normalizedKind === "member")) {
       const emailValidation = validateEmail(normalizedEmail)
       if (!emailValidation.valid) {
         return new NextResponse(emailValidation.error || "Invalid email", { status: 400 })
       }
-      await sendVerificationEmail({ email: normalizedEmail, token })
+
+      const supabase = createServerSupabaseServiceClient()
+      const { data: member, error: memberError } = await supabase
+        .from("members")
+        .select("id, email_verification_token, email_verification_expires_at")
+        .eq("email", normalizedEmail)
+        .maybeSingle()
+
+      if (memberError) {
+        throw memberError
+      }
+
+      if (!member?.id) {
+        return new NextResponse("Member not found", { status: 404 })
+      }
+
+      const existingToken = typeof member.email_verification_token === "string" ? member.email_verification_token.trim() : ""
+      const expiresAtRaw = typeof member.email_verification_expires_at === "string" ? member.email_verification_expires_at : ""
+      const isExpired = expiresAtRaw ? new Date(expiresAtRaw).getTime() < Date.now() : false
+
+      let verificationToken = existingToken
+      if (!verificationToken || isExpired) {
+        verificationToken = randomUUID()
+        const nextExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString()
+        const { error: tokenUpdateError } = await supabase
+          .from("members")
+          .update({
+            email_verification_token: verificationToken,
+            email_verification_expires_at: nextExpiresAt,
+            last_verification_sent_at: new Date().toISOString(),
+          })
+          .eq("id", member.id)
+
+        if (tokenUpdateError) {
+          throw tokenUpdateError
+        }
+      }
+
+      await sendVerificationEmail({ email: normalizedEmail, token: verificationToken })
       return NextResponse.json({ ok: true })
     }
 
-    // Alter Fallback: Link-basiert
+    // Link-basierter Flow für Nicht-Member (z. B. Trainer), inklusive bestehender Rate-Limits.
     if (!normalizedEmail || !link) {
       return new NextResponse("Missing email or link", { status: 400 })
     }

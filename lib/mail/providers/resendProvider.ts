@@ -2,7 +2,7 @@
 
 import { Resend } from "resend"
 import type { SendMailInput, SendMailResult } from "../mailService"
-import { getMailFromAddress } from "@/lib/mailConfig"
+import { DEFAULT_MAIL_FROM, DEFAULT_REPLY_TO } from "@/lib/mailConfig"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -16,7 +16,8 @@ export const resendProvider = {
   async sendMail(input: SendMailInput): Promise<SendMailResult> {
     try {
       const result: ResendSendResponse = await resend.emails.send({
-        from: input.from || getMailFromAddress(),
+        from: DEFAULT_MAIL_FROM,
+        replyTo: DEFAULT_REPLY_TO,
         to: input.to,
         subject: input.subject,
         html: input.html,

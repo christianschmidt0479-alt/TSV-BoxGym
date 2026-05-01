@@ -1,34 +1,7 @@
-// Legacy-Mailadapter für Altaufrufe
-import { sendMail } from "./mail/mailService"
-import { sendMemberVerificationMail } from "./mail/memberVerificationMail"
-
-// Legacy-Mailadapter für Altaufrufe (kompatibel zu altem und neuem Stil)
-export async function sendVerificationEmail(input: any): Promise<void> {
-  // Neuer Stil: { email, token }
-  if (input && typeof input.token === "string") {
-    await sendMemberVerificationMail({ email: input.email, token: input.token })
-    return
-  }
-  // Alter Stil: { email, name?, link?, kind? }
-  if (input && typeof input.email === "string") {
-    const subject = "Bitte bestätige deine Registrierung – TSV BoxGym"
-    const html = input.link
-      ? `<p>Bitte bestätige deine E-Mail:</p><p><a href=\"${input.link}\">Jetzt bestätigen</a></p>`
-      : `<p>Bitte bestätige deine E-Mail.</p>`
-    const text = input.link
-      ? `Bitte bestätige deine E-Mail: ${input.link}`
-      : `Bitte bestätige deine E-Mail.`
-    await sendMail({
-      to: input.email,
-      subject,
-      html,
-      text,
-    })
-    return
-  }
-  throw new Error("sendVerificationEmail: Ungültige Parameter")
-}
 import { formatDisplayDateTime, formatIsoDateForDisplay } from "@/lib/dateFormat"
+import { DEFAULT_MAIL_FROM, DEFAULT_REPLY_TO, getAdminNotificationAddress } from "@/lib/mailConfig"
+import { buildBaseMailLayout, escapeMailHtml, renderTextAsMailContent } from "@/lib/mail/baseMailLayout"
+import { sendMemberVerificationMail } from "./mail/memberVerificationMail"
 
 type VerificationMailInput = {
   email: string
@@ -107,45 +80,6 @@ export type ResendEmailDeliveryResult = {
   messageId: string | null
 }
 
-import { getAdminNotificationAddress, getMailFromAddress, getReplyToAddress } from "@/lib/mailConfig"
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;")
-}
-
-function renderTextLineToHtml(line: string) {
-  const urlPattern = /(https?:\/\/[^\s<]+)/g
-  let lastIndex = 0
-  let html = ""
-
-  for (const match of line.matchAll(urlPattern)) {
-    const matchedUrl = match[0]
-    const matchIndex = match.index ?? 0
-
-    html += escapeHtml(line.slice(lastIndex, matchIndex))
-    html += `<a href="${escapeHtml(matchedUrl)}" style="color: #154c83; word-break: break-all;">${escapeHtml(matchedUrl)}</a>`
-    lastIndex = matchIndex + matchedUrl.length
-  }
-
-  html += escapeHtml(line.slice(lastIndex))
-  return html
-}
-
-function renderPlainTextEmailHtml(text: string) {
-  return text
-    .split(/\n\n+/)
-    .map((paragraph) => {
-      const renderedLines = paragraph.split("\n").map((line) => renderTextLineToHtml(line))
-      return `<p style="margin: 0 0 16px; white-space: normal;">${renderedLines.join("<br />")}</p>`
-    })
-    .join("")
-}
-
 function getResendApiKey() {
   const serverKey = process.env.RESEND_API_KEY
   const devFallback = process.env.NODE_ENV !== "production" ? process.env.NEXT_PUBLIC_RESEND_API_KEY : undefined
@@ -153,109 +87,15 @@ function getResendApiKey() {
 }
 
 async function sendMailWithResend(input: {
-  to: string;
-  subject: string;
-  text: string;
-  html: string;
-  replyTo?: string;
-  kind?: string;
-}): Promise<ResendEmailDeliveryResult> {
-  const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = input.replyTo?.trim() || getReplyToAddress()
-
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
-  }
-
-  let response;
-  try {
-    response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        reply_to: replyTo,
-        to: [input.to],
-        subject: input.subject,
-        text: input.text,
-        html: input.html,
-      }),
-    });
-    const text = await response.text();
-    if (!response.ok) {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("MAIL_SEND_FAILED", { status: response.status });
-      }
-      throw new Error(text || "Resend request failed");
-    }
-    let messageId = null;
-    try {
-      const payload = JSON.parse(text);
-      messageId = typeof payload?.id === "string" ? payload.id : null;
-    } catch {}
-    return {
-      provider: "resend",
-      messageId,
-    };
-  } catch (error) {
-    let status = response?.status;
-    if (process.env.NODE_ENV !== "production") {
-      console.error("MAIL_SEND_FAILED", { status, error });
-    }
-    throw error;
-  }
-}
-
-export async function sendCustomEmail(input: {
   to: string
   subject: string
   text: string
-  replyTo?: string
+  html: string
 }): Promise<ResendEmailDeliveryResult> {
-  return sendMailWithResend({
-    to: input.to,
-    subject: input.subject,
-    text: "TEST",
-    replyTo: input.replyTo,
-    html: "TEST",
-  })
-}
-
-function getVerificationMailContent(input: VerificationMailInput) {
-  return {
-    subject: "TSV BoxGym: Bitte Trainer-E-Mail bestätigen",
-    preheader: "Bestätige deine E-Mail-Adresse für deinen Trainerzugang.",
-    headline: "Trainerzugang bestätigen",
-    greeting: "TEST",
-    intro: "TEST",
-    steps: ["TEST"],
-    outro: "TEST",
-    cta: "TEST",
-  }
-  // Entfernt: Lose HTML-/Template-Fragmente außerhalb von Funktionen (siehe Rückbau-Protokoll)
-}
-
-export async function sendAdminNotificationEmail(input: AdminNotificationInput) {
   const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = getReplyToAddress()
-  const adminEmail = getAdminNotificationAddress()
-
   if (!apiKey) {
     throw new Error("Missing RESEND_API_KEY")
   }
-
-  const labels = {
-    member: "Neue Registrierung im Boxbereich",
-    trainer: "Neue Trainerregistrierung",
-    boxzwerge: "Neue Boxzwerge-Registrierung",
-  } as const
-
-  const subject = `TSV BoxGym Admin: ${labels[input.kind]}`
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -264,31 +104,144 @@ export async function sendAdminNotificationEmail(input: AdminNotificationInput) 
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [adminEmail],
-      subject,
-      text: "TEST",
-      html: "TEST",
+      from: DEFAULT_MAIL_FROM,
+      reply_to: DEFAULT_REPLY_TO,
+      to: [input.to],
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
     }),
   })
 
+  const raw = await response.text()
   if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend admin notification failed")
+    throw new Error(raw || "Resend request failed")
+  }
+
+  try {
+    const payload = JSON.parse(raw) as { id?: string | null }
+    return {
+      provider: "resend",
+      messageId: typeof payload?.id === "string" ? payload.id : null,
+    }
+  } catch {
+    return {
+      provider: "resend",
+      messageId: null,
+    }
   }
 }
 
-export async function sendAdminDigestEmail(input: AdminDigestMailInput) {
-  const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = getReplyToAddress()
-  const adminEmail = getAdminNotificationAddress()
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase()
+}
 
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
+function renderMailFromText(title: string, text: string) {
+  return buildBaseMailLayout({
+    title,
+    content: renderTextAsMailContent(text),
+  })
+}
+
+export async function sendVerificationEmail(input: unknown): Promise<void> {
+  if (input && typeof input === "object" && "token" in input && "email" in input) {
+    const token = typeof (input as { token?: unknown }).token === "string" ? (input as { token: string }).token : ""
+    const email = typeof (input as { email?: unknown }).email === "string" ? (input as { email: string }).email : ""
+    if (!token.trim() || !email.trim()) {
+      throw new Error("sendVerificationEmail: token oder email fehlt")
+    }
+    await sendMemberVerificationMail({ email: normalizeEmail(email), token })
+    return
   }
 
+  const legacy = input as Partial<VerificationMailInput> | null
+  if (!legacy || typeof legacy.email !== "string") {
+    throw new Error("sendVerificationEmail: Ungültige Parameter")
+  }
+
+  const email = normalizeEmail(legacy.email)
+  const link = typeof legacy.link === "string" ? legacy.link.trim() : ""
+  if (!link) {
+    throw new Error("sendVerificationEmail: link fehlt")
+  }
+
+  const subject = legacy.kind === "trainer"
+    ? "TSV BoxGym: Bitte Trainer-E-Mail bestätigen"
+    : legacy.kind === "boxzwerge"
+      ? "TSV BoxGym: Bitte Eltern-E-Mail bestätigen"
+      : "TSV BoxGym: Bitte E-Mail für dein Mitgliedskonto bestätigen"
+
+  const text = [
+    `Hallo${legacy.name?.trim() ? ` ${legacy.name.trim()}` : ""},`,
+    "",
+    "bitte bestätige deine E-Mail-Adresse über diesen Link:",
+    link,
+    "",
+    "Falls du diese Registrierung nicht selbst gestartet hast, ignoriere diese E-Mail.",
+    "",
+    "TSV BoxGym",
+  ].join("\n")
+
+  const html = buildBaseMailLayout({
+    title: "E-Mail-Adresse bestätigen",
+    ctaLabel: "E-Mail bestätigen",
+    ctaUrl: link,
+    content: `
+      <p style="margin:0 0 14px;color:#1f2937;font-size:15px;line-height:1.6;">Hallo${legacy.name?.trim() ? ` ${escapeMailHtml(legacy.name.trim())}` : ""},</p>
+      <p style="margin:0 0 16px;color:#1f2937;font-size:15px;line-height:1.6;">Bitte bestätige deine E-Mail-Adresse über den folgenden Link:</p>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:13px;line-height:1.6;">Falls der Button nicht funktioniert, nutze diesen Link:<br /><a href="${escapeMailHtml(link)}" style="color:#154c83;word-break:break-all;">${escapeMailHtml(link)}</a></p>
+      <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">Falls du diese Registrierung nicht selbst gestartet hast, ignoriere diese E-Mail.</p>
+    `,
+  })
+
+  await sendMailWithResend({ to: email, subject, text, html })
+}
+
+export async function sendCustomEmail(input: {
+  to: string
+  subject: string
+  text: string
+  replyTo?: string
+}): Promise<ResendEmailDeliveryResult> {
+  const subject = input.subject.trim() || "TSV BoxGym"
+  const text = input.text.trim()
+  const html = renderMailFromText(subject, text)
+
+  return sendMailWithResend({
+    to: normalizeEmail(input.to),
+    subject,
+    text,
+    html,
+  })
+}
+
+export async function sendAdminNotificationEmail(input: AdminNotificationInput) {
+  const labels = {
+    member: "Neue Registrierung im Boxbereich",
+    trainer: "Neue Trainerregistrierung",
+    boxzwerge: "Neue Boxzwerge-Registrierung",
+  } as const
+
+  const subject = `TSV BoxGym Admin: ${labels[input.kind]}`
+  const text = [
+    labels[input.kind],
+    "",
+    `Name: ${input.memberName}`,
+    `E-Mail: ${input.email?.trim() || "-"}`,
+    `Gruppe: ${input.group?.trim() || "-"}`,
+    "",
+    "TSV BoxGym",
+  ].join("\n")
+
+  await sendMailWithResend({
+    to: normalizeEmail(getAdminNotificationAddress()),
+    subject,
+    text,
+    html: renderMailFromText(subject, text),
+  })
+}
+
+export async function sendAdminDigestEmail(input: AdminDigestMailInput) {
   const labels = {
     member: "Boxbereich",
     trainer: "Trainer",
@@ -304,38 +257,36 @@ export async function sendAdminDigestEmail(input: AdminDigestMailInput) {
   )
 
   const subject = `TSV BoxGym Admin: Sammelmail ${input.dateLabel}`
+  const lines = [
+    `Neue Registrierungen (${input.dateLabel})`,
+    "",
+    `Boxbereich: ${counts.member}`,
+    `Trainer: ${counts.trainer}`,
+    `Boxzwerge: ${counts.boxzwerge}`,
+    "",
+  ]
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [adminEmail],
-      subject,
-      text: "TEST",
-      html: "TEST",
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend admin digest failed")
+  for (const item of input.items) {
+    const createdAtLabel = item.createdAt && !Number.isNaN(new Date(item.createdAt).getTime())
+      ? formatDisplayDateTime(new Date(item.createdAt))
+      : "unbekannt"
+    lines.push(
+      `- ${labels[item.kind]} | ${item.memberName} | ${item.email?.trim() || "-"} | ${item.group?.trim() || "-"} | ${createdAtLabel}`
+    )
   }
+
+  lines.push("", "TSV BoxGym")
+  const text = lines.join("\n")
+
+  await sendMailWithResend({
+    to: normalizeEmail(getAdminNotificationAddress()),
+    subject,
+    text,
+    html: renderMailFromText(subject, text),
+  })
 }
 
 export async function sendApprovalEmail(input: ApprovalMailInput) {
-  const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = getReplyToAddress()
-
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
-  }
-
   const isTrainer = input.kind === "trainer"
   const isBoxzwerge = input.kind === "boxzwerge"
   const subject = isTrainer
@@ -343,11 +294,7 @@ export async function sendApprovalEmail(input: ApprovalMailInput) {
     : isBoxzwerge
       ? "TSV BoxGym: Boxzwerge-Zugang wurde freigegeben"
       : "TSV BoxGym: Dein Boxbereich-Zugang wurde freigegeben"
-  const headline = isTrainer
-    ? "Trainerzugang freigegeben"
-    : isBoxzwerge
-      ? "Boxzwerge-Zugang freigegeben"
-      : "Boxbereich freigegeben"
+
   const intro = isTrainer
     ? "dein Trainerzugang wurde vom Admin freigegeben und ist jetzt aktiv."
     : isBoxzwerge
@@ -358,280 +305,156 @@ export async function sendApprovalEmail(input: ApprovalMailInput) {
     ? ["Trainerbereich kann jetzt genutzt werden", "Login weiter mit E-Mail und Passwort"]
     : [`Stammgruppe: ${input.group || "noch offen"}`, "Check-in und Mein Bereich können jetzt normal genutzt werden"]
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [input.email],
-      subject,
-      text: `${headline}
+  const text = [
+    `Hallo${input.name?.trim() ? ` ${input.name.trim()}` : ""},`,
+    "",
+    intro,
+    "",
+    ...details.map((detail, index) => `${index + 1}. ${detail}`),
+    "",
+    "Bei Rückfragen antworte einfach auf diese E-Mail.",
+    "",
+    "TSV BoxGym",
+  ].join("\n")
 
-Hallo${input.name ? ` ${input.name}` : ""},
-
-${intro}
-
-${details.map((detail, index) => `${index + 1}. ${detail}`).join("\n")}
-
-TSV BoxGym`,
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #18181b; background: #f4f4f5; padding: 24px;">
-          <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e4e4e7;">
-            <div style="background: linear-gradient(135deg, #154c83 0%, #0f2740 100%); color: #ffffff; padding: 28px 28px 24px;">
-              <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85;">TSV BoxGym</div>
-              <h1 style="margin: 10px 0 0; font-size: 24px; line-height: 1.2;">${headline}</h1>
-            </div>
-            <div style="padding: 28px;">
-              <p style="margin-top: 0;">Hallo${input.name ? ` ${escapeHtml(input.name)}` : ""},</p>
-              <p>${intro}</p>
-              <div style="margin: 20px 0; padding: 18px; border-radius: 16px; background: #f8fafc; border: 1px solid #dbeafe;">
-                <div style="font-weight: 700; margin-bottom: 8px; color: #154c83;">Wichtige Infos</div>
-                <ul style="margin: 0; padding-left: 20px;">
-                  ${details.map((detail) => `<li style="margin: 0 0 8px;">${escapeHtml(detail)}</li>`).join("")}
-                </ul>
-              </div>
-              <p style="margin-bottom: 0;">Bei Rückfragen antworte einfach auf diese E-Mail.</p>
-            </div>
-          </div>
-        </div>
-      `,
-    }),
+  await sendMailWithResend({
+    to: normalizeEmail(input.email),
+    subject,
+    text,
+    html: renderMailFromText(subject, text),
   })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend approval notification failed")
-  }
 }
 
 export async function sendAccessCodeChangedEmail(input: AccessCodeChangedMailInput) {
-  const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = getReplyToAddress()
+  const subject = input.kind === "boxzwerge"
+    ? "TSV BoxGym: Passwort für den Boxzwerge-Bereich wurde geändert"
+    : "TSV BoxGym: Dein Passwort wurde geändert"
 
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
-  }
+  const text = [
+    `Hallo${input.name?.trim() ? ` ${input.name.trim()}` : ""},`,
+    "",
+    "dein Passwort wurde im System aktualisiert.",
+    "Falls du das nicht warst, antworte bitte direkt auf diese E-Mail.",
+    "",
+    "TSV BoxGym",
+  ].join("\n")
 
-  const subject = "TSV BoxGym: Dein Passwort wurde geändert"
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [input.email],
-      subject,
-      text: "TEST",
-      html: "TEST",
-    }),
+  await sendMailWithResend({
+    to: normalizeEmail(input.email),
+    subject,
+    text,
+    html: renderMailFromText(subject, text),
   })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend password update notification failed")
-  }
 }
 
 export async function sendCompetitionAssignedEmail(input: CompetitionAssignedMailInput) {
-  const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = getReplyToAddress()
-
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
-  }
-
   const subject = "TSV BoxGym: Du wurdest als Wettkämpfer markiert"
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [input.email],
-      subject,
-      text: "TEST",
-      html: "TEST",
-    }),
-  })
+  const text = [
+    `Hallo${input.name?.trim() ? ` ${input.name.trim()}` : ""},`,
+    "",
+    "du wurdest für die Wettkampfverwaltung markiert.",
+    "Bitte prüfe und ergänze bei Bedarf deine Wettkampfdaten.",
+    "",
+    "TSV BoxGym",
+  ].join("\n")
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend competition assignment notification failed")
-  }
+  await sendMailWithResend({
+    to: normalizeEmail(input.email),
+    subject,
+    text,
+    html: renderMailFromText(subject, text),
+  })
 }
 
 export async function sendCompetitionRemovedEmail(input: CompetitionRemovedMailInput) {
-  const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = getReplyToAddress()
-
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
-  }
-
   const subject = "TSV BoxGym: Dein Wettkämpfer-Status wurde angepasst"
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [input.email],
-      subject,
-      text: "TEST",
-      html: "TEST",
-    }),
-  })
+  const text = [
+    `Hallo${input.name?.trim() ? ` ${input.name.trim()}` : ""},`,
+    "",
+    "dein Eintrag in der Wettkampfverwaltung wurde angepasst.",
+    "",
+    "TSV BoxGym",
+  ].join("\n")
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend competition removal notification failed")
-  }
+  await sendMailWithResend({
+    to: normalizeEmail(input.email),
+    subject,
+    text,
+    html: renderMailFromText(subject, text),
+  })
 }
 
 export async function sendMedicalExamReminderEmail(input: MedicalExamReminderMailInput) {
-  const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = getReplyToAddress()
-
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
-  }
-
   const dueLabel = formatIsoDateForDisplay(input.dueDate) || "in etwa 4 Wochen"
   const subject = "TSV BoxGym: Jährliche Untersuchung bitte rechtzeitig erneuern"
-  const headline = "Untersuchung läuft bald ab"
+  const text = [
+    `Hallo${input.name?.trim() ? ` ${input.name.trim()}` : ""},`,
+    "",
+    "deine jährliche ärztliche Untersuchung für den Wettkampfbereich läuft bald ab.",
+    `Voraussichtliches Ablaufdatum: ${dueLabel}`,
+    "",
+    "TSV BoxGym",
+  ].join("\n")
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [input.email],
-      subject,
-      text: "TEST",
-      html: "TEST"
-    })
+  await sendMailWithResend({
+    to: normalizeEmail(input.email),
+    subject,
+    text,
+    html: renderMailFromText(subject, text),
   })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend medical exam reminder failed")
-  }
 }
 
-export async function sendGsMembershipCheckEmail(
-  input: GsMembershipCheckMailInput
-): Promise<ResendEmailDeliveryResult> {
-  const apiKey = getResendApiKey()
-
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
-  }
-
-  const from = getMailFromAddress()
-  const replyTo = "christian.schmidt@tsv-falkensee.de"
+export async function sendGsMembershipCheckEmail(input: GsMembershipCheckMailInput): Promise<ResendEmailDeliveryResult> {
   const to = input.recipientEmail?.trim() || "gs@tsv-falkensee.de"
   const fullName = `${input.firstName} ${input.lastName}`.trim()
   const athleteLabel = input.athleteLabel?.trim() || "Sportler"
   const subject = input.subject?.trim() || `Mitgliedsabgleich TSV - ${fullName}`
-  const confirmationYesLink = input.confirmationYesLink?.trim() || input.confirmationLink?.trim()
-  const confirmationNoLink = input.confirmationNoLink?.trim()
-  const confirmationBlock = confirmationYesLink && confirmationNoLink
-    ? `
 
-Bitte genau einen Link anklicken:
-JA, Mitglied:
-${confirmationYesLink}
+  const confirmationYesLink = input.confirmationYesLink?.trim() || input.confirmationLink?.trim() || ""
+  const confirmationNoLink = input.confirmationNoLink?.trim() || ""
 
-NEIN, kein Mitglied:
-${confirmationNoLink}`
-    : ""
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [to],
-      subject,
-      text: "TEST",
-      html: "TEST",
-    }),
+  const textParts = [
+    "Liebe GS,",
+    "",
+    `bitte prüft, ob ${athleteLabel} ${fullName}, geboren am ${input.birthdateLabel}, Mitglied in unserem Verein ist.`,
+  ]
+
+  if (confirmationYesLink && confirmationNoLink) {
+    textParts.push(
+      "",
+      "Bitte genau einen Link anklicken:",
+      `JA, Mitglied: ${confirmationYesLink}`,
+      `NEIN, kein Mitglied: ${confirmationNoLink}`,
+    )
+  }
+
+  textParts.push("", "Vielen Dank.", "", "Liebe Grüße", "Christian")
+  const text = textParts.join("\n")
+
+  return sendMailWithResend({
+    to: normalizeEmail(to),
+    subject,
+    text,
+    html: renderMailFromText(subject, text),
   })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend GS membership check failed")
-  }
-
-  try {
-    const payload = (await response.json()) as { id?: string | null }
-    return {
-      provider: "resend",
-      messageId: typeof payload?.id === "string" ? payload.id : null,
-    }
-  } catch {
-    return {
-      provider: "resend",
-      messageId: null,
-    }
-  }
 }
 
 export async function sendMedicalExamReminderAdminEmail(input: MedicalExamReminderAdminMailInput) {
-  const apiKey = getResendApiKey()
-  const from = getMailFromAddress()
-  const replyTo = getReplyToAddress()
-
-  if (!apiKey) {
-    throw new Error("Missing RESEND_API_KEY")
-  }
-
   const dueLabel = formatIsoDateForDisplay(input.dueDate) || "in etwa 4 Wochen"
   const subject = "TSV BoxGym Admin: Wettkämpfer braucht neue Untersuchung"
-  const headline = "Jährliche Untersuchung läuft bald ab"
+  const text = [
+    "Hinweis für Wettkampfverwaltung",
+    "",
+    `Athlet: ${input.athleteName?.trim() || "-"}`,
+    `Ablaufdatum: ${dueLabel}`,
+    "",
+    "TSV BoxGym",
+  ].join("\n")
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      reply_to: replyTo,
-      to: [input.email],
-      subject,
-      text: "TEST",
-      html: "TEST",
-    }),
+  await sendMailWithResend({
+    to: normalizeEmail(input.email),
+    subject,
+    text,
+    html: renderMailFromText(subject, text),
   })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || "Resend medical exam admin reminder failed")
-  }
 }

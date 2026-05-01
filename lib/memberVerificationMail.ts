@@ -7,7 +7,9 @@ export type MemberVerificationMailInput = {
 
 export async function sendMemberVerificationMail(input: MemberVerificationMailInput): Promise<void> {
   const { token } = input
-  const verifyUrl = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/mitgliedschaft-bestaetigen?token=${token}`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.tsvboxgym.de"
+  const decision = "yes"
+  const verifyUrl = `${baseUrl}/mitgliedschaft-bestaetigen/${decision}/${token}`
   try {
     // TODO: Echten Versand implementieren (z.B. via Resend)
     // await resend.emails.send({ ... })

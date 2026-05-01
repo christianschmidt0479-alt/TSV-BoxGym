@@ -20,7 +20,9 @@ export async function sendMemberVerificationMail(input: MemberVerificationMailIn
     throw new Error("BASE_URL fehlt")
   }
 
-  const verifyUrl = `${BASE_URL}/mein-bereich/verifizieren?token=${trimmedToken}`
+  const normalizedBaseUrl = BASE_URL.replace(/\/+$/, "")
+  const decision = "yes"
+  const verifyUrl = `${normalizedBaseUrl}/mitgliedschaft-bestaetigen/${decision}/${trimmedToken}`
 
   // Mailinhalt bauen (zentral, professionell, mobilfreundlich)
   const subject = "E-Mail-Adresse bestätigen – TSV BoxGym"

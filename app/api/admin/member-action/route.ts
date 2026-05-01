@@ -4,7 +4,6 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { hashAuthSecret } from "@/lib/authSecret"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { writeAdminAuditLog } from "@/lib/adminAuditLogDb"
-import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/mailConfig"
 import { ensureMemberAuthUserLink } from "@/lib/memberAuthLink"
 import { isValidMemberPassword, MEMBER_PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/memberPassword"
 import { sendVerificationEmail } from "@/lib/resendClient"
@@ -254,7 +253,7 @@ export async function POST(request: Request) {
       }
       const { data: memberData, error: memberError } = await supabase
         .from("members")
-        .select("id, name, first_name, last_name, email, email_verified, email_verification_token, member_pin, last_verification_sent_at")
+        .select("id, name, first_name, last_name, email, email_verified, email_verification_token, email_verification_expires_at, member_pin, last_verification_sent_at")
         .eq("id", body.memberId)
         .maybeSingle()
 
@@ -270,7 +269,7 @@ export async function POST(request: Request) {
         if (isMissingColumn && message.includes("last_verification_sent_at")) {
           const fallbackResult = await supabase
             .from("members")
-            .select("id, name, first_name, last_name, email, email_verified, email_verification_token, member_pin")
+            .select("id, name, first_name, last_name, email, email_verified, email_verification_token, email_verification_expires_at, member_pin")
             .eq("id", body.memberId)
             .maybeSingle()
 
@@ -300,29 +299,23 @@ export async function POST(request: Request) {
         return jsonError("Vor kurzem bereits gesendet.", 429)
       }
 
-      const verificationToken = member.email_verification_token || generateEmailVerificationToken()
+      const existingToken = typeof member.email_verification_token === "string" ? member.email_verification_token.trim() : ""
+      const expiresAtRaw = typeof member.email_verification_expires_at === "string" ? member.email_verification_expires_at : ""
+      const isExpired = expiresAtRaw ? new Date(expiresAtRaw).getTime() < Date.now() : false
 
-      if (!member.email_verification_token) {
+      let verificationToken = existingToken
+      if (!verificationToken || isExpired) {
+        verificationToken = generateEmailVerificationToken()
+        const nextExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString()
         const { error: tokenError } = await supabase
           .from("members")
-          .update({ email_verification_token: verificationToken })
+          .update({ email_verification_token: verificationToken, email_verification_expires_at: nextExpiresAt })
           .eq("id", member.id)
 
         if (tokenError) throw tokenError
       }
 
-      const verificationBaseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-      const hasPassword = Boolean(member.member_pin)
-      const verificationLink = hasPassword
-        ? `${verificationBaseUrl}/mein-bereich?verify=${verificationToken}`
-        : `${verificationBaseUrl}/mein-bereich/zugang-einrichten?token=${verificationToken}`
-
-      await sendVerificationEmail({
-        email: member.email,
-        name: getMemberDisplayName(member),
-        link: verificationLink,
-        kind: "member",
-      })
+      await sendVerificationEmail({ email: member.email, token: verificationToken })
 
       // Update last_verification_sent_at — optional column, ignore if column doesn't exist yet
       try {

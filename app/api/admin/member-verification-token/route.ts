@@ -2,8 +2,7 @@ import { NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { getAppBaseUrl, DEFAULT_APP_BASE_URL } from "@/lib/mailConfig"
-import { buildAdminMailDraftPreview } from "@/lib/adminMailComposer"
-import { sendCustomEmail } from "@/lib/resendClient"
+import { sendVerificationEmail } from "@/lib/resendClient"
 import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 
 function generateEmailVerificationToken() {
@@ -36,7 +35,7 @@ export async function POST(request: Request) {
     const supabase = createServerSupabaseServiceClient()
     const { data: member, error } = await supabase
       .from("members")
-      .select("id, email, first_name, last_name, email_verification_token")
+      .select("id, email, first_name, last_name, email_verification_token, email_verification_expires_at")
       .eq("id", memberId)
       .maybeSingle()
     if (error) {
@@ -47,42 +46,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 })
     }
 
-    if (member.email_verification_token) {
-      return NextResponse.json({ ok: false, reason: "token_exists" }, { status: 200 })
-    }
+    const existingToken = typeof member.email_verification_token === "string" ? member.email_verification_token.trim() : ""
+    const expiresAtRaw = typeof member.email_verification_expires_at === "string" ? member.email_verification_expires_at : ""
+    const isExpired = expiresAtRaw ? new Date(expiresAtRaw).getTime() < Date.now() : false
 
-    const token = generateEmailVerificationToken()
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString()
+    let token = existingToken
+    if (!token || isExpired) {
+      token = generateEmailVerificationToken()
+      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString()
 
-    const { error: updateError } = await supabase
-      .from("members")
-      .update({ email_verification_token: token, email_verification_expires_at: expiresAt })
-      .eq("id", memberId)
-    if (updateError) {
-      console.error("SUPABASE ERROR:", updateError)
-      return new Response(JSON.stringify({ error: true }), { status: 500 })
+      const { error: updateError } = await supabase
+        .from("members")
+        .update({ email_verification_token: token, email_verification_expires_at: expiresAt })
+        .eq("id", memberId)
+      if (updateError) {
+        console.error("SUPABASE ERROR:", updateError)
+        return new Response(JSON.stringify({ error: true }), { status: 500 })
+      }
     }
 
     const baseUrl = getAppBaseUrl() || DEFAULT_APP_BASE_URL
-    const link = `${baseUrl}/mein-bereich?verify=${token}`
+    const link = `${baseUrl.replace(/\/+$/, "")}/mitgliedschaft-bestaetigen/yes/${token}`
 
     let mailSent = false
     let mailError = null
     if (member.email) {
       try {
-        const preview = await buildAdminMailDraftPreview({
-          kind: "verification",
-          email: member.email,
-          name: `${member.first_name || ""} ${member.last_name || ""}`.trim(),
-          link,
-          targetKind: "member",
-        })
-        await sendCustomEmail({
-          to: member.email,
-          subject: preview.subject,
-          text: preview.body,
-          replyTo: preview.replyTo,
-        })
+        await sendVerificationEmail({ email: member.email, token })
         mailSent = true
       } catch (err) {
         mailError = err instanceof Error ? err.message : String(err)
