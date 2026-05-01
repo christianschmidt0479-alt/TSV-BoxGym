@@ -35,6 +35,11 @@ export default function TrainerDetailPage({ params }: { params: Promise<{ id: st
       const res = await fetch("/api/admin/get-trainers", {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trainerId,
+          includeMemberBirthdate: true,
+        }),
       })
       const result = await res.json()
       if (!res.ok) {
