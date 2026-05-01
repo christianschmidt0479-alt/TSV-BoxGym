@@ -47,7 +47,25 @@ export default function ProbemitgliederPage() {
         credentials: "include",
         signal: controller.signal,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page: 1, pageSize: 999 }),
+        body: JSON.stringify({
+          page: 1,
+          pageSize: 999,
+          fields: [
+            "id",
+            "name",
+            "first_name",
+            "last_name",
+            "email",
+            "base_group",
+            "email_verified",
+            "is_trial",
+            "is_approved",
+            "member_phase",
+          ],
+          includeTodayTotal: false,
+          includePendingCount: false,
+          includeCheckedInToday: false,
+        }),
       })
       if (!res.ok) {
         setMembers([])

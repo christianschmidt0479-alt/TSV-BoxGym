@@ -42,7 +42,21 @@ export default function MitgliederPage() {
           signal: controller.signal,
           body: JSON.stringify({
             page: currentPage,
-            pageSize: PAGE_SIZE
+            pageSize: PAGE_SIZE,
+            fields: [
+              "id",
+              "name",
+              "first_name",
+              "last_name",
+              "email",
+              "base_group",
+              "office_list_group",
+              "is_trial",
+              "is_approved",
+              "email_verified",
+              "member_phase",
+            ],
+            includePendingCount: false,
           })
         })
 

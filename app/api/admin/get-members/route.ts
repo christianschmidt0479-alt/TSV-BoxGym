@@ -88,12 +88,18 @@ export async function POST(req: Request) {
       fields,
       summaryOnly = false,
       includeTodayTotal = true,
+      includePendingCount = true,
+      includeCheckinStats = true,
+      includeCheckedInToday = true,
     } = body as {
       page?: number
       pageSize?: number
       fields?: string[]
       summaryOnly?: boolean
       includeTodayTotal?: boolean
+      includePendingCount?: boolean
+      includeCheckinStats?: boolean
+      includeCheckedInToday?: boolean
     }
     const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
     const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : 10
@@ -164,13 +170,15 @@ export async function POST(req: Request) {
     const todayBerlin = berlinDayKey(new Date())
 
     const [pageCheckinsResult, todayCheckinsResult, pendingCountResult] = await Promise.all([
-      memberIds.length > 0
+      includeCheckinStats && memberIds.length > 0
         ? supabase.from("checkins").select("member_id, date, created_at").in("member_id", memberIds)
         : Promise.resolve({ data: [] as { member_id: string | null; date: string | null; created_at: string | null }[], error: null }),
       includeTodayTotal
         ? supabase.from("checkins").select("member_id").eq("date", todayBerlin)
         : Promise.resolve({ data: [] as { member_id: string | null }[], error: null }),
-      supabase.from("members").select("id", { count: "exact", head: true }).eq("is_approved", false),
+      includePendingCount
+        ? supabase.from("members").select("id", { count: "exact", head: true }).eq("is_approved", false)
+        : Promise.resolve({ count: 0, error: null }),
     ])
 
     if (pageCheckinsResult.error) {
@@ -182,7 +190,7 @@ export async function POST(req: Request) {
       if (!row.member_id) continue
       checkinCountByMemberId.set(row.member_id, (checkinCountByMemberId.get(row.member_id) ?? 0) + 1)
 
-      if (isTodayCheckinInBerlin(row, todayBerlin)) {
+      if (includeCheckedInToday && isTodayCheckinInBerlin(row, todayBerlin)) {
         checkedInTodayByMemberId.add(row.member_id)
       }
     }
@@ -208,7 +216,7 @@ export async function POST(req: Request) {
       data: withCheckinCounts,
       total: count,
       totalTodayCount,
-      pendingCount: pendingCountResult.count ?? 0,
+      pendingCount: includePendingCount ? (pendingCountResult.count ?? 0) : 0,
     }), { status: 200 })
   } catch (error) {
     console.error("API ERROR:", error)
