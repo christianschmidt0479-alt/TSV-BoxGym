@@ -70,6 +70,8 @@ type MemberInput = {
 const SAFE_MEMBER_LIST_SELECT =
   "id, name, first_name, last_name, birthdate, email, phone, guardian_name, email_verified, email_verified_at, privacy_accepted_at, is_trial, is_approved, base_group, office_list_status, office_list_group, office_list_checked_at, is_competition_member, has_competition_pass"
 
+const MAX_MEMBER_EMAIL_AUTH_CANDIDATES = 5
+
 export type MemberAuthResult =
   | {
       status: "success"
@@ -90,6 +92,53 @@ type TrainerRecord = {
   role?: "trainer" | "admin"
   linked_member_id?: string | null
   email_verification_token?: string | null
+}
+
+type MemberEmailCandidate = Record<string, unknown> & {
+  id: string
+  created_at?: string | null
+  email_verified?: boolean | null
+  is_approved?: boolean | null
+  member_pin?: string | null
+}
+
+function getMemberEmailCandidatePriority(member: Pick<MemberEmailCandidate, "email_verified" | "is_approved">) {
+  const isApproved = Boolean(member.is_approved)
+  const isEmailVerified = Boolean(member.email_verified)
+
+  if (isApproved && isEmailVerified) return 0
+  if (isApproved) return 1
+  if (isEmailVerified) return 2
+  return 3
+}
+
+function getCreatedAtTimestamp(value: unknown) {
+  if (typeof value !== "string") return 0
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function prioritizeMemberEmailCandidates<T extends MemberEmailCandidate>(members: T[]) {
+  return [...members].sort((left, right) => {
+    const priorityDiff = getMemberEmailCandidatePriority(left) - getMemberEmailCandidatePriority(right)
+    if (priorityDiff !== 0) return priorityDiff
+
+    return getCreatedAtTimestamp(right.created_at) - getCreatedAtTimestamp(left.created_at)
+  })
+}
+
+async function loadMemberEmailCandidates(normalizedEmail: string) {
+  const { data, error } = await supabase
+    .from("members")
+    .select("*")
+    .eq("email", normalizedEmail)
+    .order("email_verified", { ascending: false })
+    .order("is_approved", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(MAX_MEMBER_EMAIL_AUTH_CANDIDATES)
+
+  if (error) throw error
+  return prioritizeMemberEmailCandidates((data ?? []) as MemberEmailCandidate[])
 }
 
 export type TrainerCredentialsMatch = TrainerRecord & {
@@ -176,22 +225,21 @@ export async function findMemberById(memberId: string) {
 // Dubletten-Prioritätsregel: 1. verifiziert, 2. jüngster nicht-verifizierter, nicht-freigegebener, 3. jüngster
 export async function findMemberByEmail(email: string) {
   const normalized = email.trim().toLowerCase()
-  const { data, error } = await supabase
-    .from("members")
-    .select("*")
-    .eq("email", normalized)
-    .order("created_at", { ascending: false })
-    .limit(10)
-
-  if (error) throw error
+  const data = await loadMemberEmailCandidates(normalized)
   if (!data || data.length === 0) return null
-  // 1. verifizierter Datensatz
-  const verified = data.find((m) => m.email_verified)
+
+  const approvedAndVerified = data.find((member) => member.is_approved && member.email_verified)
+  if (approvedAndVerified) return approvedAndVerified
+
+  const approved = data.find((member) => member.is_approved)
+  if (approved) return approved
+
+  const verified = data.find((member) => member.email_verified)
   if (verified) return verified
-  // 2. jüngster nicht-verifizierter, nicht-freigegebener
+
   const notVerifiedNotApproved = data.find((m) => !m.email_verified && !m.is_approved)
   if (notVerifiedNotApproved) return notVerifiedNotApproved
-  // 3. jüngster Datensatz
+
   return data[0]
 }
 // Dubletten-Prioritätsregel: 1. verifiziert, 2. jüngster nicht-verifizierter, nicht-freigegebener, 3. jüngster
@@ -201,44 +249,9 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
   const pinTrimmed = pin ? pin.trim() : ""
   const normalizedPin = pinTrimmed
 
-
-  const { data, error } = await supabase
-    .from("members")
-    .select("*")
-    .eq("email", normalizedEmail)
-    .order("created_at", { ascending: false })
-    .limit(10)
-
-  if (error) throw error
+  const data = await loadMemberEmailCandidates(normalizedEmail)
   if (!data || data.length === 0) return null
 
-  // 1. Alle verifizierten Datensätze mit passendem Pin, nach created_at absteigend
-  const verified = data.filter((m) => m.email_verified)
-  for (const member of verified) {
-    const passwordOk = await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))
-    if (passwordOk) {
-      if (!isBcryptHash(String(member.member_pin ?? ""))) {
-        await setStoredMemberPin(member.id, normalizedPin)
-        member.member_pin = await hashMemberPinValue(normalizedPin)
-      }
-      return { status: "success", member }
-    }
-  }
-
-  // 2. Jüngster nicht-verifizierter, nicht-freigegebener mit passendem Pin
-  const notVerifiedNotApproved = data.filter((m) => !m.email_verified && !m.is_approved)
-  for (const member of notVerifiedNotApproved) {
-    const passwordOk = await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))
-    if (passwordOk) {
-      if (!isBcryptHash(String(member.member_pin ?? ""))) {
-        await setStoredMemberPin(member.id, normalizedPin)
-        member.member_pin = await hashMemberPinValue(normalizedPin)
-      }
-      return { status: "success", member }
-    }
-  }
-
-  // 3. Jüngster Datensatz mit passendem Pin
   for (const member of data) {
     const passwordOk = await verifyMemberPinValue(normalizedPin, String(member.member_pin ?? ""))
     if (passwordOk) {
@@ -246,8 +259,20 @@ export async function findMemberByEmailAndPin(email: string, pin: string): Promi
         await setStoredMemberPin(member.id, normalizedPin)
         member.member_pin = await hashMemberPinValue(normalizedPin)
       }
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[member-auth] matched prioritized email candidate", {
+          checkedCandidates: data.length,
+          matchedMemberId: member.id,
+        })
+      }
       return { status: "success", member }
     }
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[member-auth] no prioritized email candidate matched", {
+      checkedCandidates: data.length,
+    })
   }
 
   // Fallback: missing_email-Status wie bisher
