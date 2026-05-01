@@ -32,6 +32,7 @@ type MemberRow = {
   office_list_status?: string | null
   office_list_group?: string | null
   office_list_checked_at?: string | null
+  office_list_manual_confirmed?: boolean | null
 }
 
 type TrainerAccountRow = {
@@ -56,6 +57,7 @@ type ParsedExcelRow = {
 type ResultRow = {
   id: string
   memberId: string | null
+  officeListManualConfirmed?: boolean
   isTrainerLinked?: boolean
   hasTrainerAccount?: boolean
   email?: string
@@ -131,7 +133,7 @@ type StoredRunRow = {
 const HEADER_SCAN_LIMIT = 15
 const DATA_START_ROW_FALLBACK_INDEX = 4
 const HEURISTIC_SAMPLE_LIMIT = 25
-const OFFICE_LIST_REQUIRED_COLUMNS = ["office_list_status", "office_list_group", "office_list_checked_at"] as const
+const OFFICE_LIST_REQUIRED_COLUMNS = ["office_list_status", "office_list_group", "office_list_checked_at", "office_list_manual_confirmed"] as const
 const OFFICE_RUNS_TABLE = "office_reconciliation_runs"
 const NON_BLOCKING_MATCH_HINTS = new Set([
   "Treffer über E-Mail",
@@ -218,7 +220,7 @@ function isMissingOfficeListColumnError(error: { message?: string; details?: str
 
 function getOfficeListMigrationError() {
   return new Error(
-    "Die Datenbank kennt den GS-Abgleich noch nicht. Bitte führe zuerst supabase/member_office_list_fields.sql in Supabase aus."
+    "Die Datenbank kennt den GS-Abgleich noch nicht vollständig. Bitte führe supabase/member_office_list_fields.sql und supabase/member_office_list_manual_confirmed.sql in Supabase aus."
   )
 }
 
@@ -1136,7 +1138,7 @@ export async function POST(request: Request) {
       supabase
         .from("members")
         .select(
-          "id, first_name, last_name, birthdate, email, gs_match_email, phone, base_group, is_approved, is_trial, office_list_status, office_list_group, office_list_checked_at"
+          "id, first_name, last_name, birthdate, email, gs_match_email, phone, base_group, is_approved, is_trial, office_list_status, office_list_group, office_list_checked_at, office_list_manual_confirmed"
         )
         .order("last_name", { ascending: true })
         .order("first_name", { ascending: true }),
@@ -1329,6 +1331,7 @@ export async function POST(request: Request) {
       resultRows.push({
         id: `match-${member.id}-${excelRow.fileIndex}-${excelRow.index}`,
         memberId: member.id,
+          officeListManualConfirmed: Boolean(member.office_list_manual_confirmed),
         isTrainerLinked: linkedTrainerMemberIds.has(member.id),
         hasTrainerAccount: linkedTrainerMemberIds.has(member.id) || trainerAccountEmails.has(buildEmailKey(member.email || "")),
         email: member.email || excelRow.email || "",
@@ -1359,6 +1362,7 @@ export async function POST(request: Request) {
       resultRows.push({
         id: `missing-${member.id}`,
         memberId: member.id,
+        officeListManualConfirmed: Boolean(member.office_list_manual_confirmed),
         isTrainerLinked: linkedTrainerMemberIds.has(member.id),
         hasTrainerAccount: linkedTrainerMemberIds.has(member.id) || trainerAccountEmails.has(buildEmailKey(member.email || "")),
         email: member.email || "",

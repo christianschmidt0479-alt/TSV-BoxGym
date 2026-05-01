@@ -61,6 +61,7 @@ export async function POST(request: Request) {
       .update({
         office_list_status: "green",
         office_list_checked_at: checkedAt,
+        office_list_manual_confirmed: true,
       })
       .eq("id", memberId)
 
@@ -82,6 +83,7 @@ export async function POST(request: Request) {
       memberId,
       office_list_status: "green",
       office_list_checked_at: checkedAt,
+      office_list_manual_confirmed: true,
     })
   } catch (error) {
     console.error("admin member gs manual confirm failed", error)

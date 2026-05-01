@@ -27,11 +27,16 @@ type StoredRunRow = {
   sourceGroup?: string
   source?: string
   fileName?: string
+  groupDb?: string
+  statusLabel?: string
+  officeListManualConfirmed?: boolean
   excel?: "Ja" | "Nein" | string
   db?: "Ja" | "Nein" | string
   status?: "green" | "yellow" | "red" | "gray" | string
   note?: string
 }
+
+type UnifiedGsStatus = "green" | "red" | "gray"
 
 type StoredRunFile = {
   fileName: string
@@ -206,6 +211,44 @@ function toCheckedAtText(value?: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+function getUnifiedGsStatus(row: StoredRunRow): UnifiedGsStatus {
+  const rawStatus = safeCellValue(row.status).toLowerCase()
+  if (rawStatus === "green") return "green"
+  if (rawStatus === "red" || rawStatus === "yellow") return "red"
+  return "gray"
+}
+
+function getUnifiedStatusText(status: UnifiedGsStatus) {
+  if (status === "green") return "Verknüpft (OK)"
+  if (status === "red") return "Problem"
+  return "Nicht gefunden"
+}
+
+function getUnifiedStatusIcon(status: UnifiedGsStatus) {
+  if (status === "green") return "🟢"
+  if (status === "red") return "🔴"
+  return "⚪"
+}
+
+function getProblemReasonText(row: StoredRunRow) {
+  const note = safeCellValue(row.note).toLowerCase()
+  if (!note) return "Unbekanntes Problem"
+  if (note.includes("mehrere")) return "Mehrfach gefunden"
+  if (note.includes("abweich")) return "Datenabweichung"
+  return "Konflikt"
+}
+
+function getMatchSourceText(row: StoredRunRow) {
+  const note = safeCellValue(row.note)
+  if (note.includes("Treffer über GS-Abgleich E-Mail")) return "Treffer über GS-Abgleich E-Mail"
+  if (note.includes("Treffer über E-Mail")) return "Treffer über Haupt-E-Mail"
+  return ""
+}
+
+function isManualConfirmed(row: StoredRunRow) {
+  return row.officeListManualConfirmed === true
 }
 
 export default function GsAbgleichPage() {
@@ -1182,6 +1225,13 @@ export default function GsAbgleichPage() {
           <span className="text-xs text-zinc-500">{filteredStoredRows.length} von {groupFilteredStoredRows.length} GS-Datensätzen angezeigt</span>
         </div>
 
+        <div className="mb-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+          <span className="font-semibold text-zinc-900">Status:</span>{" "}
+          <span className="mr-3">🟢 Verknüpft (OK)</span>
+          <span className="mr-3">🔴 Problem</span>
+          <span>⚪ Nicht gefunden</span>
+        </div>
+
         <div className="mb-3 space-y-1">
           <label className="text-sm text-zinc-700" htmlFor="gs-list-search">GS-Liste durchsuchen</label>
           <input
@@ -1198,13 +1248,12 @@ export default function GsAbgleichPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-zinc-50 text-left text-zinc-700">
               <tr>
+                <th className="px-3 py-2 font-semibold">Status</th>
                 <th className="px-3 py-2 font-semibold">Name</th>
                 <th className="px-3 py-2 font-semibold">Geburtsdatum</th>
                 <th className="px-3 py-2 font-semibold">E-Mail</th>
-                <th className="px-3 py-2 font-semibold">Telefon</th>
                 <th className="px-3 py-2 font-semibold">Gruppe</th>
-                <th className="px-3 py-2 font-semibold">Status</th>
-                <th className="px-3 py-2 font-semibold">Datei/Upload</th>
+                <th className="px-3 py-2 font-semibold">Verknüpftes Mitglied</th>
                 <th className="px-3 py-2 font-semibold">Aktion</th>
               </tr>
             </thead>
@@ -1212,73 +1261,72 @@ export default function GsAbgleichPage() {
               {filteredStoredRows.length > 0 ? (
                 filteredStoredRows.map((row, index) => {
                   const rowGroup = getStoredRowGroup(row)
-                  const deleteId = getStoredRowDeleteId(row)
                   const rowKey = getStoredRowKey(row, index)
-                  const deleteDisabled = !deleteId || deletingRowId === deleteId
-                  const hasEmail = Boolean(safeCellValue(row.email))
-                  const inviteResult = inviteResults[rowKey]
-                  const inviteLoading = inviteLoadingKey === rowKey
                   const recheckCandidate = isRecheckCandidateRow(row)
                   const isFocusedMemberRow = isFocusedLinkFlow && safeCellValue(row.memberId) === focusMemberId
                   const matchLoading = matchLoadingKey === rowKey
+                  const unifiedStatus = getUnifiedGsStatus(row)
+                  const matchSourceText = getMatchSourceText(row)
+                  const manualConfirmed = isManualConfirmed(row)
+                  const actionDisabled = matchLoading || matchLoadingKey !== null || !recheckCandidate || !isFocusedMemberRow
+                  const actionHint = !isFocusedLinkFlow
+                    ? "Aktion im Mitgliedsprofil-Linkflow ausführen."
+                    : !recheckCandidate || !isFocusedMemberRow
+                      ? "Nur beim fokussierten Mitglied mit prüfbarem Datensatz verfügbar."
+                      : ""
 
                   return (
                   <tr
                     key={getStoredRowKey(row, index)}
                     className={`border-t border-zinc-100 ${focusMemberId && safeCellValue(row.memberId) === focusMemberId ? "bg-indigo-50" : ""}`}
                   >
+                    <td className="px-3 py-2 text-zinc-700">
+                      <div className="font-medium text-zinc-900">{getUnifiedStatusIcon(unifiedStatus)} {getUnifiedStatusText(unifiedStatus)}</div>
+                      {unifiedStatus === "green" ? (
+                        <div className="text-xs text-emerald-700">✔ alles korrekt</div>
+                      ) : unifiedStatus === "red" ? (
+                        <div className="text-xs text-red-700">{getProblemReasonText(row)}</div>
+                      ) : (
+                        <div className="text-xs text-zinc-600">Nicht gefunden</div>
+                      )}
+                      {manualConfirmed ? (
+                        <div className="mt-1 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                          Manuell bestätigt
+                        </div>
+                      ) : null}
+                      {matchSourceText ? (
+                        <div className="mt-1 text-xs text-zinc-600">{matchSourceText}</div>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2 text-zinc-900">{safeCellValue(row.firstName) || "-"} {safeCellValue(row.lastName) || "-"}</td>
                     <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.birthdate) || "-"}</td>
                     <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.email) || "-"}</td>
-                    <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.phone) || "-"}</td>
                     <td className="px-3 py-2 text-zinc-700">{rowGroup || "ohne Gruppe"}</td>
-                    <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.status) || "-"}</td>
-                    <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.source) || "-"}</td>
+                    <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.memberId) || "-"}</td>
                     <td className="px-3 py-2">
                       <div className="flex flex-col gap-1">
-                      <button
-                        type="button"
-                        disabled={!hasEmail || inviteLoading || inviteLoadingKey !== null}
-                        onClick={() => { void handleInviteMember(row, rowKey) }}
-                        className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {inviteLoading ? "Sende..." : "Einladen"}
-                      </button>
-                      {inviteResult ? (
-                        <div className={`rounded px-2 py-1 text-xs ${inviteResult.ok ? "text-emerald-700" : "text-red-700"}`}>
-                          {inviteResult.message}
-                        </div>
-                      ) : null}
-                      {recheckCandidate && isFocusedMemberRow ? (
+                      {unifiedStatus === "green" ? (
+                        <span className="text-xs font-semibold text-emerald-700">OK</span>
+                      ) : (
                         <button
                           type="button"
-                          disabled={matchLoading || matchLoadingKey !== null}
+                          disabled={actionDisabled}
+                          title={actionHint || undefined}
                           onClick={() => {
                             void handleAnalyzeMatch(row, rowKey)
                           }}
                           className="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {matchLoading ? "Prüfe..." : "Erneut prüfen / Verknüpfen"}
+                          {matchLoading ? "Prüfe..." : unifiedStatus === "red" ? "Problem prüfen" : "Mitglied suchen / verknüpfen"}
                         </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        disabled={deleteDisabled}
-                        title={!deleteId ? "Datensatz ohne ID - bitte Liste neu hochladen" : undefined}
-                        onClick={() => {
-                          void handleDeleteStoredRow(row)
-                        }}
-                        className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {!deleteId ? "Datensatz ohne ID" : deletingRowId === deleteId ? "Löschen..." : "Aus Liste löschen"}
-                      </button>
+                      )}
                       </div>
                     </td>
                   </tr>
                 )})
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-3 py-4 text-center text-zinc-500">
+                  <td colSpan={7} className="px-3 py-4 text-center text-zinc-500">
                     {storedRowsSearch.trim()
                       ? "Keine GS-Datensätze zur Suche gefunden."
                       : groupFilter === "all"
