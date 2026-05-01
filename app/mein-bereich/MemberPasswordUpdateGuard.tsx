@@ -1,20 +1,29 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
 export default function MemberPasswordUpdateGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const requestedPathsRef = useRef<Set<string>>(new Set())
+  const activeRequestControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
+    if (!pathname) return
+    if (requestedPathsRef.current.has(pathname)) return
+
+    requestedPathsRef.current.add(pathname)
     let cancelled = false
+    const controller = new AbortController()
+    activeRequestControllerRef.current = controller
 
     const checkSession = async () => {
       try {
         const response = await fetch("/api/public/member-area", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({ action: "member_session", summaryOnly: true }),
         })
 
@@ -38,7 +47,10 @@ export default function MemberPasswordUpdateGuard({ children }: { children: Reac
         if (!needsPasswordUpdate && data?.ok === true && isPasswordChangePath) {
           router.replace("/mein-bereich")
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return
+        }
         // Ignore transient fetch errors and keep current route.
       }
     }
@@ -47,6 +59,10 @@ export default function MemberPasswordUpdateGuard({ children }: { children: Reac
 
     return () => {
       cancelled = true
+      controller.abort()
+      if (activeRequestControllerRef.current === controller) {
+        activeRequestControllerRef.current = null
+      }
     }
   }, [pathname, router])
 
