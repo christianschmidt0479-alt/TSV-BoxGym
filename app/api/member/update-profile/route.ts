@@ -8,6 +8,24 @@ type UpdateProfileBody = {
   birthdate?: string
 }
 
+function shortMemberId(memberId: unknown): string {
+  const raw = typeof memberId === "string" || typeof memberId === "number" ? String(memberId) : "unknown"
+  if (raw.length <= 8) return raw
+  return `${raw.slice(0, 4)}...${raw.slice(-4)}`
+}
+
+function sanitizeErrorText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  // Avoid logging potentially personal or secret-like values.
+  const suspiciousPattern = /(token|hash|pin|password|email|@|member_?qr|verification)/i
+  if (suspiciousPattern.test(trimmed)) return undefined
+
+  return trimmed
+}
+
 export async function POST(req: Request) {
   const member = await getMemberFromSession()
 
@@ -26,21 +44,34 @@ export async function POST(req: Request) {
   if (phone) updateData.phone = phone
   if (birthdate) updateData.birthdate = birthdate
 
-  const { data, error } = await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from("members")
     .update(updateData)
     .eq("id", member.id)
     .select()
 
-  console.log("UPDATE DATA:", data)
-  console.log("UPDATE ERROR RAW:", error)
-  console.log("UPDATE ERROR KEYS:", Object.keys(error || {}))
-  console.log("UPDATE ERROR MESSAGE:", error?.message)
-  console.log("UPDATE ERROR DETAILS:", error?.details)
-  console.log("UPDATE ERROR HINT:", error?.hint)
-  console.log("UPDATE ERROR CODE:", error?.code)
+  const isDevelopment = process.env.NODE_ENV !== "production"
+  const memberIdForLog = shortMemberId(member.id)
+
+  if (isDevelopment && !error) {
+    console.log("member-update-profile success", {
+      memberId: memberIdForLog,
+      updatedFields: Object.keys(updateData),
+    })
+  }
 
   if (error) {
+    const safeDetails = sanitizeErrorText(error.details)
+    const safeHint = sanitizeErrorText(error.hint)
+
+    console.error("member-update-profile failure", {
+      memberId: memberIdForLog,
+      code: error.code || null,
+      message: error.message || "unknown error",
+      ...(safeDetails ? { details: safeDetails } : {}),
+      ...(safeHint ? { hint: safeHint } : {}),
+    })
+
     return NextResponse.json(
       { error: error.message },
       { status: 500 }
