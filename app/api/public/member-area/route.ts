@@ -40,7 +40,7 @@ import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 type MemberAreaBody =
   // Backward compatible during migration: accepts both password and legacy pin fields.
   | { action: "member_login"; email?: string; password?: string; pin?: string }
-  | { action: "member_session" }
+  | { action: "member_session"; summaryOnly?: boolean }
   | { action: "logout_member_session" }
   | { action: "trainer_linked_member" }
   | { action: "verify_email"; token?: string }
@@ -571,6 +571,7 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "member_session") {
+      const summaryOnly = body.summaryOnly === true
       const memberSessionToken = request.headers
         .get("cookie")
         ?.split(";")
@@ -596,6 +597,19 @@ export async function POST(request: Request) {
 
         if (!hasAcceptedPrivacy(member)) {
           return NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
+        }
+
+        if (summaryOnly) {
+          const response = NextResponse.json({
+            ok: true,
+            code: "session_valid",
+            needsPasswordUpdate: memberSession.needsPasswordUpdate === true,
+          })
+          return applyMemberAreaSessionCookie(response, {
+            memberId: memberSession.memberId,
+            email: member.email ?? memberSession.email,
+            needsPasswordUpdate: memberSession.needsPasswordUpdate === true,
+          })
         }
 
         const memberData = await buildMemberSnapshot(member)
@@ -635,6 +649,14 @@ export async function POST(request: Request) {
 
       if (!hasAcceptedPrivacy(member)) {
         return NextResponse.json({ ok: false, code: "privacy_consent_required", message: "Bitte Datenschutz akzeptieren." }, { status: 403 })
+      }
+
+      if (summaryOnly) {
+        return NextResponse.json({
+          ok: true,
+          code: "session_valid",
+          needsPasswordUpdate: false,
+        })
       }
 
       const memberData = await buildMemberSnapshot(member)

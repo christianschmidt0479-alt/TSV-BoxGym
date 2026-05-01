@@ -15,7 +15,7 @@ export default function MemberPasswordUpdateGuard({ children }: { children: Reac
         const response = await fetch("/api/public/member-area", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "member_session" }),
+          body: JSON.stringify({ action: "member_session", summaryOnly: true }),
         })
 
         const data = await response.json().catch(() => null)
