@@ -16,6 +16,9 @@ type TrialMember = {
   is_approved: boolean
   member_phase: "trial" | "extended" | "member"
   checkin_count: number
+  office_list_status: string | null
+  office_list_group: string | null
+  office_list_checked_at: string | null
 }
 
 function toTrialMember(m: Record<string, unknown>): TrialMember {
@@ -32,6 +35,9 @@ function toTrialMember(m: Record<string, unknown>): TrialMember {
     member_phase:
       m.member_phase === "trial" || m.member_phase === "extended" ? m.member_phase : "trial",
     checkin_count: typeof m.checkinCount === "number" ? m.checkinCount : 0,
+    office_list_status: typeof m.office_list_status === "string" ? m.office_list_status : null,
+    office_list_group: typeof m.office_list_group === "string" ? m.office_list_group : null,
+    office_list_checked_at: typeof m.office_list_checked_at === "string" ? m.office_list_checked_at : null,
   }
 }
 
@@ -61,6 +67,9 @@ export default function ProbemitgliederPage() {
             "is_trial",
             "is_approved",
             "member_phase",
+            "office_list_status",
+            "office_list_group",
+            "office_list_checked_at",
           ],
           includeTodayTotal: false,
           includePendingCount: false,

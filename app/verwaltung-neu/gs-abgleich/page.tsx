@@ -10,15 +10,22 @@ import {
 } from "@/lib/officeUploadGroups"
 
 type StoredRunRow = {
-  id: string
-  firstName: string
-  lastName: string
-  birthdate: string
+  id?: string
+  rowId?: string
+  firstName?: string
+  lastName?: string
+  birthdate?: string
   email?: string
   phone?: string
-  groupExcel: string
-  source: string
-  excel: "Ja" | "Nein"
+  groupExcel?: string
+  groupName?: string
+  group?: string
+  group_name?: string
+  fileGroup?: string
+  sourceGroup?: string
+  source?: string
+  fileName?: string
+  excel?: "Ja" | "Nein" | string
 }
 
 type StoredRunFile = {
@@ -41,13 +48,97 @@ type UploadInfo = {
   checkedAt: string
 }
 
-type ResetStatusResponse = {
-  message?: string
+type SyncResponse = {
+  ok?: boolean
   error?: string
+  dryRun?: boolean
+  checkedAt?: string
+  counts?: {
+    green?: number
+    yellow?: number
+    red?: number
+    gray?: number
+    skipped?: number
+  }
+  reasons?: {
+    email?: number
+    name_birthdate?: number
+    phone?: number
+    not_found?: number
+    group_mismatch?: number
+    skipped_no_group?: number
+    skipped_no_uploaded_group?: number
+  }
 }
 
 function normalizeGroupValue(value?: string | null) {
   return (value ?? "").trim().replace(/\s+/g, " ")
+}
+
+function safeCellValue(value: unknown) {
+  if (typeof value !== "string") return ""
+  return value.trim()
+}
+
+function getStoredRowGroup(row: StoredRunRow): OfficeUploadGroup | null {
+  const candidates = [
+    row.groupExcel,
+    row.groupName,
+    row.group,
+    row.group_name,
+    row.fileGroup,
+    row.sourceGroup,
+  ]
+
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeGroupValue(candidate)
+    if (!normalizedCandidate) continue
+
+    const matched = ALL_OFFICE_UPLOAD_GROUPS.find(
+      (group) => normalizeGroupValue(group) === normalizedCandidate,
+    )
+
+    if (matched) return matched
+  }
+
+  return null
+}
+
+function getStoredRowDeleteId(row: StoredRunRow) {
+  return safeCellValue(row.id) || safeCellValue(row.rowId)
+}
+
+function getStoredRowKey(row: StoredRunRow, index: number) {
+  const fallbackGroup =
+    getStoredRowGroup(row) ||
+    safeCellValue(row.groupName) ||
+    safeCellValue(row.groupExcel) ||
+    safeCellValue(row.group) ||
+    safeCellValue(row.group_name) ||
+    safeCellValue(row.fileGroup) ||
+    safeCellValue(row.sourceGroup)
+
+  const baseKeyParts = [
+    safeCellValue(row.id),
+    safeCellValue(row.rowId),
+    safeCellValue(row.source),
+    safeCellValue(row.fileName),
+    fallbackGroup,
+    safeCellValue(row.firstName),
+    safeCellValue(row.lastName),
+    safeCellValue(row.birthdate),
+    safeCellValue(row.email),
+    safeCellValue(row.phone),
+  ]
+
+  const baseKey = baseKeyParts.filter((part) => part.length > 0).join("|") || "stored-row"
+
+  // Always suffix with index so duplicated legacy ids/rowIds can still render safely.
+  return `${baseKey}-${index}`
+}
+
+function isStoredExcelRow(row: StoredRunRow) {
+  return !row.excel || row.excel === "Ja"
 }
 
 function toCheckedAtText(value?: string | null) {
@@ -85,9 +176,10 @@ export default function GsAbgleichPage() {
   const [storedRowsInfo, setStoredRowsInfo] = useState("")
   const [deletingRowId, setDeletingRowId] = useState<string | null>(null)
   const [groupFilter, setGroupFilter] = useState<OfficeUploadGroup | "all">("all")
-  const [resetLoading, setResetLoading] = useState(false)
-  const [resetError, setResetError] = useState("")
-  const [resetInfo, setResetInfo] = useState("")
+  const [syncLoading, setSyncLoading] = useState(false)
+  const [syncError, setSyncError] = useState("")
+  const [syncInfo, setSyncInfo] = useState("")
+  const [syncResult, setSyncResult] = useState<SyncResponse | null>(null)
 
   function applyRunPayload(payload: LastFullRunResponse) {
     setLastFullReconcileAt(typeof payload.checkedAt === "string" ? payload.checkedAt : null)
@@ -144,81 +236,37 @@ export default function GsAbgleichPage() {
     }
   }, [])
 
-  const filteredStoredRows = useMemo(
-    () => {
-      const normalizedFilter = groupFilter === "all" ? null : normalizeGroupValue(groupFilter)
-
-      return storedRows
-        .filter((row) => row.excel === "Ja")
-        .filter((row) => {
-          if (!normalizedFilter) return true
-          return normalizeGroupValue(row.groupExcel) === normalizedFilter
-        })
-    },
-    [groupFilter, storedRows],
-  )
+  const filteredStoredRows = useMemo(() => {
+    return storedRows
+      .filter((row) => isStoredExcelRow(row))
+      .filter((row) => {
+        if (groupFilter === "all") return true
+        return getStoredRowGroup(row) === groupFilter
+      })
+  }, [groupFilter, storedRows])
 
   const groupedRows = useMemo(
     () =>
       ALL_OFFICE_UPLOAD_GROUPS
         .map((group) => ({
           group,
-          rows: filteredStoredRows.filter((row) => normalizeGroupValue(row.groupExcel) === normalizeGroupValue(group)),
+          rows: filteredStoredRows.filter((row) => getStoredRowGroup(row) === group),
         }))
         .filter((entry) => entry.rows.length > 0),
     [filteredStoredRows],
   )
 
-  async function handleResetMemberOfficeStatus() {
-    const confirmed = confirm(
-      "Wirklich alle Mitglieder auf GS grau / ungeprüft setzen? Die Mitglieder bleiben erhalten. Nur die GS-Statusfelder werden zurückgesetzt."
-    )
-    if (!confirmed) return
-
-    setResetLoading(true)
-    setResetError("")
-    setResetInfo("")
-    setStoredRowsInfo("")
-    setStoredRowsError("")
-
-    try {
-      const response = await fetch("/api/admin/excel-abgleich", {
-        method: "PATCH",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ action: "reset-member-office-status" }),
-      })
-
-      const payloadText = await response.text()
-      let payload: ResetStatusResponse = {}
-
-      if (payloadText) {
-        try {
-          payload = JSON.parse(payloadText) as ResetStatusResponse
-        } catch {
-          payload = {}
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(payload.error || payloadText || "GS-Status konnte nicht zurückgesetzt werden.")
-      }
-
-      setResetInfo(payload.message || "GS-Status wurde zurückgesetzt. Mitglieder bleiben unverändert.")
-    } catch (error) {
-      setResetError(error instanceof Error ? error.message : "GS-Status konnte nicht zurückgesetzt werden.")
-    } finally {
-      setResetLoading(false)
-    }
-  }
-
   async function handleDeleteStoredRow(row: StoredRunRow) {
+    const rowId = getStoredRowDeleteId(row)
+    if (!rowId) {
+      setStoredRowsError("Datensatz ohne ID kann nicht gelöscht werden. Bitte Liste neu hochladen.")
+      return
+    }
+
     const confirmDelete = confirm("Datensatz wirklich nur aus GS-Liste entfernen? Das Mitglied in der App bleibt erhalten.")
     if (!confirmDelete) return
 
-    setDeletingRowId(row.id)
+    setDeletingRowId(rowId)
     setStoredRowsInfo("")
     setStoredRowsError("")
 
@@ -229,7 +277,7 @@ export default function GsAbgleichPage() {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ rowId: row.id }),
+        body: JSON.stringify({ rowId }),
       })
 
       const payloadText = await response.text()
@@ -315,6 +363,9 @@ export default function GsAbgleichPage() {
     setUploadError("")
     setUploadLoading(true)
     setBoxzwergeError("")
+    setSyncError("")
+    setSyncInfo("")
+    setSyncResult(null)
     setStoredRowsInfo("")
     setStoredRowsError("")
 
@@ -350,6 +401,9 @@ export default function GsAbgleichPage() {
     setBoxzwergeError("")
     setBoxzwergeLoading(true)
     setUploadError("")
+    setSyncError("")
+    setSyncInfo("")
+    setSyncResult(null)
     setStoredRowsInfo("")
     setStoredRowsError("")
 
@@ -376,39 +430,93 @@ export default function GsAbgleichPage() {
     })
   }
 
+  async function handleSync() {
+    setSyncLoading(true)
+    setSyncError("")
+    setSyncInfo("")
+
+    try {
+      const response = await fetch("/api/admin/excel-abgleich/sync", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ mode: "apply" }),
+      })
+
+      const payloadText = await response.text()
+      let payload: SyncResponse = {}
+
+      if (payloadText) {
+        try {
+          payload = JSON.parse(payloadText) as SyncResponse
+        } catch {
+          payload = {}
+        }
+      }
+
+      if (!response.ok || payload.ok !== true) {
+        throw new Error(payload.error || payloadText || "GS-Synchronisierung fehlgeschlagen.")
+      }
+
+      setSyncResult(payload)
+      setSyncInfo("GS-Status wurde synchronisiert.")
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "GS-Synchronisierung fehlgeschlagen.")
+    } finally {
+      setSyncLoading(false)
+    }
+  }
+
   const checkedAtText = toCheckedAtText(lastFullReconcileAt)
 
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700 shadow-sm">
         <span className="font-semibold text-zinc-900">Letzter GS-Abgleich:</span> {checkedAtText === "-" ? "noch kein vollständiger GS-Abgleich" : checkedAtText}
+        <div className="mt-2 text-xs text-zinc-600">
+          Upload speichert die GS-Liste. Der sichtbare Mitgliederstatus wird über GS-Synchronisierung aktualisiert.
+        </div>
+        <div className="mt-1 text-xs text-zinc-600">Standardablauf: GS-Liste hochladen → GS-Status synchronisieren.</div>
       </div>
 
-      <div className="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm">
-        <div className="mb-1 text-sm font-semibold text-red-900">Admin-Aktion vor neuem Abgleich</div>
-        <div className="text-xs text-red-800">
-          Setzt nur die GS-Statusfelder aller Mitglieder auf grau/ungeprüft zurück. Mitglieder und gespeicherte GS-Liste bleiben erhalten.
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <div className="mb-2 text-base font-semibold text-zinc-900">GS-Status synchronisieren</div>
+        <div className="text-xs text-zinc-600">
+          Übernimmt die gespeicherte GS-Liste und aktualisiert danach die sichtbaren GS-Status bei Mitgliedern.
         </div>
-
         <div className="mt-3">
           <button
             type="button"
-            disabled={resetLoading}
             onClick={() => {
-              void handleResetMemberOfficeStatus()
+              void handleSync()
             }}
-            className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={syncLoading}
+            className="rounded-lg bg-[#154c83] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123d69] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {resetLoading ? "Setze zurück..." : "GS-Status aller Mitglieder zurücksetzen"}
+            {syncLoading ? "Synchronisiere..." : "GS-Status synchronisieren"}
           </button>
         </div>
 
-        {resetError ? (
-          <div className="mt-3 rounded-lg border border-red-300 bg-red-100 px-3 py-2 text-sm text-red-900">{resetError}</div>
+        {syncError ? (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{syncError}</div>
         ) : null}
 
-        {resetInfo ? (
-          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{resetInfo}</div>
+        {syncInfo ? (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{syncInfo}</div>
+        ) : null}
+
+        {syncResult?.counts ? (
+          <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-700">
+            <div className="font-semibold text-zinc-900">Ergebnis</div>
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <div>Grün: <span className="font-semibold">{syncResult.counts.green ?? 0}</span></div>
+              <div>Gelb: <span className="font-semibold">{syncResult.counts.yellow ?? 0}</span></div>
+              <div>Rot: <span className="font-semibold">{syncResult.counts.red ?? 0}</span></div>
+              <div>Grau/übersprungen: <span className="font-semibold">{syncResult.counts.gray ?? 0}</span></div>
+            </div>
+          </div>
         ) : null}
       </div>
 
@@ -465,6 +573,7 @@ export default function GsAbgleichPage() {
         {uploadInfo ? (
           <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
             Hochgeladene Gruppe: <span className="font-semibold">{uploadInfo.group}</span> · Anzahl Datensätze: <span className="font-semibold">{uploadInfo.rowCount}</span> · Zeitpunkt: <span className="font-semibold">{toCheckedAtText(uploadInfo.checkedAt)}</span>
+            <div className="mt-1 text-xs text-emerald-700">Liste gespeichert. Bitte danach GS-Status synchronisieren.</div>
           </div>
         ) : null}
       </div>
@@ -586,28 +695,34 @@ export default function GsAbgleichPage() {
             </thead>
             <tbody>
               {filteredStoredRows.length > 0 ? (
-                filteredStoredRows.map((row) => (
-                  <tr key={row.id} className="border-t border-zinc-100">
-                    <td className="px-3 py-2 text-zinc-900">{row.firstName} {row.lastName}</td>
-                    <td className="px-3 py-2 text-zinc-700">{row.birthdate || "-"}</td>
-                    <td className="px-3 py-2 text-zinc-700">{row.email || "-"}</td>
-                    <td className="px-3 py-2 text-zinc-700">{row.phone || "-"}</td>
-                    <td className="px-3 py-2 text-zinc-700">{row.groupExcel || "-"}</td>
-                    <td className="px-3 py-2 text-zinc-700">{row.source || "-"}</td>
+                filteredStoredRows.map((row, index) => {
+                  const rowGroup = getStoredRowGroup(row)
+                  const deleteId = getStoredRowDeleteId(row)
+                  const deleteDisabled = !deleteId || deletingRowId === deleteId
+
+                  return (
+                  <tr key={getStoredRowKey(row, index)} className="border-t border-zinc-100">
+                    <td className="px-3 py-2 text-zinc-900">{safeCellValue(row.firstName) || "-"} {safeCellValue(row.lastName) || "-"}</td>
+                    <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.birthdate) || "-"}</td>
+                    <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.email) || "-"}</td>
+                    <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.phone) || "-"}</td>
+                    <td className="px-3 py-2 text-zinc-700">{rowGroup || "ohne Gruppe"}</td>
+                    <td className="px-3 py-2 text-zinc-700">{safeCellValue(row.source) || "-"}</td>
                     <td className="px-3 py-2">
                       <button
                         type="button"
-                        disabled={deletingRowId === row.id}
+                        disabled={deleteDisabled}
+                        title={!deleteId ? "Datensatz ohne ID - bitte Liste neu hochladen" : undefined}
                         onClick={() => {
                           void handleDeleteStoredRow(row)
                         }}
                         className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {deletingRowId === row.id ? "Löschen..." : "Aus Liste löschen"}
+                        {!deleteId ? "Datensatz ohne ID" : deletingRowId === deleteId ? "Löschen..." : "Aus Liste löschen"}
                       </button>
                     </td>
                   </tr>
-                ))
+                )})
               ) : (
                 <tr>
                   <td colSpan={7} className="px-3 py-4 text-center text-zinc-500">

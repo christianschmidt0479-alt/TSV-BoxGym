@@ -56,6 +56,10 @@ type MemberActionBody =
       memberId: string
       needsTrainerAssistCheckin: boolean
     }
+  | {
+      action: "move_to_approvals"
+      memberId: string
+    }
 
 function getServerSupabase() {
   return createServerSupabaseServiceClient()
@@ -470,6 +474,45 @@ export async function POST(request: Request) {
         targetName: getMemberDisplayName(data),
         details: body.needsTrainerAssistCheckin ? "Trainerhilfe aktiv" : "Trainerhilfe aus",
       })
+      return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
+    }
+
+    if (body.action === "move_to_approvals") {
+      if (typeof body.memberId !== "string") {
+        return jsonError("Invalid move to approvals payload", 400)
+      }
+
+      const { data: currentMember, error: currentMemberError } = await supabase
+        .from("members")
+        .select("id, is_trial, is_approved, member_phase")
+        .eq("id", body.memberId)
+        .maybeSingle()
+
+      if (currentMemberError) throw currentMemberError
+      if (!currentMember) return jsonError("Mitglied nicht gefunden", 404)
+
+      if (!currentMember.is_trial && currentMember.member_phase !== "trial" && currentMember.member_phase !== "extended") {
+        return jsonError("Mitglied ist kein Probemitglied", 400)
+      }
+
+      const { data, error } = await updateMemberWithFallback(supabase, body.memberId, {
+        is_trial: false,
+        is_approved: false,
+        member_phase: "member",
+      })
+
+      if (error) throw error
+      if (!data) return jsonError("Mitglied nicht gefunden", 404)
+
+      await writeAdminAuditLog({
+        session,
+        action: "member_moved_to_approvals",
+        targetType: "member",
+        targetId: data.id,
+        targetName: getMemberDisplayName(data),
+        details: "Probemitglied in Freigaben übernommen",
+      })
+
       return NextResponse.json({ ok: true, member: sanitizeMemberForAdmin(data as Record<string, unknown>) })
     }
 

@@ -116,11 +116,6 @@ type HeaderDetection = {
   columns: Partial<Record<ExcelFieldKey, number>>
 }
 
-type MemberUpdateEntry = {
-  status: OfficeListStatus
-  groups: Set<string>
-}
-
 type StoredRunRow = {
   id: string
   checked_at?: string | null
@@ -691,7 +686,11 @@ function isTsvMember(member: MemberRow) {
 }
 
 function isRelevantOfficeMember(member: MemberRow) {
-  return !member.is_approved && !member.is_trial
+  return Boolean(member.id)
+}
+
+function getMemberOfficeUploadGroup(member: MemberRow) {
+  return parseOfficeUploadGroup(member.base_group) ?? parseOfficeUploadGroup(member.office_list_group)
 }
 
 function collectMatchHints(excelRow: ParsedExcelRow, member: MemberRow, _excelGroup: OfficeUploadGroup, matchSource: string) {
@@ -1031,57 +1030,6 @@ async function getTrainerAccountsForReconcile(supabase: ReturnType<typeof getSer
   }))
 }
 
-async function resetRelevantMembersToRed(supabase: ReturnType<typeof getServerSupabase>, memberIds: string[], checkedAt: string) {
-  for (const chunk of chunkArray(memberIds, 200)) {
-    const response = await supabase
-      .from("members")
-      .update({
-        office_list_status: "red",
-        office_list_group: null,
-        office_list_checked_at: checkedAt,
-      })
-      .in("id", chunk)
-
-    if (response.error) {
-      if (isMissingOfficeListColumnError(response.error)) {
-        throw getOfficeListMigrationError()
-      }
-
-      throw response.error
-    }
-  }
-}
-
-async function applyMemberOfficeUpdates(
-  supabase: ReturnType<typeof getServerSupabase>,
-  updates: Array<{ memberId: string; status: OfficeListStatus; group: string; checkedAt: string }>
-) {
-  for (const chunk of chunkArray(updates, 25)) {
-    const responses = await Promise.all(
-      chunk.map((entry) =>
-        supabase
-          .from("members")
-          .update({
-            office_list_status: entry.status,
-            office_list_group: entry.group || null,
-            office_list_checked_at: entry.checkedAt,
-          })
-          .eq("id", entry.memberId)
-      )
-    )
-
-    for (const response of responses) {
-      if (!response.error) continue
-
-      if (isMissingOfficeListColumnError(response.error)) {
-        throw getOfficeListMigrationError()
-      }
-
-      throw response.error
-    }
-  }
-}
-
 export async function GET(request: Request) {
   try {
     if (!isAllowedOrigin(request)) {
@@ -1201,22 +1149,15 @@ export async function POST(request: Request) {
     const members = ((membersResponse.data ?? []) as MemberRow[]).map((member) => ({
       ...member,
       base_group: sanitizeGroupName(member.base_group),
+      office_list_group: sanitizeGroupName(member.office_list_group),
     }))
 
     const relevantMembers = members.filter((member) => {
       if (!isRelevantOfficeMember(member)) return false
-      const memberGroup = parseOfficeUploadGroup(member.base_group)
+      const memberGroup = getMemberOfficeUploadGroup(member)
       return Boolean(memberGroup && uploadedGroups.has(memberGroup))
     })
     const checkedAt = new Date().toISOString()
-
-    if (relevantMembers.length > 0) {
-      await resetRelevantMembersToRed(
-        supabase,
-        relevantMembers.map((member) => member.id),
-        checkedAt
-      )
-    }
 
     const membersByPrimaryKey = new Map<string, MemberRow[]>()
     const membersByNameKey = new Map<string, MemberRow[]>()
@@ -1274,7 +1215,6 @@ export async function POST(request: Request) {
     }
 
     const matchedRelevantMemberIds = new Set<string>()
-    const memberUpdates = new Map<string, MemberUpdateEntry>()
     const resultRows: ResultRow[] = []
 
     for (const excelRow of excelRows) {
@@ -1392,20 +1332,6 @@ export async function POST(request: Request) {
       }
 
       matchedRelevantMemberIds.add(member.id)
-      const existingUpdate = memberUpdates.get(member.id)
-
-      if (!existingUpdate) {
-        memberUpdates.set(member.id, {
-          status,
-          groups: new Set([excelRow.group]),
-        })
-        continue
-      }
-
-      existingUpdate.groups.add(excelRow.group)
-      if (existingUpdate.status !== "yellow" && status === "yellow") {
-        existingUpdate.status = "yellow"
-      }
     }
 
     const relevantOnlyDbMembers = relevantMembers.filter((member) => !matchedRelevantMemberIds.has(member.id))
@@ -1430,17 +1356,6 @@ export async function POST(request: Request) {
         status: "red",
         note: "Offene Freigabe wurde in keiner der hochgeladenen GS-Listen gefunden",
       })
-    }
-
-    const memberUpdatesPayload = Array.from(memberUpdates.entries()).map(([memberId, entry]) => ({
-      memberId,
-      status: entry.status,
-      group: Array.from(entry.groups).sort((left, right) => left.localeCompare(right, "de")).join(" | "),
-      checkedAt,
-    }))
-
-    if (memberUpdatesPayload.length > 0) {
-      await applyMemberOfficeUpdates(supabase, memberUpdatesPayload)
     }
 
     const sortedRows = resultRows.sort((left, right) => {
