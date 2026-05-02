@@ -6,6 +6,7 @@ import type { ResolvedUserContext } from "@/lib/resolveUserContext"
 
 type Props = {
   user: ResolvedUserContext
+  canAccessMemberDownloads: boolean
 }
 
 const headerStyle = {
@@ -38,7 +39,7 @@ function navLinkStyle(active: boolean) {
   } as const
 }
 
-export function HeaderClient({ user }: Props) {
+export function HeaderClient({ user, canAccessMemberDownloads }: Props) {
   const pathname = usePathname() ?? ""
   const router = useRouter()
 
@@ -151,6 +152,17 @@ export function HeaderClient({ user }: Props) {
           >
             Einstellungen
           </Link>
+          {canAccessMemberDownloads ? (
+            <Link
+              href="/mein-bereich/download"
+              className="text-sm font-medium"
+              style={navLinkStyle(
+                pathname === "/mein-bereich/download" || pathname.startsWith("/mein-bereich/download"),
+              )}
+            >
+              Download
+            </Link>
+          ) : null}
         </div>
       )}
 
