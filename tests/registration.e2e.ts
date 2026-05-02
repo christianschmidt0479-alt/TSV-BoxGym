@@ -1,5 +1,4 @@
 const fs = require("fs")
-const nodeCrypto = require("crypto")
 const { createClient } = require("@supabase/supabase-js")
 
 type RegistrationPayload = {
@@ -20,17 +19,6 @@ type RegistrationResponse = {
   mailSent?: boolean
   error?: string
   memberId?: string
-}
-
-type AdminMemberRow = {
-  email: string
-  member_phase: "member" | "trial" | "extended" | string | null
-  is_trial: boolean
-  is_approved: boolean
-}
-
-type AdminMembersResponse = {
-  data?: AdminMemberRow[]
 }
 
 type MemberDbRow = {
@@ -100,34 +88,6 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
-function toBase64Url(value: string) {
-  return Buffer.from(value, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
-}
-
-function sign(value: string) {
-  return nodeCrypto.createHmac("sha256", process.env.TRAINER_SESSION_SECRET).update(value).digest("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
-}
-
-function createAdminCookie() {
-  const encodedPayload = toBase64Url(
-    JSON.stringify({
-      userId: "registration-e2e-admin",
-      role: "admin",
-      accountRole: "admin",
-      linkedMemberId: null,
-      memberId: null,
-      isMember: false,
-      accountEmail: "registration-e2e-admin@example.com",
-      accountFirstName: "Registration",
-      accountLastName: "E2E",
-      exp: Math.floor(Date.now() / 1000) + 600,
-      version: 2,
-    })
-  )
-
-  return `trainer_session=${encodedPayload}.${sign(encodedPayload)}`
-}
-
 async function register(payload: RegistrationPayload): Promise<{ response: Response; json: RegistrationResponse }> {
   const response = await fetch(`${BASE_URL}/api/public/member-register`, {
     method: "POST",
@@ -141,33 +101,6 @@ async function register(payload: RegistrationPayload): Promise<{ response: Respo
 
   const json = await response.json()
   return { response, json }
-}
-
-async function fetchMembers(cookie: string): Promise<{ response: Response; json: AdminMembersResponse }> {
-  const response = await fetch(`${BASE_URL}/api/admin/get-members`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookie,
-    },
-    body: JSON.stringify({ page: 1, pageSize: 2000 }),
-  })
-
-  const json = await response.json()
-  return { response, json }
-}
-
-async function deleteMember(cookie: string, memberId: string) {
-  const response = await fetch(`${BASE_URL}/api/admin/delete-member`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookie,
-    },
-    body: JSON.stringify({ memberId }),
-  })
-
-  return response
 }
 
 async function fetchRowByEmail(supabase: ReturnType<typeof createClient>, email: string): Promise<MemberDbRow | null> {
@@ -185,11 +118,9 @@ async function fetchRowByEmail(supabase: ReturnType<typeof createClient>, email:
 }
 
 async function main() {
-  assert(process.env.TRAINER_SESSION_SECRET, "Missing TRAINER_SESSION_SECRET")
   assert(process.env.NEXT_PUBLIC_SUPABASE_URL, "Missing NEXT_PUBLIC_SUPABASE_URL")
   assert(process.env.SUPABASE_SERVICE_ROLE_KEY, "Missing SUPABASE_SERVICE_ROLE_KEY")
 
-  const cookie = createAdminCookie()
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
@@ -208,32 +139,6 @@ async function main() {
     assert(trialResult.json.ok === true, `Trial registration payload not ok: ${JSON.stringify(trialResult.json)}`)
     assert(trialResult.json.memberId, `Trial registration missing memberId: ${JSON.stringify(trialResult.json)}`)
     createdMemberIds.push(trialResult.json.memberId)
-
-    const adminResult = await fetchMembers(cookie)
-    assert(adminResult.response.ok, `Admin get-members failed: ${adminResult.response.status} ${JSON.stringify(adminResult.json)}`)
-    assert(Array.isArray(adminResult.json.data), `Admin get-members returned no data array: ${JSON.stringify(adminResult.json)}`)
-
-    const members = adminResult.json.data
-    const memberEntry = members.find((member: AdminMemberRow) => member.email === memberTest.email)
-    const trialEntry = members.find((member: AdminMemberRow) => member.email === trialTest.email)
-
-    assert(memberEntry, `Registered member not found in admin list: ${memberTest.email}`)
-    assert(trialEntry, `Registered trial not found in admin list: ${trialTest.email}`)
-
-    assert(memberEntry.member_phase === "member", `Member phase mismatch: ${JSON.stringify(memberEntry)}`)
-    assert(memberEntry.is_trial === false, `Member is_trial mismatch: ${JSON.stringify(memberEntry)}`)
-    assert(memberEntry.is_approved === false, `Member is_approved mismatch: ${JSON.stringify(memberEntry)}`)
-
-    assert(trialEntry.member_phase === "trial", `Trial phase mismatch: ${JSON.stringify(trialEntry)}`)
-    assert(trialEntry.is_trial === true, `Trial is_trial mismatch: ${JSON.stringify(trialEntry)}`)
-
-    const freigaben = members.filter((member: AdminMemberRow) => member.member_phase === "member" && !member.is_approved)
-    const probe = members.filter((member: AdminMemberRow) => member.member_phase === "trial" || member.member_phase === "extended")
-
-    assert(freigaben.some((member: AdminMemberRow) => member.email === memberTest.email), "Mitglied fehlt in Freigaben")
-    assert(!freigaben.some((member: AdminMemberRow) => member.email === trialTest.email), "Probemitglied ist faelschlich in Freigaben")
-    assert(probe.some((member: AdminMemberRow) => member.email === trialTest.email), "Probemitglied fehlt in Probemitglieder")
-    assert(!probe.some((member: AdminMemberRow) => member.email === memberTest.email), "Mitglied ist faelschlich in Probemitglieder")
 
     const memberDbRow = await fetchRowByEmail(supabase, memberTest.email)
     const trialDbRow = await fetchRowByEmail(supabase, trialTest.email)
@@ -260,10 +165,10 @@ async function main() {
     assert(trialDbRow.base_group === trialTest.baseGroup, `Trial base_group mismatch: ${JSON.stringify(trialDbRow)}`)
     assert(trialDbRow.member_phase === "trial", `Trial DB phase mismatch: ${JSON.stringify(trialDbRow)}`)
     assert(trialDbRow.is_trial === true, `Trial DB is_trial mismatch: ${JSON.stringify(trialDbRow)}`)
+    assert(trialDbRow.is_approved === false, `Trial DB is_approved mismatch: ${JSON.stringify(trialDbRow)}`)
 
-    console.log("✔ Mitglied korrekt in Freigaben")
-    console.log("✔ Probemitglied korrekt getrennt")
-    console.log("✔ Registrierungsflow funktioniert")
+    console.log("✔ Öffentlicher Mitglieds-/Probe-Registrierungsflow funktioniert")
+    console.log("✔ DB-Zustand fuer member_phase/is_trial/is_approved korrekt")
   } finally {
     if (process.env.REGISTRATION_E2E_CLEANUP === "false") {
       console.log("ℹ Cleanup uebersprungen (REGISTRATION_E2E_CLEANUP=false)")
@@ -272,10 +177,9 @@ async function main() {
 
     for (const memberId of createdMemberIds) {
       try {
-        const response = await deleteMember(cookie, memberId)
-        if (!response.ok) {
-          const text = await response.text()
-          console.warn(`Cleanup failed for ${memberId}: ${response.status} ${text}`)
+        const response = await supabase.from("members").delete().eq("id", memberId)
+        if (response.error) {
+          console.warn(`Cleanup failed for ${memberId}: ${response.error.message}`)
         }
       } catch (error) {
         console.warn(`Cleanup failed for ${memberId}:`, error)

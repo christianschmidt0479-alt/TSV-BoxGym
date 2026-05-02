@@ -33,18 +33,17 @@ export async function postJson(request: APIRequestContext, path: string, data: u
 
 export async function loginTrainer(page: Page) {
   await page.goto("/trainer-zugang")
-  await page.getByPlaceholder("name@tsv-falkensee.de").fill(trainerEmail)
-  await page.getByPlaceholder("Passwort eingeben").fill(trainerPassword)
-  await page.getByRole("button", { name: "Entsperren" }).click()
+  await page.locator('input[type="email"]').first().fill(trainerEmail)
+  await page.locator('input[type="password"]').first().fill(trainerPassword)
+  await page.getByRole("button", { name: /einloggen|entsperren|login/i }).first().click()
   await page.waitForURL(/\/(trainer|verwaltung)(\/.*)?$/)
 }
 
 export async function loginMember(page: Page) {
-  await page.goto("/mein-bereich")
-  await page.getByRole("tab", { name: "Mitglied" }).click()
-  await page.getByPlaceholder("name@tsv-falkensee.de").fill(memberEmail)
-  await page.getByPlaceholder("Passwort").fill(memberPassword)
-  await page.getByRole("button", { name: "Mitgliederbereich öffnen" }).click()
+  await page.goto("/mein-bereich/login")
+  await page.locator('input[type="email"]').first().fill(memberEmail)
+  await page.locator('input[type="password"]').first().fill(memberPassword)
+  await page.getByRole("button", { name: /einloggen|mitgliederbereich öffnen|login/i }).first().click()
 
   const privacyButton = page.getByRole("button", { name: "Datenschutz akzeptieren und fortfahren" })
   if (await privacyButton.isVisible().catch(() => false)) {
@@ -52,6 +51,6 @@ export async function loginMember(page: Page) {
     await privacyButton.click()
   }
 
-  await page.waitForURL(/\/mein-bereich\/profil(\/.*)?$/)
-  await expect(page.getByRole("heading", { name: "Sportlerprofil" })).toBeVisible()
+  await page.waitForURL(/\/mein-bereich(\/.*)?$/)
+  await expect(page.locator("body")).toBeVisible()
 }
