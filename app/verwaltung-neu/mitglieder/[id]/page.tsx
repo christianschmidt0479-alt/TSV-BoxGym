@@ -7,6 +7,7 @@ import { TRAINING_GROUPS, parseTrainingGroup } from "@/lib/trainingGroups";
 import { validateName, validateBirthdate } from "@/lib/formValidation";
 import { OfficeMatchBadge, getOfficeCheckedAtText, getOfficeMatchText } from "@/components/verwaltung-neu/OfficeMatchBadge";
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase";
+import { needsWeight } from "@/lib/memberUtils";
 
 
 
@@ -99,6 +100,69 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
   }
 
   const roleState = await loadRoleState(member.id, member.email);
+
+  // Gewichtstagebuch — nur für Wettkämpfer / L-Gruppe
+  type AdminWeightEntry = { created_at: string; weight_kg: number; source: string; note: string | null }
+  type AdminWeightData = {
+    targetWeightKg: number | null
+    lastWeightKg: number | null
+    weightDistanceKg: number | null
+    entries: AdminWeightEntry[]
+  }
+  let adminWeightData: AdminWeightData | null = null
+
+  if (needsWeight(member)) {
+    const supabaseW = createServerSupabaseServiceClient()
+    const targetWeightKg = typeof (member as Record<string, unknown>).competition_target_weight === "number"
+      ? (member as Record<string, unknown>).competition_target_weight as number
+      : null
+
+    let entries: AdminWeightEntry[] = []
+    let lastWeightKg: number | null = null
+
+    try {
+      const { data: logRows, error: logError } = await supabaseW
+        .from("member_weight_logs")
+        .select("created_at, weight_kg, source, note")
+        .eq("member_id", member.id)
+        .order("created_at", { ascending: false })
+        .limit(10)
+
+      if (!logError && logRows && logRows.length > 0) {
+        entries = logRows as AdminWeightEntry[]
+      } else {
+        // Fallback: checkins.weight
+        const { data: checkinRows } = await supabaseW
+          .from("checkins")
+          .select("created_at, weight")
+          .eq("member_id", member.id)
+          .not("weight", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(10)
+
+        if (checkinRows && checkinRows.length > 0) {
+          entries = checkinRows
+            .filter((r) => r.weight !== null)
+            .map((r) => ({
+              created_at: r.created_at,
+              weight_kg: Number(r.weight),
+              source: "checkin",
+              note: null,
+            }))
+        }
+      }
+    } catch {
+      // Tabelle fehlt oder Query-Fehler – kein Absturz, leere Liste
+    }
+
+    lastWeightKg = entries[0]?.weight_kg ?? null
+    const weightDistanceKg =
+      targetWeightKg !== null && lastWeightKg !== null
+        ? Math.round((lastWeightKg - targetWeightKg) * 10) / 10
+        : null
+
+    adminWeightData = { targetWeightKg, lastWeightKg, weightDistanceKg, entries }
+  }
 
   async function postPersonRoleAction(payload: Record<string, unknown>, memberId: string, successMessage: string, fallbackError: string) {
     "use server";
@@ -219,6 +283,12 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
       competition_wins: is_competition_member ? Math.max(0, competition_wins) : 0,
       competition_losses: is_competition_member ? Math.max(0, competition_losses) : 0,
       competition_draws: is_competition_member ? Math.max(0, competition_draws) : 0,
+        competition_target_weight: (() => {
+          if (!is_competition_member) return null
+          const parsed = parseFloat(competition_target_weight)
+          if (!Number.isFinite(parsed) || parsed < 20 || parsed > 250) return null
+          return parsed
+        })(),
     });
     redirect(`/verwaltung-neu/mitglieder/${member_id}`);
   }
@@ -517,6 +587,84 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
           <button type="submit" className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-800 hover:border-zinc-400">GS-Abgleich E-Mail speichern</button>
         </div>
       </form>
+
+      {adminWeightData ? (
+        <div className="bg-white rounded shadow-sm border border-zinc-100 p-6 space-y-4">
+          <div>
+            <div className="text-sm font-semibold text-zinc-900">Gewichtstagebuch</div>
+            <div className="text-xs text-zinc-500 mt-0.5">
+              Gewichtsdaten sind sensibel und nur für die sportliche Betreuung bestimmt.
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+              <div className="text-xs text-zinc-500">Zielgewicht</div>
+              <div className="mt-0.5 font-semibold text-zinc-900">
+                {adminWeightData.targetWeightKg !== null
+                  ? `${adminWeightData.targetWeightKg} kg`
+                  : "Nicht hinterlegt"}
+              </div>
+            </div>
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+              <div className="text-xs text-zinc-500">Letztes Gewicht</div>
+              <div className="mt-0.5 font-semibold text-zinc-900">
+                {adminWeightData.lastWeightKg !== null
+                  ? `${adminWeightData.lastWeightKg} kg`
+                  : "Kein Eintrag vorhanden"}
+              </div>
+            </div>
+            {adminWeightData.weightDistanceKg !== null ? (
+              <div className="col-span-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                <div className="text-xs text-zinc-500">Abstand zum Ziel</div>
+                <div className={`mt-0.5 font-semibold ${
+                  adminWeightData.weightDistanceKg <= 0 ? "text-emerald-700" : "text-zinc-900"
+                }`}>
+                  {adminWeightData.weightDistanceKg > 0
+                    ? `+${adminWeightData.weightDistanceKg} kg über Ziel`
+                    : adminWeightData.weightDistanceKg < 0
+                    ? `${Math.abs(adminWeightData.weightDistanceKg)} kg unter Ziel`
+                    : "Genau auf Zielgewicht"}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          {adminWeightData.entries.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-100 text-left">
+                    <th className="pb-1 pr-4 text-xs font-semibold text-zinc-500">Datum</th>
+                    <th className="pb-1 pr-4 text-xs font-semibold text-zinc-500">Gewicht</th>
+                    <th className="pb-1 pr-4 text-xs font-semibold text-zinc-500">Quelle</th>
+                    <th className="pb-1 text-xs font-semibold text-zinc-500">Notiz</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminWeightData.entries.map((entry, i) => (
+                    <tr key={i} className="border-b border-zinc-50">
+                      <td className="py-1.5 pr-4 text-zinc-700">
+                        {new Intl.DateTimeFormat("de-DE", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                          timeZone: "Europe/Berlin",
+                        }).format(new Date(entry.created_at))}
+                      </td>
+                      <td className="py-1.5 pr-4 font-semibold text-zinc-900">{entry.weight_kg} kg</td>
+                      <td className="py-1.5 pr-4 text-zinc-600">
+                        {entry.source === "manual" ? "Manuell" : "Check-in"}
+                      </td>
+                      <td className="py-1.5 text-zinc-500">{entry.note ?? "–"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-sm text-zinc-500">Noch keine Gewichtseinträge vorhanden.</div>
+          )}
+        </div>
+      ) : null}
 
       <div className="flex gap-4 mt-4">
         <DeleteButton memberId={member.id} returnTo={returnTo} />
