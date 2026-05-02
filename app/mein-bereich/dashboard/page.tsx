@@ -10,6 +10,7 @@ import { MEMBER_AREA_SESSION_COOKIE, readMemberSession } from "@/lib/publicAreaS
 import { resolveUserContext } from "@/lib/resolveUserContext"
 import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
 import { FormContainer } from "@/components/ui/form-container"
+import { needsWeight } from "@/lib/memberUtils"
 
 export default async function DashboardPage() {
   const cookieStore = await cookies()
@@ -45,6 +46,8 @@ export default async function DashboardPage() {
     base_group: string | null
     is_approved: boolean | null
     email_verified: boolean | null
+    is_competition_member: boolean | null
+    competition_target_weight: number | null
   } | null = null
   if (memberId) {
     const { data } = await supabase
@@ -55,7 +58,9 @@ export default async function DashboardPage() {
         email,
         base_group,
         is_approved,
-        email_verified
+        email_verified,
+        is_competition_member,
+        competition_target_weight
       `)
       .eq("id", memberId)
       .single()
@@ -107,6 +112,68 @@ export default async function DashboardPage() {
 
   if (lastCheckin?.created_at) {
     hasCheckedInToday = isTodayCheckinInBerlin({ created_at: lastCheckin.created_at })
+  }
+
+  // Gewicht & Ziel — nur für Wettkämpfer / L-Gruppe
+  type WeightLogEntry = { created_at: string; weight_kg: number; source: string }
+  let weightData: {
+    targetWeightKg: number | null
+    lastWeightKg: number | null
+    weightDistanceKg: number | null
+    weightLogs: WeightLogEntry[]
+  } | null = null
+
+  if (memberId && member && needsWeight(member)) {
+    const targetWeightKg = typeof member.competition_target_weight === "number"
+      ? member.competition_target_weight
+      : null
+
+    // Versuche member_weight_logs (Phase 2 Tabelle), fallback auf checkins.weight
+    let weightLogs: WeightLogEntry[] = []
+    let lastWeightKg: number | null = null
+
+    try {
+      const { data: logRows, error: logError } = await supabase
+        .from("member_weight_logs")
+        .select("created_at, weight_kg, source")
+        .eq("member_id", memberId)
+        .order("created_at", { ascending: false })
+        .limit(10)
+
+      if (!logError && logRows && logRows.length > 0) {
+        weightLogs = logRows as WeightLogEntry[]
+        lastWeightKg = weightLogs[0]?.weight_kg ?? null
+      } else {
+        // Fallback: checkins.weight
+        const { data: checkinWeightRows } = await supabase
+          .from("checkins")
+          .select("created_at, weight")
+          .eq("member_id", memberId)
+          .not("weight", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(10)
+
+        if (checkinWeightRows && checkinWeightRows.length > 0) {
+          weightLogs = checkinWeightRows
+            .filter((r) => r.weight !== null)
+            .map((r) => ({
+              created_at: r.created_at,
+              weight_kg: Number(r.weight),
+              source: "checkin",
+            }))
+          lastWeightKg = weightLogs[0]?.weight_kg ?? null
+        }
+      }
+    } catch {
+      // Tabelle fehlt oder Query-Fehler — kein Absturz
+    }
+
+    const weightDistanceKg =
+      targetWeightKg !== null && lastWeightKg !== null
+        ? Math.round((lastWeightKg - targetWeightKg) * 10) / 10
+        : null
+
+    weightData = { targetWeightKg, lastWeightKg, weightDistanceKg, weightLogs }
   }
 
   const memberName = member ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || "Unbekannt" : ""
@@ -188,6 +255,65 @@ export default async function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {weightData ? (
+          <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Gewicht &amp; Ziel</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-xl bg-zinc-50 px-3 py-2">
+                <p className="text-zinc-500">Zielgewicht</p>
+                <p className="mt-0.5 font-semibold text-zinc-900">
+                  {weightData.targetWeightKg !== null
+                    ? `${weightData.targetWeightKg} kg`
+                    : "Noch kein Zielgewicht hinterlegt"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-zinc-50 px-3 py-2">
+                <p className="text-zinc-500">Letztes Gewicht</p>
+                <p className="mt-0.5 font-semibold text-zinc-900">
+                  {weightData.lastWeightKg !== null
+                    ? `${weightData.lastWeightKg} kg`
+                    : "Noch kein Gewicht erfasst"}
+                </p>
+              </div>
+              {weightData.weightDistanceKg !== null ? (
+                <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
+                  <p className="text-zinc-500">Abstand zum Ziel</p>
+                  <p className={`mt-0.5 font-semibold ${weightData.weightDistanceKg <= 0 ? "text-emerald-700" : "text-zinc-900"}`}>
+                    {weightData.weightDistanceKg > 0
+                      ? `+${weightData.weightDistanceKg} kg über Ziel`
+                      : weightData.weightDistanceKg < 0
+                      ? `${Math.abs(weightData.weightDistanceKg)} kg unter Ziel`
+                      : "Genau auf Zielgewicht"}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            {weightData.weightLogs.length > 0 ? (
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-zinc-500">Verlauf</p>
+                <ul className="mt-1.5 space-y-1">
+                  {weightData.weightLogs.slice(0, 5).map((entry, i) => (
+                    <li key={i} className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-1.5 text-sm">
+                      <span className="text-zinc-500">
+                        {new Intl.DateTimeFormat("de-DE", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                          timeZone: "Europe/Berlin",
+                        }).format(new Date(entry.created_at))}
+                      </span>
+                      <span className="font-semibold text-zinc-900">{entry.weight_kg} kg</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <p className="mt-3 text-xs text-zinc-400">
+              Kontinuität zählt. Bitte gesund und kontrolliert arbeiten.
+            </p>
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 gap-3">
           <Link
