@@ -14,10 +14,9 @@ import { needsWeight } from "@/lib/memberUtils"
 import {
   analyzeWeightProgress,
   getWeightStatusBadgeClass,
-  getWeightStatusLabel,
   getWeightTrendBadgeClass,
-  getWeightTrendLabel,
 } from "@/lib/weightAnalysis"
+import { getBoxingAgeClass } from "@/lib/boxingAgeClass"
 
 export default async function DashboardPage() {
   const cookieStore = await cookies()
@@ -55,6 +54,7 @@ export default async function DashboardPage() {
     email_verified: boolean | null
     is_competition_member: boolean | null
     competition_target_weight: number | null
+    birthdate: string | null
   } | null = null
   if (memberId) {
     const { data } = await supabase
@@ -67,7 +67,8 @@ export default async function DashboardPage() {
         is_approved,
         email_verified,
         is_competition_member,
-        competition_target_weight
+        competition_target_weight,
+        birthdate
       `)
       .eq("id", memberId)
       .single()
@@ -186,6 +187,10 @@ export default async function DashboardPage() {
     weightData = { targetWeightKg, lastWeightKg, weightDistanceKg, weightLogs, analysis }
   }
 
+  const boxingAgeClass = member && needsWeight(member)
+    ? getBoxingAgeClass(member.birthdate ?? null)
+    : null
+
   const memberName = member ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || "Unbekannt" : ""
   const memberGroup = member?.base_group || "Keine Gruppe zugewiesen"
   const lastCheckinDisplay = lastCheckin?.created_at
@@ -203,6 +208,23 @@ export default async function DashboardPage() {
     monthCount: monthCheckins,
     streak: totalCheckins,
     lastCheckin: lastCheckinDisplay,
+  }
+
+  function getShortStatusLabel(status: (typeof weightData extends null ? never : NonNullable<typeof weightData>["analysis"]["status"])) {
+    if (status === "in_range") return "Im Ziel"
+    if (status === "above_target") return "Über Ziel"
+    if (status === "needs_attention") return "Achtung"
+    if (status === "near_target") return "Nah am Ziel"
+    if (status === "below_target") return "Unter Ziel"
+    if (status === "no_target") return "Kein Ziel"
+    return "Kein Gewicht"
+  }
+
+  function getTrendLabelWithSymbol(trend: (typeof weightData extends null ? never : NonNullable<typeof weightData>["analysis"]["trend"])) {
+    if (trend === "rising") return "↑ steigend"
+    if (trend === "falling") return "↓ fallend"
+    if (trend === "stable") return "→ stabil"
+    return "noch nicht bewertbar"
   }
 
   return (
@@ -289,7 +311,13 @@ export default async function DashboardPage() {
               {weightData.weightDistanceKg !== null ? (
                 <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
                   <p className="text-zinc-500">Abstand zum Ziel</p>
-                  <p className={`mt-0.5 font-semibold ${weightData.weightDistanceKg <= 0 ? "text-emerald-700" : "text-zinc-900"}`}>
+                  <p className={`mt-0.5 font-extrabold ${
+                    weightData.weightDistanceKg > 0
+                      ? "text-amber-700"
+                      : weightData.weightDistanceKg < 0
+                      ? "text-sky-700"
+                      : "text-emerald-700"
+                  }`}>
                     {weightData.weightDistanceKg > 0
                       ? `+${weightData.weightDistanceKg} kg über Ziel`
                       : weightData.weightDistanceKg < 0
@@ -301,15 +329,21 @@ export default async function DashboardPage() {
               <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
                 <p className="text-zinc-500">Zielbereich</p>
                 <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getWeightStatusBadgeClass(weightData.analysis.status)}`}>
-                  {getWeightStatusLabel(weightData.analysis.status)}
+                  {getShortStatusLabel(weightData.analysis.status)}
                 </span>
               </div>
               <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
                 <p className="text-zinc-500">Verlaufstendenz</p>
                 <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getWeightTrendBadgeClass(weightData.analysis.trend)}`}>
-                  {getWeightTrendLabel(weightData.analysis.trend)}
+                  {getTrendLabelWithSymbol(weightData.analysis.trend)}
                 </span>
               </div>
+              {boxingAgeClass ? (
+                <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
+                  <p className="text-zinc-500">Altersklasse</p>
+                  <p className="mt-0.5 font-semibold text-zinc-900">{boxingAgeClass.ageClass}</p>
+                </div>
+              ) : null}
             </div>
             {weightData.weightLogs.length > 0 ? (
               <div className="mt-3">
@@ -331,10 +365,9 @@ export default async function DashboardPage() {
                 </ul>
               </div>
             ) : null}
-            <p className="mt-3 text-xs text-zinc-500">{weightData.analysis.message}</p>
-            <p className="mt-1 text-xs text-zinc-400">
-              Hinweis: Diese Auswertung dient ausschließlich der sportlichen Dokumentation.
-            </p>
+            {weightData.analysis.status === "needs_attention" || weightData.analysis.status === "no_target" ? (
+              <p className="mt-3 text-xs text-zinc-500">{weightData.analysis.message}</p>
+            ) : null}
           </div>
         ) : null}
 

@@ -11,10 +11,9 @@ import { needsWeight } from "@/lib/memberUtils";
 import {
   analyzeWeightProgress,
   getWeightStatusBadgeClass,
-  getWeightStatusLabel,
   getWeightTrendBadgeClass,
-  getWeightTrendLabel,
 } from "@/lib/weightAnalysis";
+import { getBoxingAgeClass } from "@/lib/boxingAgeClass";
 
 
 
@@ -107,6 +106,7 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
   }
 
   const roleState = await loadRoleState(member.id, member.email);
+  const boxingAgeClass = getBoxingAgeClass(member.birthdate ?? null)
 
   // Gewichtstagebuch — nur für Wettkämpfer / L-Gruppe
   type AdminWeightEntry = { created_at: string; weight_kg: number; source: string; note: string | null }
@@ -118,6 +118,23 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
     analysis: ReturnType<typeof analyzeWeightProgress>
   }
   let adminWeightData: AdminWeightData | null = null
+
+  function getShortStatusLabel(status: AdminWeightData["analysis"]["status"]) {
+    if (status === "in_range") return "Im Ziel"
+    if (status === "above_target") return "Über Ziel"
+    if (status === "needs_attention") return "Achtung"
+    if (status === "near_target") return "Nah am Ziel"
+    if (status === "below_target") return "Unter Ziel"
+    if (status === "no_target") return "Kein Ziel"
+    return "Kein Gewicht"
+  }
+
+  function getTrendLabelWithSymbol(trend: AdminWeightData["analysis"]["trend"]) {
+    if (trend === "rising") return "↑ steigend"
+    if (trend === "falling") return "↓ fallend"
+    if (trend === "stable") return "→ stabil"
+    return "noch nicht bewertbar"
+  }
 
   if (needsWeight(member)) {
     const supabaseW = createServerSupabaseServiceClient()
@@ -436,6 +453,29 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
         </div>
         <div className="mt-8 border-t pt-6">
           <div className="text-lg font-semibold mb-2">Wettkampf</div>
+          <div className="mb-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+              <div className="text-xs text-zinc-500">Altersklasse</div>
+              <div className="mt-0.5 font-semibold text-zinc-900">{boxingAgeClass.ageClass}</div>
+            </div>
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+              <div className="text-xs text-zinc-500">Alter im Kalenderjahr</div>
+              <div className="mt-0.5 font-semibold text-zinc-900">
+                {boxingAgeClass.ageThisYear !== null ? boxingAgeClass.ageThisYear : "Unbekannt"}
+              </div>
+            </div>
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+              <div className="text-xs text-zinc-500">Aktuelles Alter</div>
+              <div className="mt-0.5 font-semibold text-zinc-900">
+                {boxingAgeClass.currentAge !== null ? boxingAgeClass.currentAge : "Unbekannt"}
+              </div>
+            </div>
+          </div>
+          {!boxingAgeClass.competitionEligibleNow && boxingAgeClass.note ? (
+            <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {boxingAgeClass.note}
+            </div>
+          ) : null}
           <div className="mb-4">
             <label className="block text-xs text-zinc-500 mb-1">Kämpferstatus</label>
             <input type="checkbox" name="is_competition_member" defaultChecked={!!member.is_competition_member} /> Kämpfer
@@ -626,8 +666,12 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
             {adminWeightData.weightDistanceKg !== null ? (
               <div className="col-span-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
                 <div className="text-xs text-zinc-500">Abstand zum Ziel</div>
-                <div className={`mt-0.5 font-semibold ${
-                  adminWeightData.weightDistanceKg <= 0 ? "text-emerald-700" : "text-zinc-900"
+                <div className={`mt-0.5 font-extrabold ${
+                  adminWeightData.weightDistanceKg > 0
+                    ? "text-amber-700"
+                    : adminWeightData.weightDistanceKg < 0
+                    ? "text-sky-700"
+                    : "text-emerald-700"
                 }`}>
                   {adminWeightData.weightDistanceKg > 0
                     ? `+${adminWeightData.weightDistanceKg} kg über Ziel`
@@ -640,13 +684,13 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
             <div className="col-span-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
               <div className="text-xs text-zinc-500">Status</div>
               <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getWeightStatusBadgeClass(adminWeightData.analysis.status)}`}>
-                {getWeightStatusLabel(adminWeightData.analysis.status)}
+                {getShortStatusLabel(adminWeightData.analysis.status)}
               </span>
             </div>
             <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
               <div className="text-xs text-zinc-500">Verlaufstendenz</div>
               <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getWeightTrendBadgeClass(adminWeightData.analysis.trend)}`}>
-                {getWeightTrendLabel(adminWeightData.analysis.trend)}
+                {getTrendLabelWithSymbol(adminWeightData.analysis.trend)}
               </span>
             </div>
             <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
@@ -660,7 +704,9 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
               </div>
             </div>
           </div>
-          <div className="text-xs text-zinc-500">{adminWeightData.analysis.message}</div>
+          {adminWeightData.analysis.status === "needs_attention" || adminWeightData.analysis.status === "no_target" ? (
+            <div className="text-xs text-zinc-500">{adminWeightData.analysis.message}</div>
+          ) : null}
           {adminWeightData.entries.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -673,7 +719,7 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
                   </tr>
                 </thead>
                 <tbody>
-                  {adminWeightData.entries.map((entry, i) => (
+                  {adminWeightData.entries.slice(0, 5).map((entry, i) => (
                     <tr key={i} className="border-b border-zinc-50">
                       <td className="py-1.5 pr-4 text-zinc-700">
                         {new Intl.DateTimeFormat("de-DE", {
