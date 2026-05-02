@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 
 import { isAllowedOrigin } from "@/lib/apiSecurity"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
+import { createMemberWeightLog, findMemberById } from "@/lib/boxgymDb"
+import { needsWeight } from "@/lib/memberUtils"
 
 type UpdateWeightBody = {
   memberId?: string
@@ -28,8 +30,14 @@ export async function POST(request: Request) {
     const memberId = body.memberId?.trim()
     const weight = Number(body.weight)
 
-    if (!memberId || !Number.isFinite(weight) || weight <= 0) {
+    if (!memberId || !Number.isFinite(weight) || weight < 20 || weight > 300) {
       return NextResponse.json({ ok: false, error: "Ungültige Eingaben" }, { status: 400 })
+    }
+
+    // Nur Mitglieder, die Gewicht pflegen müssen (Wettkämpfer / L-Gruppe)
+    const member = await findMemberById(memberId)
+    if (!member || !needsWeight(member)) {
+      return new NextResponse("Forbidden", { status: 403 })
     }
 
     const supabase = createServerSupabaseServiceClient()
@@ -46,31 +54,23 @@ export async function POST(request: Request) {
 
     if (todayFindError) throw todayFindError
 
-    let checkinId = todayCheckin?.id ?? null
-
-    if (!checkinId) {
-      const { data: latestCheckin, error: latestFindError } = await supabase
-        .from("checkins")
-        .select("id")
-        .eq("member_id", memberId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (latestFindError) throw latestFindError
-      checkinId = latestCheckin?.id ?? null
-    }
-
-    if (!checkinId) {
+    if (!todayCheckin?.id) {
       return NextResponse.json({ ok: false, error: "Kein Check-in gefunden" }, { status: 404 })
     }
 
     const { error: updateError } = await supabase
       .from("checkins")
       .update({ weight: String(weight) })
-      .eq("id", checkinId)
+      .eq("id", todayCheckin.id)
 
     if (updateError) throw updateError
+
+    await createMemberWeightLog({
+      memberId,
+      weightKg: weight,
+      source: "checkin",
+      checkinId: todayCheckin.id,
+    })
 
     return NextResponse.json({ ok: true })
   } catch (error) {

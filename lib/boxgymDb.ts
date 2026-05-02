@@ -17,6 +17,15 @@ function isMissingColumnError(error: { message?: string } | null) {
   )
 }
 
+function isMissingTableError(error: { code?: string; message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? ""
+  return error?.code === "42P01" || message.includes("relation") && message.includes("does not exist")
+}
+
+function isUniqueViolationError(error: { code?: string } | null) {
+  return error?.code === "23505"
+}
+
 function withoutOptionalMemberFields<T extends Record<string, unknown>>(payload: T) {
   return Object.fromEntries(
     Object.entries(payload).filter(
@@ -583,6 +592,7 @@ export async function updateMemberCompetitionData(
     competition_wins?: number
     competition_losses?: number
     competition_draws?: number
+    competition_target_weight?: number | null
   }
 ) {
   const { data, error } = await supabase
@@ -596,6 +606,8 @@ export async function updateMemberCompetitionData(
       competition_wins: input.competition_wins ?? 0,
       competition_losses: input.competition_losses ?? 0,
       competition_draws: input.competition_draws ?? 0,
+      competition_target_weight:
+        typeof input.competition_target_weight === "number" ? input.competition_target_weight : null,
     })
     .eq("id", memberId)
     .select()
@@ -776,6 +788,54 @@ export async function getAllMembers() {
   return (data || []).map((row) => withNormalizedBaseGroup(row))
 }
 
+export type MemberWeightLogSource = "checkin" | "manual"
+
+export async function createMemberWeightLog(input: {
+  memberId: string
+  weightKg: number
+  source: MemberWeightLogSource
+  checkinId?: string | null
+  note?: string | null
+}) {
+  const numericWeight = Number(input.weightKg)
+  if (!Number.isFinite(numericWeight) || numericWeight < 20 || numericWeight > 300) {
+    return false
+  }
+
+  const { error } = await supabase
+    .from("member_weight_logs")
+    .insert([
+      {
+        member_id: input.memberId,
+        weight_kg: numericWeight,
+        source: input.source,
+        checkin_id: input.checkinId ?? null,
+        note: input.note?.trim() || null,
+      },
+    ])
+
+  if (!error) return true
+
+  if (isUniqueViolationError(error)) {
+    return true
+  }
+
+  if (isMissingTableError(error)) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[member-weight-log] table missing; skipping log write")
+    }
+    return false
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.warn("[member-weight-log] insert failed", {
+      code: error.code,
+      message: error.message,
+    })
+  }
+  return false
+}
+
 export async function createCheckin(input: {
   member_id: string
   group_name: string
@@ -809,6 +869,16 @@ export async function createCheckin(input: {
     .single()
 
   if (error) throw error
+
+  if (Number.isFinite(numericWeight) && numericWeight !== null) {
+    await createMemberWeightLog({
+      memberId: input.member_id,
+      weightKg: numericWeight,
+      source: "checkin",
+      checkinId: data?.id ?? null,
+    })
+  }
+
   return data
 }
 
