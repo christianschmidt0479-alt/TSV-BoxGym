@@ -28,8 +28,11 @@ export default function EinstellungenPage() {
             href="/mein-bereich/einstellungen/passwort"
             className="block rounded-2xl border border-zinc-300 bg-white px-4 py-4 hover:border-zinc-400"
           >
-            <p className="text-base font-semibold text-zinc-900">Passwort zurücksetzen</p>
-            <p className="mt-1 text-sm text-zinc-600">Per E-Mail-Link</p>
+            <p className="text-base font-semibold text-zinc-900">Passwort &amp; Zugang</p>
+            <p className="mt-1 text-sm text-zinc-600">Passwort ändern oder Zugangsdaten verwalten.</p>
+            <span className="mt-3 inline-flex items-center rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-900">
+              Passwort ändern
+            </span>
           </Link>
 
           <Link

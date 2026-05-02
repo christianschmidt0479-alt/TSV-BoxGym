@@ -22,8 +22,7 @@ import { getBoxingWeightClass } from "@/lib/boxingWeightClass"
 export default async function DashboardPage() {
   const cookieStore = await cookies()
   const hadMemberSessionCookie = Boolean(cookieStore.get(MEMBER_AREA_SESSION_COOKIE)?.value)
-  const memberSession = await readMemberSession(cookieStore)
-  const showPasswordUpdateHint = memberSession?.needsPasswordUpdate === true
+  await readMemberSession(cookieStore)
   const resolvedContext = await resolveUserContext()
 
   if (!resolvedContext.isLoggedIn) {
@@ -254,18 +253,6 @@ export default async function DashboardPage() {
           subtitle="Deine Übersicht für Training und Kontostatus"
         />
 
-        {showPasswordUpdateHint ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <p>Dein Zugang bleibt aktiv. Für mehr Sicherheit empfehlen wir, dein Passwort zu aktualisieren.</p>
-            <Link
-              href="/mein-bereich/passwort-aendern"
-              className="mt-2 inline-flex items-center rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
-            >
-              Jetzt aktualisieren
-            </Link>
-          </div>
-        ) : null}
-
         <div className="rounded-2xl border border-[#154c83] bg-[#154c83] px-4 py-4 text-white">
           <p className="text-xs font-semibold uppercase tracking-wide text-blue-100">Status</p>
           <p className="mt-1 text-lg font-semibold leading-tight">{memberName}</p>
@@ -435,12 +422,6 @@ export default async function DashboardPage() {
               className="inline-flex min-h-14 items-center justify-center rounded-xl border border-[#154c83] bg-white px-3 text-sm font-semibold text-[#154c83] hover:bg-[#f4f9ff]"
             >
               Daten bearbeiten
-            </Link>
-            <Link
-              href="/mein-bereich/einstellungen/passwort"
-              className="inline-flex min-h-14 items-center justify-center rounded-xl border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
-            >
-              Passwort
             </Link>
             <Link
               href="/mein-bereich/einstellungen"
