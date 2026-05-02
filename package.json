@@ -12,6 +12,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:live": "E2E_BASE_URL=https://www.tsvboxgym.de playwright test",
+    "setup:e2e-accounts": "node setup-e2e-accounts.mjs",
     "backfill:member-auth": "node scripts/backfill-member-auth-users.mjs --apply",
     "verify:member-rls": "node scripts/verify-member-rls.mjs"
   },
