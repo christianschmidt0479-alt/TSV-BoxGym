@@ -17,6 +17,7 @@ import {
   getWeightTrendBadgeClass,
 } from "@/lib/weightAnalysis"
 import { getBoxingAgeClass } from "@/lib/boxingAgeClass"
+import { getBoxingWeightClass } from "@/lib/boxingWeightClass"
 
 export default async function DashboardPage() {
   const cookieStore = await cookies()
@@ -55,6 +56,7 @@ export default async function DashboardPage() {
     is_competition_member: boolean | null
     competition_target_weight: number | null
     birthdate: string | null
+    gender: string | null
   } | null = null
   if (memberId) {
     const { data } = await supabase
@@ -68,7 +70,8 @@ export default async function DashboardPage() {
         email_verified,
         is_competition_member,
         competition_target_weight,
-        birthdate
+        birthdate,
+        gender
       `)
       .eq("id", memberId)
       .single()
@@ -190,6 +193,21 @@ export default async function DashboardPage() {
   const boxingAgeClass = member && needsWeight(member)
     ? getBoxingAgeClass(member.birthdate ?? null)
     : null
+
+  const boxingWeightClass = weightData && member && boxingAgeClass
+    ? getBoxingWeightClass({
+        weightKg: weightData.lastWeightKg,
+        ageClass: boxingAgeClass.ageClass,
+        gender: member.gender ?? null,
+      })
+    : null
+
+  function formatWeightClassRange(minKg: number | null, maxKg: number | null) {
+    if (minKg === null && maxKg === null) return "-"
+    if (minKg === null && maxKg !== null) return `unter ${maxKg} kg`
+    if (minKg !== null && maxKg === null) return `ab ${minKg} kg`
+    return `über ${minKg} kg bis unter ${maxKg} kg`
+  }
 
   const memberName = member ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || "Unbekannt" : ""
   const memberGroup = member?.base_group || "Keine Gruppe zugewiesen"
@@ -342,6 +360,21 @@ export default async function DashboardPage() {
                 <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
                   <p className="text-zinc-500">Altersklasse</p>
                   <p className="mt-0.5 font-semibold text-zinc-900">{boxingAgeClass.ageClass}</p>
+                </div>
+              ) : null}
+              {boxingWeightClass ? (
+                <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
+                  <p className="text-zinc-500">Gewichtsklasse</p>
+                  <p className="mt-0.5 font-semibold text-zinc-900">
+                    {boxingWeightClass.note
+                      ? boxingWeightClass.note
+                      : `${boxingWeightClass.className} / ${boxingWeightClass.label}`}
+                  </p>
+                  {!boxingWeightClass.note ? (
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      {formatWeightClassRange(boxingWeightClass.minKg, boxingWeightClass.maxKg)}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
             </div>

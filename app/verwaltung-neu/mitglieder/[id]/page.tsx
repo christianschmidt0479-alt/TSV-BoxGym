@@ -14,6 +14,7 @@ import {
   getWeightTrendBadgeClass,
 } from "@/lib/weightAnalysis";
 import { getBoxingAgeClass } from "@/lib/boxingAgeClass";
+import { getBoxingWeightClass } from "@/lib/boxingWeightClass";
 
 
 
@@ -107,6 +108,13 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
 
   const roleState = await loadRoleState(member.id, member.email);
   const boxingAgeClass = getBoxingAgeClass(member.birthdate ?? null)
+  const boxingWeightClass = getBoxingWeightClass({
+    weightKg: null,
+    ageClass: boxingAgeClass.ageClass,
+    gender: typeof (member as Record<string, unknown>).gender === "string"
+      ? ((member as Record<string, unknown>).gender as string)
+      : null,
+  })
 
   // Gewichtstagebuch — nur für Wettkämpfer / L-Gruppe
   type AdminWeightEntry = { created_at: string; weight_kg: number; source: string; note: string | null }
@@ -189,6 +197,23 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
     const weightDistanceKg = analysis.distanceKg
 
     adminWeightData = { targetWeightKg, lastWeightKg, weightDistanceKg, entries, analysis }
+  }
+
+  const boxingWeightClassNow = adminWeightData
+    ? getBoxingWeightClass({
+        weightKg: adminWeightData.lastWeightKg,
+        ageClass: boxingAgeClass.ageClass,
+        gender: typeof (member as Record<string, unknown>).gender === "string"
+          ? ((member as Record<string, unknown>).gender as string)
+          : null,
+      })
+    : boxingWeightClass
+
+  function formatWeightClassRange(minKg: number | null, maxKg: number | null) {
+    if (minKg === null && maxKg === null) return "-"
+    if (minKg === null && maxKg !== null) return `unter ${maxKg} kg`
+    if (minKg !== null && maxKg === null) return `ab ${minKg} kg`
+    return `über ${minKg} kg bis unter ${maxKg} kg`
   }
 
   async function postPersonRoleAction(payload: Record<string, unknown>, memberId: string, successMessage: string, fallbackError: string) {
@@ -702,6 +727,19 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
                     : `${adminWeightData.analysis.lastChangeKg} kg`
                   : "Nicht berechenbar"}
               </div>
+            </div>
+            <div className="col-span-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+              <div className="text-xs text-zinc-500">Gewichtsklasse</div>
+              <div className="mt-0.5 font-semibold text-zinc-900">
+                {boxingWeightClassNow.note
+                  ? boxingWeightClassNow.note
+                  : `${boxingWeightClassNow.className} / ${boxingWeightClassNow.label}`}
+              </div>
+              {!boxingWeightClassNow.note ? (
+                <div className="mt-0.5 text-xs text-zinc-500">
+                  {formatWeightClassRange(boxingWeightClassNow.minKg, boxingWeightClassNow.maxKg)}
+                </div>
+              ) : null}
             </div>
           </div>
           {adminWeightData.analysis.status === "needs_attention" || adminWeightData.analysis.status === "no_target" ? (

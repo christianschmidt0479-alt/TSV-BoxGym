@@ -4,13 +4,15 @@ import { readTrainerSessionFromHeaders } from "@/lib/authSession"
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { needsWeight } from "@/lib/memberUtils"
 import { analyzeWeightProgress } from "@/lib/weightAnalysis"
+import { getBoxingAgeClass } from "@/lib/boxingAgeClass"
+import { getBoxingWeightClass } from "@/lib/boxingWeightClass"
 
 function getServerSupabase() {
   return createServerSupabaseServiceClient()
 }
 
 const TRAINER_COMPETITION_MEMBER_SELECT =
-  "id, name, first_name, last_name, base_group, is_competition_member, is_wettkaempfer, competition_target_weight"
+  "id, name, first_name, last_name, base_group, birthdate, gender, is_competition_member, is_wettkaempfer, competition_target_weight"
 
 type CompetitionMemberRow = {
   id: string
@@ -18,6 +20,8 @@ type CompetitionMemberRow = {
   first_name: string | null
   last_name: string | null
   base_group: string | null
+  birthdate: string | null
+  gender: string | null
   is_competition_member: boolean | null
   is_wettkaempfer: boolean | null
   competition_target_weight: number | null
@@ -171,6 +175,12 @@ export async function GET(request: Request) {
         targetWeightKg,
         logs,
       })
+      const ageClass = getBoxingAgeClass(member.birthdate ?? null)
+      const weightClass = getBoxingWeightClass({
+        weightKg: logs[0]?.weight_kg ?? null,
+        ageClass: ageClass.ageClass,
+        gender: member.gender ?? null,
+      })
 
       return {
         id: member.id,
@@ -183,6 +193,7 @@ export async function GET(request: Request) {
         trend: analysis.trend,
         message: analysis.message,
         lastChangeKg: analysis.lastChangeKg,
+        weightClass,
         logs,
       }
     })

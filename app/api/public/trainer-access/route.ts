@@ -25,6 +25,16 @@ type TrainerAccessBody =
       pin?: string
     }
   | {
+      action: "request_access"
+      firstName?: string
+      lastName?: string
+      email?: string
+      phone?: string
+      gender?: string
+      birthdate?: string
+      dosbLicense?: string
+    }
+  | {
       action: "verify_email"
       token?: string
     }
@@ -42,7 +52,41 @@ type TrainerAccessBody =
 
 const TRAINER_VERIFY_PARAM = "trainer_verify"
 const EXISTING_TRAINER_ACCOUNT_MESSAGE =
-  "Für diese E-Mail-Adresse existiert bereits ein Trainerkonto oder eine laufende Registrierung. Bitte vorhandenen Zugang nutzen oder Admin ansprechen."
+  "Für diese E-Mail existiert bereits ein Trainerzugang oder eine Anfrage."
+const DOSB_LICENSE_OPTIONS = [
+  "Übungsleiter C",
+  "Trainerassistent",
+  "Trainer C",
+  "Trainer B",
+  "Trainer A",
+  "Keine / noch nicht vorhanden",
+] as const
+
+function normalizeBirthdateInput(value: string | undefined) {
+  const trimmed = value?.trim() ?? ""
+  if (!trimmed) return null
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!isoMatch) return null
+
+  const isoDate = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`
+  const parsed = new Date(`${isoDate}T12:00:00`)
+  if (Number.isNaN(parsed.getTime())) return null
+
+  if (
+    parsed.getFullYear() !== Number(isoMatch[1]) ||
+    parsed.getMonth() + 1 !== Number(isoMatch[2]) ||
+    parsed.getDate() !== Number(isoMatch[3])
+  ) {
+    return null
+  }
+
+  return isoDate
+}
+
+function generateSystemPendingPin() {
+  return `${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "")}`
+}
 
 function generateEmailVerificationToken() {
   return randomUUID()
@@ -65,7 +109,7 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as TrainerAccessBody
     const normalizedEmail =
-      body.action === "register" || body.action === "update_pin"
+      body.action === "register" || body.action === "request_access" || body.action === "update_pin"
         ? body.email?.trim().toLowerCase() ?? ""
         : ""
     const rateLimit = await checkRateLimitAsync(
@@ -210,6 +254,66 @@ export async function POST(request: Request) {
 
         logTrainerAccessFailure(registerStep, error, { email })
         return new NextResponse("Trainerregistrierung konnte nicht abgeschlossen werden. Bitte spaeter erneut versuchen.", {
+          status: 500,
+        })
+      }
+    }
+
+    if (body.action === "request_access") {
+      const firstName = body.firstName?.trim() ?? ""
+      const lastName = body.lastName?.trim() ?? ""
+      const email = body.email?.trim().toLowerCase() ?? ""
+      const phone = body.phone?.trim() ?? ""
+      const gender = body.gender?.trim().toLowerCase() ?? ""
+      const birthdate = normalizeBirthdateInput(body.birthdate)
+      const dosbLicense = body.dosbLicense?.trim() ?? "Keine / noch nicht vorhanden"
+
+      if (!firstName || !lastName || !email || !phone || !gender || !birthdate) {
+        return new NextResponse("Bitte alle Felder für die Anfrage ausfüllen.", { status: 400 })
+      }
+
+      if (gender !== "male" && gender !== "female") {
+        return new NextResponse("Bitte ein gültiges Geschlecht auswählen.", { status: 400 })
+      }
+
+      if (!DOSB_LICENSE_OPTIONS.includes(dosbLicense as (typeof DOSB_LICENSE_OPTIONS)[number])) {
+        return new NextResponse("Ungültige DOSB-Lizenz-Auswahl.", { status: 400 })
+      }
+
+      const emailValidation = validateEmail(email)
+      if (!emailValidation.valid) {
+        return new NextResponse(emailValidation.error || "Bitte gib eine gültige E-Mail-Adresse ein.", { status: 400 })
+      }
+
+      const existingTrainer = await findTrainerByEmail(email)
+      if (existingTrainer) {
+        return new NextResponse(EXISTING_TRAINER_ACCOUNT_MESSAGE, { status: 409 })
+      }
+
+      try {
+        const linkedMember = await findMemberByEmail(email)
+
+        await createTrainerAccount({
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          phone,
+          trainer_birthdate: birthdate,
+          dosb_license: dosbLicense,
+          bemerkung: `Antrag Geschlecht: ${gender}`,
+          pin: generateSystemPendingPin(),
+          linked_member_id: linkedMember?.id ?? null,
+          role: "trainer",
+        })
+
+        return NextResponse.json({ ok: true, email })
+      } catch (error) {
+        if (isTrainerAccountEmailConflict(error)) {
+          return new NextResponse(EXISTING_TRAINER_ACCOUNT_MESSAGE, { status: 409 })
+        }
+
+        logTrainerAccessFailure("request_access", error, { email })
+        return new NextResponse("Anfrage konnte nicht gespeichert werden. Bitte spaeter erneut versuchen.", {
           status: 500,
         })
       }

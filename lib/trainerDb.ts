@@ -12,6 +12,8 @@ export type TrainerAccountRecord = {
   last_name: string
   email: string
   phone?: string | null
+  trainer_birthdate?: string | null
+  dosb_license?: string | null
   trainer_license?: TrainerLicense | string | null
   trainer_license_renewals?: string[] | null
   role?: "trainer" | "admin" | null
@@ -35,7 +37,10 @@ type CreateTrainerAccountInput = {
   last_name: string
   email: string
   phone?: string | null
+  trainer_birthdate?: string | null
+  dosb_license?: string | null
   trainer_license?: TrainerLicense | null
+  bemerkung?: string | null
   pin: string
   email_verification_token?: string | null
   linked_member_id?: string | null
@@ -55,6 +60,8 @@ function normalizeTrainer(row: Record<string, unknown> | null | undefined): Trai
     last_name: typeof row.last_name === "string" ? row.last_name : "",
     email: normalizeEmail(typeof row.email === "string" ? row.email : ""),
     phone: typeof row.phone === "string" ? row.phone : null,
+    trainer_birthdate: typeof row.trainer_birthdate === "string" ? row.trainer_birthdate : null,
+    dosb_license: typeof row.dosb_license === "string" ? row.dosb_license : null,
     trainer_license: typeof row.trainer_license === "string" ? row.trainer_license : null,
     trainer_license_renewals: Array.isArray(row.trainer_license_renewals)
       ? row.trainer_license_renewals.filter((value): value is string => typeof value === "string")
@@ -132,7 +139,10 @@ export async function createTrainerAccount(input: CreateTrainerAccountInput) {
     last_name: input.last_name.trim(),
     email: normalizeEmail(input.email),
     phone: input.phone?.trim() || null,
+    trainer_birthdate: input.trainer_birthdate ?? null,
+    dosb_license: input.dosb_license?.trim() || null,
     trainer_license: input.trainer_license ?? null,
+    bemerkung: input.bemerkung?.trim() || null,
     password_hash,
     email_verification_token: input.email_verification_token ?? null,
     linked_member_id: input.linked_member_id ?? null,
@@ -141,7 +151,7 @@ export async function createTrainerAccount(input: CreateTrainerAccountInput) {
     is_approved: false,
   }
 
-  const optionalColumns = ["phone", "trainer_license", "linked_member_id", "role"] as const
+  const optionalColumns = ["phone", "trainer_birthdate", "dosb_license", "trainer_license", "linked_member_id", "role", "bemerkung"] as const
   const selectedOptional = [...optionalColumns] as string[]
   let attemptPayload = { ...payload }
 

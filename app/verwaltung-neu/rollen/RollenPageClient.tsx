@@ -192,6 +192,16 @@ export default function RollenPageClient({ entries }: Props) {
                     {!entry.memberId && entry.hasTrainerAccount && (
                       <div className="mt-1 text-xs text-orange-700">Kein Mitglied verknüpft</div>
                     )}
+                    {!entry.trainerApproved && (
+                      <div className="mt-1 space-y-0.5 text-xs text-zinc-600">
+                        <div>
+                          Geburtsdatum: {entry.trainerBirthdate || "–"}
+                        </div>
+                        <div>
+                          DOSB-Lizenz: {entry.dosbLicense || "Keine / noch nicht vorhanden"}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Right: action buttons (members and trainer-only, never for admins) */}
@@ -253,7 +263,7 @@ export default function RollenPageClient({ entries }: Props) {
 
                   {!entry.memberId && entry.hasTrainerAccount && !entry.isAdmin && (
                     <div className="flex flex-wrap gap-1.5">
-                      {entry.isActiveTrainer && entry.trainerId && (
+                      {entry.trainerId && (
                         <button
                           type="button"
                           disabled={state.loading}
@@ -281,9 +291,16 @@ export default function RollenPageClient({ entries }: Props) {
                         Mit Mitglied verknüpfen
                       </Link>
 
-                      <span className="self-center text-xs text-zinc-500">
-                        Als Sportler führen erfordert ein Mitgliedsprofil.
-                      </span>
+                      <Link
+                        href={
+                          entry.email
+                            ? `/registrieren/mitglied?email=${encodeURIComponent(entry.email)}`
+                            : "/registrieren/mitglied"
+                        }
+                        className="rounded-lg border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800 transition hover:bg-blue-100"
+                      >
+                        Als Mitglied anlegen
+                      </Link>
                     </div>
                   )}
 
