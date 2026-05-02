@@ -3,6 +3,8 @@ import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSec
 import { getTodayCheckins } from "@/lib/boxgymDb"
 import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 
+const TODAY_CHECKINS_CACHE_CONTROL = "public, max-age=5, s-maxage=10, stale-while-revalidate=10"
+
 type TodayCheckinsBody = {
   date?: string
 }
@@ -47,7 +49,14 @@ export async function POST(request: Request) {
         : null,
     }))
 
-    return NextResponse.json({ rows })
+    return NextResponse.json(
+      { rows },
+      {
+        headers: {
+          "Cache-Control": TODAY_CHECKINS_CACHE_CONTROL,
+        },
+      }
+    )
   } catch (error) {
     console.error("public today checkins failed", error)
     return new NextResponse("Interner Fehler", { status: 500 })

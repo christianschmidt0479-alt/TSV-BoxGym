@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { checkRateLimitAsync, getRequestIp, isAllowedOrigin } from "@/lib/apiSecurity"
 import { sessions } from "@/lib/boxgymSessions"
 
+const SESSIONS_TODAY_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=300"
+
 function getDayKey(date: Date) {
   const day = date.getDay()
 
@@ -41,7 +43,14 @@ export async function GET(request: Request) {
         name: session.group,
       }))
 
-    return NextResponse.json({ data: rows })
+    return NextResponse.json(
+      { data: rows },
+      {
+        headers: {
+          "Cache-Control": SESSIONS_TODAY_CACHE_CONTROL,
+        },
+      }
+    )
   } catch (error) {
     console.error("public sessions today failed", error)
     return NextResponse.json({ data: [] }, { status: 200 })
