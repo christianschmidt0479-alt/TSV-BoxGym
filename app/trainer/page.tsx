@@ -4,78 +4,11 @@ import { createServerSupabaseServiceClient } from "@/lib/serverSupabase"
 import { getTodayIsoDateInBerlin } from "@/lib/dateFormat"
 import { getUserContext } from "@/lib/getUserContext"
 import { resolveUserContext } from "@/lib/resolveUserContext"
-import ExtendTrialButton from "@/components/extend-trial-button"
 
 export const dynamic = "force-dynamic"
 
-type MemberPhase = "trial" | "extended" | "member"
-
-type TrainerMemberRow = {
-  id: string
-  name: string | null
-  first_name: string | null
-  last_name: string | null
-  base_group: string | null
-  is_trial: boolean | null
-  is_approved: boolean | null
-  member_phase: string | null
-}
-
-type CheckinRow = {
+type CheckinMemberRow = {
   member_id: string | null
-  date: string | null
-  created_at: string | null
-}
-
-type PhaseMeta = {
-  key: MemberPhase
-  label: string
-  hint: string | null
-  badgeClass: string
-  badgeSizeClass: string
-  order: number
-}
-
-function getBerlinDayKey(date: Date) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Berlin",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date)
-}
-
-function getPhaseMeta(phase: MemberPhase): PhaseMeta {
-  if (phase === "member") {
-    return {
-      key: "member",
-      label: "Mitglied",
-      hint: null,
-      badgeClass: "bg-emerald-200 text-emerald-900 border border-emerald-500 font-extrabold",
-      badgeSizeClass: "text-sm px-3.5 py-1.5",
-      order: 1,
-    }
-  }
-
-  if (phase === "extended") {
-    return {
-      key: "extended",
-      label: "Probemitglied verlängert",
-      hint: "Testphase",
-      badgeClass: "bg-yellow-100 text-yellow-800 border border-yellow-300",
-      badgeSizeClass: "text-xs px-3 py-1",
-      order: 2,
-    }
-  }
-
-  return {
-    key: "trial",
-    label: "Probemitglied",
-    hint: "noch nicht freigegeben",
-    badgeClass: "bg-orange-100 text-orange-800 border border-orange-300",
-    badgeSizeClass: "text-xs px-3 py-1",
-    order: 3,
-  }
 }
 
 export default async function TrainerPage() {
@@ -99,99 +32,49 @@ export default async function TrainerPage() {
 
   const trainerName = `${context.trainer.firstName ?? ""} ${context.trainer.lastName ?? ""}`.trim() || context.trainer.email
   const supabase = createServerSupabaseServiceClient()
+  const todayIsoDate = getTodayIsoDateInBerlin()
 
-  const [membersResponse, checkinsResponse] = await Promise.all([
+  const [todayCountResponse, trialCountResponse, trialTodayCheckinsResponse] = await Promise.all([
+    supabase
+      .from("checkins")
+      .select("id", { count: "exact", head: true })
+      .eq("date", todayIsoDate),
     supabase
       .from("members")
-      .select("id, name, first_name, last_name, base_group, is_trial, is_approved, member_phase")
-      .order("last_name", { ascending: true })
-      .order("first_name", { ascending: true }),
-    supabase.from("checkins").select("member_id, date, created_at"),
+      .select("id", { count: "exact", head: true })
+      .eq("is_trial", true),
+    supabase
+      .from("checkins")
+      .select("member_id")
+      .eq("date", todayIsoDate),
   ])
 
-  if (membersResponse.error) {
-    throw membersResponse.error
+  if (todayCountResponse.error) throw todayCountResponse.error
+  if (trialCountResponse.error) throw trialCountResponse.error
+  if (trialTodayCheckinsResponse.error) throw trialTodayCheckinsResponse.error
+
+  const todayCount = todayCountResponse.count ?? 0
+  const trialCount = trialCountResponse.count ?? 0
+
+  const trialTodayMemberIds = Array.from(
+    new Set(
+      ((trialTodayCheckinsResponse.data ?? []) as CheckinMemberRow[])
+        .map((row) => row.member_id)
+        .filter((memberId): memberId is string => Boolean(memberId))
+    )
+  )
+
+  let trialTodayCount = 0
+  if (trialTodayMemberIds.length > 0) {
+    const { count: trialTodayCountResponse, error: trialTodayCountError } = await supabase
+      .from("members")
+      .select("id", { count: "exact", head: true })
+      .eq("is_trial", true)
+      .in("id", trialTodayMemberIds)
+
+    if (trialTodayCountError) throw trialTodayCountError
+    trialTodayCount = trialTodayCountResponse ?? 0
   }
-  if (checkinsResponse.error) {
-    throw checkinsResponse.error
-  }
-
-  const members = (membersResponse.data ?? []) as TrainerMemberRow[]
-  const checkins = (checkinsResponse.data ?? []) as CheckinRow[]
-
-  const todayIsoDate = getTodayIsoDateInBerlin()
-  const checkedInTodayByMemberId = new Set<string>()
-
-  for (const row of checkins) {
-    if (!row.member_id) continue
-
-    if (row.date === todayIsoDate) {
-      checkedInTodayByMemberId.add(row.member_id)
-      continue
-    }
-
-    if (!row.created_at) continue
-    const createdAt = new Date(row.created_at)
-    if (Number.isNaN(createdAt.getTime())) continue
-    if (getBerlinDayKey(createdAt) === todayIsoDate) {
-      checkedInTodayByMemberId.add(row.member_id)
-    }
-  }
-
-  function resolvePhase(member: TrainerMemberRow): MemberPhase {
-    if (member.member_phase === "trial" || member.member_phase === "extended" || member.member_phase === "member") {
-      return member.member_phase
-    }
-    if (member.is_approved) return "member"
-    if (member.is_trial) return "trial"
-    return "member"
-  }
-
-  function displayName(member: TrainerMemberRow) {
-    const fullName = `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim()
-    return fullName || member.name || "Unbekannt"
-  }
-
-  const rows = members
-    .map((member) => ({
-      member,
-      phase: resolvePhase(member),
-      isTodayCheckedIn: checkedInTodayByMemberId.has(member.id),
-    }))
-    .sort((a, b) => {
-      const phaseDiff = getPhaseMeta(a.phase).order - getPhaseMeta(b.phase).order
-      if (phaseDiff !== 0) {
-        return phaseDiff
-      }
-
-      if (a.isTodayCheckedIn !== b.isTodayCheckedIn) {
-        return a.isTodayCheckedIn ? -1 : 1
-      }
-
-      return displayName(a.member).localeCompare(displayName(b.member), "de")
-    })
-
-  const todayCount = rows.filter((row) => row.isTodayCheckedIn).length
-  const trialCount = rows.filter((row) => row.phase === "trial").length
-  const trialTodayCount = rows.filter((row) => (row.phase === "trial" || row.phase === "extended") && row.isTodayCheckedIn).length
-
-  function attendanceBadgeStyle(isTodayCheckedIn: boolean) {
-    return isTodayCheckedIn
-      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-      : "bg-zinc-100 text-zinc-700 border border-zinc-300"
-  }
-
-  const groupedRows: Record<MemberPhase, typeof rows> = {
-    member: rows.filter((row) => row.phase === "member"),
-    extended: rows.filter((row) => row.phase === "extended"),
-    trial: rows.filter((row) => row.phase === "trial"),
-  }
-
-  const phaseSections: Array<{ phase: MemberPhase; title: string }> = [
-    { phase: "member", title: "Mitglieder" },
-    { phase: "extended", title: "Probemitglieder (verlängert)" },
-    { phase: "trial", title: "Probemitglieder" },
-  ]
 
   return (
     <div className="min-h-[calc(100svh-11rem)] bg-zinc-50 px-4 py-4 text-zinc-900 md:px-6 md:py-6">
@@ -219,119 +102,62 @@ export default async function TrainerPage() {
           </Link>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
           <Link
             href="/trainer/checkin"
-            className="rounded-2xl border border-[#154c83] bg-white px-5 py-5 text-lg font-semibold text-[#154c83] shadow-sm transition hover:bg-[#f2f7fb]"
+            className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
           >
-            <div>Quick Check-in</div>
-            <div className="mt-1 text-sm font-medium text-zinc-600">Mitglied suchen und direkt einchecken</div>
-          </Link>
-
-          <Link
-            href="/verwaltung-neu/checkin"
-            className="rounded-2xl border border-[#154c83] bg-[#154c83] px-5 py-5 text-lg font-semibold text-white shadow-sm transition hover:bg-[#0f3d6b]"
-          >
-            <div>Check-in starten</div>
-            <div className="mt-1 text-sm font-medium text-blue-100">Sofort einchecken</div>
-          </Link>
-
-          <Link
-            href="/verwaltung-neu/mitglieder"
-            className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
-          >
-            <div>Mitglieder prüfen</div>
-            <div className="mt-1 text-sm font-medium text-zinc-600">Stammdaten aufrufen</div>
+            <div>Check-in</div>
+            <div className="mt-1 text-xs font-medium text-zinc-600">Mitglied suchen und einchecken</div>
           </Link>
 
           <Link
             href="/trainer/heute-da"
-            className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
+            className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
           >
             <div>Heute da</div>
-            <div className="mt-1 text-sm font-medium text-zinc-600">Anwesenheit und Auschecken</div>
-          </Link>
-
-          <Link
-            href="/trainer/probemitglieder"
-            className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
-          >
-            <div>Probemitglieder heute</div>
-            <div className="mt-1 text-sm font-medium text-zinc-600">Probetrainings und aktuelle Anwesenheit prüfen</div>
+            <div className="mt-1 text-xs font-medium text-zinc-600">Anwesenheit und Auschecken</div>
           </Link>
 
           <Link
             href="/trainer/qr-scanner"
-            className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
+            className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
           >
-            <div>QR Scanner</div>
-            <div className="mt-1 text-sm font-medium text-zinc-600">Testfunktion öffnen (nur Prüfung, kein Check-in)</div>
+            <div>QR-Scanner</div>
+            <div className="mt-1 text-xs font-medium text-zinc-600">Mitglieds-QR prüfen</div>
           </Link>
 
           <Link
             href="/trainer/competition"
-            className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
+            className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
           >
             <div>Gewicht &amp; Ziel</div>
-            <div className="mt-1 text-sm font-medium text-zinc-600">Wettkämpfer und L-Gruppe einsehen (nur Lesen)</div>
+            <div className="mt-1 text-xs font-medium text-zinc-600">Wettkampfbereich öffnen</div>
           </Link>
-        </div>
 
-        <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
-          <div className="border-b border-zinc-100 px-4 py-3">
-            <div className="text-base font-semibold text-zinc-900">Mitgliederliste</div>
-            <div className="text-sm text-zinc-600">Name, Gruppe, Status und Check-in für heute</div>
-          </div>
+          <Link
+            href="/trainer/probemitglieder"
+            className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
+          >
+            <div>Probemitglieder</div>
+            <div className="mt-1 text-xs font-medium text-zinc-600">Status und Auschecken</div>
+          </Link>
 
-          {rows.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-zinc-600">Keine Mitglieder gefunden.</div>
-          ) : (
-            <div className="max-h-[65vh] space-y-4 overflow-y-auto px-3 py-3">
-              {phaseSections.map((section, index) => {
-                const sectionRows = groupedRows[section.phase]
-                if (sectionRows.length === 0) return null
+          <Link
+            href="/trainer/download"
+            className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
+          >
+            <div>Downloads</div>
+            <div className="mt-1 text-xs font-medium text-zinc-600">Unterlagen öffnen</div>
+          </Link>
 
-                return (
-                  <div key={section.phase} className={`space-y-3 ${index > 0 ? "mt-8" : ""}`}>
-                    <div className="rounded-lg bg-zinc-100 px-3 py-2 text-sm font-semibold text-zinc-700">
-                      {section.title} ({sectionRows.length})
-                    </div>
-
-                    {sectionRows.map((row) => {
-                      const phaseMeta = getPhaseMeta(row.phase)
-                      return (
-                        <div key={row.member.id} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                              <div className="text-base font-semibold text-zinc-900">{displayName(row.member)}</div>
-                              <div className="text-sm text-zinc-600">Gruppe: {row.member.base_group || "-"}</div>
-                              {phaseMeta.hint ? (
-                                <div className="mt-1 text-xs font-medium text-amber-700">{phaseMeta.hint}</div>
-                              ) : null}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <span className={`inline-flex rounded-full ${phaseMeta.badgeSizeClass} ${phaseMeta.badgeClass}`}>
-                                {phaseMeta.label}
-                              </span>
-                              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${attendanceBadgeStyle(row.isTodayCheckedIn)}`}>
-                                {row.isTodayCheckedIn ? "heute da" : "nicht da"}
-                              </span>
-                            </div>
-                          </div>
-
-                          {row.phase === "trial" ? (
-                            <div className="mt-3">
-                              <ExtendTrialButton memberId={row.member.id} />
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <Link
+            href="/trainer/heute"
+            className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
+          >
+            <div>Heute im Training</div>
+            <div className="mt-1 text-xs font-medium text-zinc-600">Tagesüberblick</div>
+          </Link>
         </div>
       </div>
     </div>

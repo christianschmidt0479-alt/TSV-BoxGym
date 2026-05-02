@@ -24,6 +24,9 @@ export default function TrainerDetailPage({ params }: { params: Promise<{ id: st
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [id, setId] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<"deactivate" | "delete" | null>(null)
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     params.then((p) => setId(p.id))
@@ -86,6 +89,69 @@ export default function TrainerDetailPage({ params }: { params: Promise<{ id: st
       setSaveError("Netzwerkfehler.")
     }
     setSaving(false)
+  }
+
+  async function handleDeactivateTrainer() {
+    if (!trainer) return
+    if (!confirm("Trainer wirklich deaktivieren?")) return
+
+    setActionLoading("deactivate")
+    setActionSuccess(null)
+    setActionError(null)
+
+    try {
+      const res = await fetch("/api/admin/person-roles", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "revoke_trainer", trainerId: trainer.id }),
+      })
+
+      const result = await res.json().catch(() => ({})) as { error?: string }
+      if (!res.ok) {
+        setActionError(result.error || "Deaktivierung fehlgeschlagen.")
+        setActionLoading(null)
+        return
+      }
+
+      setActionSuccess("Trainer wurde deaktiviert.")
+      await loadTrainer(trainer.id)
+    } catch {
+      setActionError("Netzwerkfehler bei der Deaktivierung.")
+    }
+
+    setActionLoading(null)
+  }
+
+  async function handleDeleteTrainer() {
+    if (!trainer) return
+    if (!confirm("Trainerkonto wirklich löschen? Nur offene Konten können gelöscht werden.")) return
+
+    setActionLoading("delete")
+    setActionSuccess(null)
+    setActionError(null)
+
+    try {
+      const res = await fetch(`/api/admin/trainer-account/${trainer.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+
+      const result = await res.json().catch(() => ({})) as { error?: string }
+      if (!res.ok) {
+        setActionError(result.error || "Löschen fehlgeschlagen.")
+        setActionLoading(null)
+        return
+      }
+
+      setActionSuccess("Trainerkonto wurde gelöscht.")
+      window.location.href = "/verwaltung-neu/trainer"
+      return
+    } catch {
+      setActionError("Netzwerkfehler beim Löschen.")
+    }
+
+    setActionLoading(null)
   }
 
   if (loading) return <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 text-sm text-zinc-600 shadow-sm">Lade Trainer…</div>
@@ -158,6 +224,33 @@ export default function TrainerDetailPage({ params }: { params: Promise<{ id: st
             className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:border-zinc-400 disabled:opacity-60"
           >
             {saving ? "Speichert…" : "Lizenz speichern"}
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm space-y-3">
+        <div className="text-sm font-semibold text-zinc-900">Trainerkonto verwalten</div>
+        <p className="text-xs text-zinc-600">
+          Deaktivieren setzt die Trainerfreigabe zurück. Löschen ist nur bei offenen Trainerkonten möglich.
+        </p>
+
+        {actionError ? <div className="text-xs font-semibold text-red-700">{actionError}</div> : null}
+        {actionSuccess ? <div className="text-xs font-semibold text-emerald-700">{actionSuccess}</div> : null}
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleDeactivateTrainer}
+            disabled={actionLoading !== null}
+            className="rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-60"
+          >
+            {actionLoading === "deactivate" ? "Deaktiviere…" : "Trainer deaktivieren"}
+          </button>
+          <button
+            onClick={handleDeleteTrainer}
+            disabled={actionLoading !== null}
+            className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60"
+          >
+            {actionLoading === "delete" ? "Löscht…" : "Trainerkonto löschen"}
           </button>
         </div>
       </div>

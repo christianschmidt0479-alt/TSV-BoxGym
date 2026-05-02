@@ -211,6 +211,7 @@ export default async function DashboardPage() {
 
   const memberName = member ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || "Unbekannt" : ""
   const memberGroup = member?.base_group || "Keine Gruppe zugewiesen"
+  const canUseMemberDownloads = Boolean(member && needsWeight(member))
   const lastCheckinDisplay = lastCheckin?.created_at
     ? new Intl.DateTimeFormat("de-DE", {
         day: "2-digit",
@@ -404,32 +405,53 @@ export default async function DashboardPage() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-3">
-          <Link
-            href="/mein-bereich/qr-code"
-            className="inline-flex h-14 items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 text-base font-semibold text-zinc-900 hover:border-zinc-400"
-          >
-            Mein Mitglieds-QR
-          </Link>
-          <Link
-            href="/mein-bereich/einstellungen/daten"
-            className="inline-flex h-14 items-center justify-center rounded-2xl border border-[#154c83] bg-white px-4 text-base font-semibold text-[#154c83] hover:bg-[#f4f9ff]"
-          >
-            Meine Daten bearbeiten
-          </Link>
-          <Link
-            href="/mein-bereich/einstellungen/passwort"
-            className="inline-flex h-14 items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 text-base font-semibold text-zinc-900 hover:border-zinc-400"
-          >
-            Passwort zurücksetzen
-          </Link>
-          <Link
-            href="/mein-bereich/einstellungen"
-            className="inline-flex h-14 items-center justify-center rounded-2xl border border-zinc-300 bg-white px-4 text-base font-semibold text-zinc-900 hover:border-zinc-400"
-          >
-            Alle Einstellungen
-          </Link>
+        <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Schnellzugriff</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+            <Link
+              href="/mein-bereich/qr-code"
+              className="inline-flex min-h-14 items-center justify-center rounded-xl border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
+            >
+              Mein QR-Code
+            </Link>
+            {weightData ? (
+              <a
+                href="#gewicht-ziel"
+                className="inline-flex min-h-14 items-center justify-center rounded-xl border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
+              >
+                Gewicht &amp; Ziel
+              </a>
+            ) : null}
+            {canUseMemberDownloads ? (
+              <Link
+                href="/mein-bereich/download"
+                className="inline-flex min-h-14 items-center justify-center rounded-xl border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
+              >
+                Downloads
+              </Link>
+            ) : null}
+            <Link
+              href="/mein-bereich/einstellungen/daten"
+              className="inline-flex min-h-14 items-center justify-center rounded-xl border border-[#154c83] bg-white px-3 text-sm font-semibold text-[#154c83] hover:bg-[#f4f9ff]"
+            >
+              Daten bearbeiten
+            </Link>
+            <Link
+              href="/mein-bereich/einstellungen/passwort"
+              className="inline-flex min-h-14 items-center justify-center rounded-xl border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
+            >
+              Passwort
+            </Link>
+            <Link
+              href="/mein-bereich/einstellungen"
+              className="inline-flex min-h-14 items-center justify-center rounded-xl border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 hover:border-zinc-400"
+            >
+              Einstellungen
+            </Link>
+          </div>
         </div>
+
+        <div id="gewicht-ziel" className="sr-only" />
 
         {isAdmin ? (
           <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-800">
