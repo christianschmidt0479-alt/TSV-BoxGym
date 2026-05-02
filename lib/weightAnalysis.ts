@@ -22,6 +22,38 @@ export type WeightAnalysisResult = {
   lastChangeKg: number | null
 }
 
+export function getWeightStatusLabel(status: WeightAnalysisStatus): string {
+  if (status === "in_range") return "Im Zielbereich"
+  if (status === "near_target") return "Nah am Zielbereich"
+  if (status === "above_target") return "Über dem Zielgewicht"
+  if (status === "below_target") return "Unter dem Zielgewicht"
+  if (status === "needs_attention") return "Bitte besprechen"
+  if (status === "no_target") return "Kein Zielgewicht"
+  return "Kein Gewicht"
+}
+
+export function getWeightStatusBadgeClass(status: WeightAnalysisStatus): string {
+  if (status === "in_range") return "bg-emerald-100 text-emerald-800 border border-emerald-300"
+  if (status === "near_target") return "bg-blue-100 text-blue-800 border border-blue-300"
+  if (status === "above_target" || status === "below_target") return "bg-amber-100 text-amber-800 border border-amber-300"
+  if (status === "needs_attention") return "bg-red-100 text-red-800 border border-red-300"
+  return "bg-zinc-100 text-zinc-700 border border-zinc-300"
+}
+
+export function getWeightTrendLabel(trend: WeightAnalysisTrend): string {
+  if (trend === "rising") return "steigend"
+  if (trend === "falling") return "fallend"
+  if (trend === "stable") return "stabil"
+  return "noch nicht bewertbar"
+}
+
+export function getWeightTrendBadgeClass(trend: WeightAnalysisTrend): string {
+  if (trend === "rising") return "bg-amber-50 text-amber-700 border border-amber-200"
+  if (trend === "falling") return "bg-sky-50 text-sky-700 border border-sky-200"
+  if (trend === "stable") return "bg-emerald-50 text-emerald-700 border border-emerald-200"
+  return "bg-zinc-100 text-zinc-700 border border-zinc-300"
+}
+
 function roundToOneDecimal(value: number): number {
   return Math.round(value * 10) / 10
 }

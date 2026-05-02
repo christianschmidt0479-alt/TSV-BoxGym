@@ -267,6 +267,14 @@ export default async function TrainerPage() {
             <div>QR Scanner</div>
             <div className="mt-1 text-sm font-medium text-zinc-600">Testfunktion öffnen (nur Prüfung, kein Check-in)</div>
           </Link>
+
+          <Link
+            href="/trainer/competition"
+            className="rounded-2xl border border-zinc-300 bg-white px-5 py-5 text-lg font-semibold text-zinc-900 shadow-sm transition hover:border-zinc-400"
+          >
+            <div>Gewicht &amp; Ziel</div>
+            <div className="mt-1 text-sm font-medium text-zinc-600">Wettkämpfer und L-Gruppe einsehen (nur Lesen)</div>
+          </Link>
         </div>
 
         <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm">

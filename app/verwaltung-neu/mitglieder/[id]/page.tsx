@@ -8,7 +8,13 @@ import { validateName, validateBirthdate } from "@/lib/formValidation";
 import { OfficeMatchBadge, getOfficeCheckedAtText, getOfficeMatchText } from "@/components/verwaltung-neu/OfficeMatchBadge";
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase";
 import { needsWeight } from "@/lib/memberUtils";
-import { analyzeWeightProgress } from "@/lib/weightAnalysis";
+import {
+  analyzeWeightProgress,
+  getWeightStatusBadgeClass,
+  getWeightStatusLabel,
+  getWeightTrendBadgeClass,
+  getWeightTrendLabel,
+} from "@/lib/weightAnalysis";
 
 
 
@@ -633,33 +639,15 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
             ) : null}
             <div className="col-span-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
               <div className="text-xs text-zinc-500">Status</div>
-              <div className="mt-0.5 font-semibold text-zinc-900">
-                {adminWeightData.analysis.status === "in_range"
-                  ? "Im Zielbereich"
-                  : adminWeightData.analysis.status === "near_target"
-                  ? "Nah am Zielbereich"
-                  : adminWeightData.analysis.status === "above_target"
-                  ? "Über dem Zielgewicht"
-                  : adminWeightData.analysis.status === "below_target"
-                  ? "Unter dem Zielgewicht"
-                  : adminWeightData.analysis.status === "needs_attention"
-                  ? "Besprechen"
-                  : adminWeightData.analysis.status === "no_target"
-                  ? "Kein Zielgewicht"
-                  : "Kein Gewicht"}
-              </div>
+              <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getWeightStatusBadgeClass(adminWeightData.analysis.status)}`}>
+                {getWeightStatusLabel(adminWeightData.analysis.status)}
+              </span>
             </div>
             <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
               <div className="text-xs text-zinc-500">Verlaufstendenz</div>
-              <div className="mt-0.5 font-semibold text-zinc-900">
-                {adminWeightData.analysis.trend === "rising"
-                  ? "Steigend"
-                  : adminWeightData.analysis.trend === "falling"
-                  ? "Fallend"
-                  : adminWeightData.analysis.trend === "stable"
-                  ? "Stabil"
-                  : "Nicht bestimmbar"}
-              </div>
+              <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getWeightTrendBadgeClass(adminWeightData.analysis.trend)}`}>
+                {getWeightTrendLabel(adminWeightData.analysis.trend)}
+              </span>
             </div>
             <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
               <div className="text-xs text-zinc-500">Letzte Veränderung</div>

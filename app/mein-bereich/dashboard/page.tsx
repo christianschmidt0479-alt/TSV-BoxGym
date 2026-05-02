@@ -11,7 +11,13 @@ import { resolveUserContext } from "@/lib/resolveUserContext"
 import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
 import { FormContainer } from "@/components/ui/form-container"
 import { needsWeight } from "@/lib/memberUtils"
-import { analyzeWeightProgress } from "@/lib/weightAnalysis"
+import {
+  analyzeWeightProgress,
+  getWeightStatusBadgeClass,
+  getWeightStatusLabel,
+  getWeightTrendBadgeClass,
+  getWeightTrendLabel,
+} from "@/lib/weightAnalysis"
 
 export default async function DashboardPage() {
   const cookieStore = await cookies()
@@ -294,33 +300,15 @@ export default async function DashboardPage() {
               ) : null}
               <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
                 <p className="text-zinc-500">Zielbereich</p>
-                <p className="mt-0.5 font-semibold text-zinc-900">
-                  {weightData.analysis.status === "in_range"
-                    ? "Im Zielbereich"
-                    : weightData.analysis.status === "near_target"
-                    ? "Nahe am Zielbereich"
-                    : weightData.analysis.status === "above_target"
-                    ? "Über Zielbereich"
-                    : weightData.analysis.status === "below_target"
-                    ? "Unter Zielbereich"
-                    : weightData.analysis.status === "needs_attention"
-                    ? "Deutliche Abweichung"
-                    : weightData.analysis.status === "no_target"
-                    ? "Kein Zielgewicht hinterlegt"
-                    : "Kein Gewichtseintrag"}
-                </p>
+                <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getWeightStatusBadgeClass(weightData.analysis.status)}`}>
+                  {getWeightStatusLabel(weightData.analysis.status)}
+                </span>
               </div>
               <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
                 <p className="text-zinc-500">Verlaufstendenz</p>
-                <p className="mt-0.5 font-semibold text-zinc-900">
-                  {weightData.analysis.trend === "rising"
-                    ? "Steigend"
-                    : weightData.analysis.trend === "falling"
-                    ? "Fallend"
-                    : weightData.analysis.trend === "stable"
-                    ? "Stabil"
-                    : "Nicht bestimmbar"}
-                </p>
+                <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getWeightTrendBadgeClass(weightData.analysis.trend)}`}>
+                  {getWeightTrendLabel(weightData.analysis.trend)}
+                </span>
               </div>
             </div>
             {weightData.weightLogs.length > 0 ? (
