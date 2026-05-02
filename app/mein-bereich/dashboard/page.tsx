@@ -11,6 +11,7 @@ import { resolveUserContext } from "@/lib/resolveUserContext"
 import { MemberAreaBrandHeader } from "@/components/member-area/MemberAreaBrandHeader"
 import { FormContainer } from "@/components/ui/form-container"
 import { needsWeight } from "@/lib/memberUtils"
+import { analyzeWeightProgress } from "@/lib/weightAnalysis"
 
 export default async function DashboardPage() {
   const cookieStore = await cookies()
@@ -121,6 +122,7 @@ export default async function DashboardPage() {
     lastWeightKg: number | null
     weightDistanceKg: number | null
     weightLogs: WeightLogEntry[]
+    analysis: ReturnType<typeof analyzeWeightProgress>
   } | null = null
 
   if (memberId && member && needsWeight(member)) {
@@ -168,12 +170,14 @@ export default async function DashboardPage() {
       // Tabelle fehlt oder Query-Fehler — kein Absturz
     }
 
-    const weightDistanceKg =
-      targetWeightKg !== null && lastWeightKg !== null
-        ? Math.round((lastWeightKg - targetWeightKg) * 10) / 10
-        : null
+    const analysis = analyzeWeightProgress({
+      targetWeightKg,
+      logs: weightLogs,
+    })
 
-    weightData = { targetWeightKg, lastWeightKg, weightDistanceKg, weightLogs }
+    const weightDistanceKg = analysis.distanceKg
+
+    weightData = { targetWeightKg, lastWeightKg, weightDistanceKg, weightLogs, analysis }
   }
 
   const memberName = member ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || "Unbekannt" : ""
@@ -288,6 +292,36 @@ export default async function DashboardPage() {
                   </p>
                 </div>
               ) : null}
+              <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
+                <p className="text-zinc-500">Zielbereich</p>
+                <p className="mt-0.5 font-semibold text-zinc-900">
+                  {weightData.analysis.status === "in_range"
+                    ? "Im Zielbereich"
+                    : weightData.analysis.status === "near_target"
+                    ? "Nahe am Zielbereich"
+                    : weightData.analysis.status === "above_target"
+                    ? "Über Zielbereich"
+                    : weightData.analysis.status === "below_target"
+                    ? "Unter Zielbereich"
+                    : weightData.analysis.status === "needs_attention"
+                    ? "Deutliche Abweichung"
+                    : weightData.analysis.status === "no_target"
+                    ? "Kein Zielgewicht hinterlegt"
+                    : "Kein Gewichtseintrag"}
+                </p>
+              </div>
+              <div className="col-span-2 rounded-xl bg-zinc-50 px-3 py-2">
+                <p className="text-zinc-500">Verlaufstendenz</p>
+                <p className="mt-0.5 font-semibold text-zinc-900">
+                  {weightData.analysis.trend === "rising"
+                    ? "Steigend"
+                    : weightData.analysis.trend === "falling"
+                    ? "Fallend"
+                    : weightData.analysis.trend === "stable"
+                    ? "Stabil"
+                    : "Nicht bestimmbar"}
+                </p>
+              </div>
             </div>
             {weightData.weightLogs.length > 0 ? (
               <div className="mt-3">
@@ -309,8 +343,9 @@ export default async function DashboardPage() {
                 </ul>
               </div>
             ) : null}
-            <p className="mt-3 text-xs text-zinc-400">
-              Kontinuität zählt. Bitte gesund und kontrolliert arbeiten.
+            <p className="mt-3 text-xs text-zinc-500">{weightData.analysis.message}</p>
+            <p className="mt-1 text-xs text-zinc-400">
+              Hinweis: Diese Auswertung dient ausschließlich der sportlichen Dokumentation.
             </p>
           </div>
         ) : null}

@@ -8,6 +8,7 @@ import { validateName, validateBirthdate } from "@/lib/formValidation";
 import { OfficeMatchBadge, getOfficeCheckedAtText, getOfficeMatchText } from "@/components/verwaltung-neu/OfficeMatchBadge";
 import { createServerSupabaseServiceClient } from "@/lib/serverSupabase";
 import { needsWeight } from "@/lib/memberUtils";
+import { analyzeWeightProgress } from "@/lib/weightAnalysis";
 
 
 
@@ -108,6 +109,7 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
     lastWeightKg: number | null
     weightDistanceKg: number | null
     entries: AdminWeightEntry[]
+    analysis: ReturnType<typeof analyzeWeightProgress>
   }
   let adminWeightData: AdminWeightData | null = null
 
@@ -156,12 +158,14 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
     }
 
     lastWeightKg = entries[0]?.weight_kg ?? null
-    const weightDistanceKg =
-      targetWeightKg !== null && lastWeightKg !== null
-        ? Math.round((lastWeightKg - targetWeightKg) * 10) / 10
-        : null
+    const analysis = analyzeWeightProgress({
+      targetWeightKg,
+      logs: entries,
+    })
 
-    adminWeightData = { targetWeightKg, lastWeightKg, weightDistanceKg, entries }
+    const weightDistanceKg = analysis.distanceKg
+
+    adminWeightData = { targetWeightKg, lastWeightKg, weightDistanceKg, entries, analysis }
   }
 
   async function postPersonRoleAction(payload: Record<string, unknown>, memberId: string, successMessage: string, fallbackError: string) {
@@ -627,7 +631,48 @@ export default async function MitgliedDetailPage({ params, searchParams }: { par
                 </div>
               </div>
             ) : null}
+            <div className="col-span-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+              <div className="text-xs text-zinc-500">Status</div>
+              <div className="mt-0.5 font-semibold text-zinc-900">
+                {adminWeightData.analysis.status === "in_range"
+                  ? "Im Zielbereich"
+                  : adminWeightData.analysis.status === "near_target"
+                  ? "Nah am Zielbereich"
+                  : adminWeightData.analysis.status === "above_target"
+                  ? "Über dem Zielgewicht"
+                  : adminWeightData.analysis.status === "below_target"
+                  ? "Unter dem Zielgewicht"
+                  : adminWeightData.analysis.status === "needs_attention"
+                  ? "Besprechen"
+                  : adminWeightData.analysis.status === "no_target"
+                  ? "Kein Zielgewicht"
+                  : "Kein Gewicht"}
+              </div>
+            </div>
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+              <div className="text-xs text-zinc-500">Verlaufstendenz</div>
+              <div className="mt-0.5 font-semibold text-zinc-900">
+                {adminWeightData.analysis.trend === "rising"
+                  ? "Steigend"
+                  : adminWeightData.analysis.trend === "falling"
+                  ? "Fallend"
+                  : adminWeightData.analysis.trend === "stable"
+                  ? "Stabil"
+                  : "Nicht bestimmbar"}
+              </div>
+            </div>
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+              <div className="text-xs text-zinc-500">Letzte Veränderung</div>
+              <div className="mt-0.5 font-semibold text-zinc-900">
+                {adminWeightData.analysis.lastChangeKg !== null
+                  ? adminWeightData.analysis.lastChangeKg > 0
+                    ? `+${adminWeightData.analysis.lastChangeKg} kg`
+                    : `${adminWeightData.analysis.lastChangeKg} kg`
+                  : "Nicht berechenbar"}
+              </div>
+            </div>
           </div>
+          <div className="text-xs text-zinc-500">{adminWeightData.analysis.message}</div>
           {adminWeightData.entries.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
